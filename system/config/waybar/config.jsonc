@@ -27,7 +27,7 @@
   },
   "hyprland/window": {
     "format": "{class}",
-    "rewrite": { "^$": "Desktop", "^kitty$": "Terminal", "^memora-(float|ai)$": "Memora", "^org\\.gnome\\.Nautilus$": "Files", "^chromium$": "Chromium" },
+    "rewrite": { "^$": "Desktop", "^kitty$": "Terminal", "^memora-(float|ai|welcome)$": "Memora", "^org\\.gnome\\.Nautilus$": "Files", "^chromium$": "Chromium" },
     "separate-outputs": true,
     "max-length": 28
   },

@@ -78,7 +78,7 @@ stream() {
         -H "anthropic-version: 2026-10-21" \
         -H "anthropic-beta: server-side-fallback-2026-07-01" \
         --data-binary @- <<<"$body" |
-        sed -u -n -e 's/^data: //p' -e '/^{/p' |
+        sed -u -n -e 's/^data: //p;t' -e '/^{/p' |
         jq --unbuffered -rj '
           if .type == "content_block_delta" and .delta.type == "text_delta" then .delta.text
           elif .type == "message_delta" and .delta.stop_reason == "refusal" then "\n[memora-ai error] the request was declined.\n"
@@ -92,7 +92,7 @@ stream() {
       curl -sN "${url%/}/chat/completions" \
         -H "content-type: application/json" -H "authorization: Bearer $key" \
         --data-binary @- <<<"$body" |
-        sed -u -n -e '/^data: \[DONE\]/d' -e 's/^data: //p' -e '/^{/p' |
+        sed -u -n -e '/^data: \[DONE\]/d' -e 's/^data: //p;t' -e '/^{/p' |
         jq --unbuffered -rj '
           if .choices then (.choices[0].delta.content // empty)
           elif .error then "\n[memora-ai error] \(.error.message // .error)\n"
