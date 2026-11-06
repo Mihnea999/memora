@@ -55,7 +55,7 @@ case "${1:-}" in
         ";") k=semicolon ;; "|") k=shift-backslash ;; "~") k=shift-grave_accent ;; "'") k=apostrophe ;;
         '"') k=shift-apostrophe ;; ">") k=shift-dot ;; "<") k=shift-comma ;; "&") k=shift-7 ;; '$') k=shift-4 ;;
         "_") k=shift-minus ;; "=") k=equal ;; ",") k=comma ;; "*") k=shift-8 ;; "(") k=shift-9 ;; ")") k=shift-0 ;;
-        "#") k=shift-3 ;; "+") k=shift-equal ;; "!") k=shift-1 ;; "\\") k=backslash ;; "[") k=bracket_left ;; "]") k=bracket_right ;;
+        "?") k=shift-slash ;; "#") k=shift-3 ;; "+") k=shift-equal ;; "!") k=shift-1 ;; "\\") k=backslash ;; "[") k=bracket_left ;; "]") k=bracket_right ;;
         [A-Z]) k="shift-${c,,}" ;; *) k="$c" ;;
       esac
       (echo "sendkey $k"; sleep 0.08) | socat - "UNIX-CONNECT:$mon" >/dev/null
