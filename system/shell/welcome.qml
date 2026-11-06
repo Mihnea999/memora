@@ -1,0 +1,148 @@
+//@ pragma UseQApplication
+//@ pragma AppId memora-welcome
+//@ pragma IconTheme Memora
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+import qs.core
+import qs.ui
+
+// First start: say hello, pick the appearance, set up the assistant.
+ShellRoot {
+  id: app
+  property int page: 0
+  readonly property int pages: 4
+
+  FloatingWindow {
+    id: win
+    title: "Welcome to Memora"
+    implicitWidth: 680
+    implicitHeight: 500
+    color: "transparent"
+    Rectangle { anchors.fill: parent; color: Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.96) : Qt.rgba(0.98, 0.98, 0.99, 0.97) }
+    Item {
+      anchors { left: parent.left; right: parent.right; top: parent.top }
+      height: 40
+      DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+      Rectangle { x: 16; y: 14; width: 13; height: 13; radius: 6.5; color: Theme.red; TapHandler { onTapped: Qt.quit() } }
+    }
+
+    Item {
+      id: stage
+      anchors { left: parent.left; right: parent.right; top: parent.top; bottom: footer.top; topMargin: 30 }
+      clip: true
+      Row {
+        x: -app.page * stage.width
+        Behavior on x { NumberAnimation { duration: Theme.slow; easing.type: Theme.easingEmph } }
+
+        // 1. Hello
+        Item {
+          width: stage.width; height: stage.height
+          Column {
+            anchors.centerIn: parent
+            spacing: 14
+            Image { anchors.horizontalCenter: parent.horizontalCenter; source: "file://" + Theme.share + "/themes/" + Theme.mode + "/logo.png"; width: 96; height: 96; sourceSize: Qt.size(192, 192) }
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Welcome to Memora"; font.pixelSize: 28; font.weight: Font.Bold }
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "A few choices, and you're ready."; color: Theme.textDim }
+          }
+        }
+
+        // 2. Appearance
+        Item {
+          width: stage.width; height: stage.height
+          Column {
+            anchors.centerIn: parent
+            spacing: 22
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Choose your look"; font.pixelSize: 22; font.weight: Font.Bold }
+            Row {
+              anchors.horizontalCenter: parent.horizontalCenter
+              spacing: 30
+              Repeater {
+                model: [{ id: "light", name: "Light" }, { id: "dark", name: "Dark" }]
+                delegate: Column {
+                  required property var modelData
+                  spacing: 10
+                  Rectangle {
+                    width: 200; height: 128; radius: 12
+                    border.width: Theme.mode === modelData.id ? 3 : 1
+                    border.color: Theme.mode === modelData.id ? Theme.accent : Theme.separator
+                    clip: true
+                    Image { anchors.fill: parent; anchors.margins: 3; source: "file://" + Theme.share + "/themes/" + modelData.id + "/wallpaper.png"; sourceSize: Qt.size(400, 256); fillMode: Image.PreserveAspectCrop }
+                    Rectangle { x: 18; y: 22; width: 100; height: 66; radius: 7; color: modelData.id === "dark" ? "#2a2a2e" : "#ffffff"; opacity: 0.92 }
+                    TapHandler { onTapped: Quickshell.execDetached(["memora-theme", "set", modelData.id]) }
+                  }
+                  Txt { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.name; font.weight: Theme.mode === modelData.id ? Font.Bold : Font.Normal }
+                }
+              }
+            }
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "You can change it any time in Control Center."; color: Theme.textDim; font.pixelSize: Theme.small }
+          }
+        }
+
+        // 3. Memora AI
+        Item {
+          width: stage.width; height: stage.height
+          Column {
+            anchors.centerIn: parent
+            spacing: 14
+            width: 460
+            Image { anchors.horizontalCenter: parent.horizontalCenter; source: Quickshell.iconPath("memora-ai"); width: 84; height: 84; sourceSize: Qt.size(168, 168) }
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Meet Memora AI"; font.pixelSize: 22; font.weight: Font.Bold }
+            Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: Theme.textDim
+              text: "Ask it to do things on this computer: change settings, sort files, install apps, fix problems. It asks before doing anything risky." }
+            Rectangle {
+              anchors.horizontalCenter: parent.horizontalCenter
+              width: st.implicitWidth + 32; height: 32; radius: 9; color: Theme.accent
+              Txt { id: st; anchors.centerIn: parent; text: "Set Up Memora AI"; color: "#ffffff"; font.weight: Font.Bold }
+              TapHandler { onTapped: Quickshell.execDetached(["memora-settings", "ai"]) }
+            }
+          }
+        }
+
+        // 4. Ready
+        Item {
+          width: stage.width; height: stage.height
+          Column {
+            anchors.centerIn: parent
+            spacing: 16
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "You're all set"; font.pixelSize: 26; font.weight: Font.Bold }
+            Grid {
+              anchors.horizontalCenter: parent.horizontalCenter
+              columns: 2; columnSpacing: 26; rowSpacing: 10
+              Repeater {
+                model: [["Tap Super", "Launchpad, all your apps"], ["Super + Space", "Spotlight search"], ["Alt + Tab", "Switch windows"],
+                        ["Super + A", "Memora AI"], ["Click the clock", "Calendar and notifications"], ["Click the switches icon", "Control Center"]]
+                delegate: Txt { required property var modelData; text: modelData[0]; font.weight: index % 2 === 0 ? Font.Bold : Font.Normal; required property int index }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    Item {
+      id: footer
+      anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+      height: 70
+      Row {
+        anchors.centerIn: parent
+        spacing: 8
+        Repeater { model: app.pages; delegate: Rectangle { required property int index; width: 7; height: 7; radius: 3.5; color: Theme.text; opacity: index === app.page ? 0.85 : 0.22 } }
+      }
+      Rectangle {
+        visible: app.page > 0
+        anchors { left: parent.left; leftMargin: 24; verticalCenter: parent.verticalCenter }
+        width: bt.implicitWidth + 28; height: 32; radius: 9; color: bh.hovered ? Theme.pressed : Theme.hover
+        Txt { id: bt; anchors.centerIn: parent; text: "Back" }
+        HoverHandler { id: bh }
+        TapHandler { onTapped: app.page-- }
+      }
+      Rectangle {
+        anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
+        width: nt.implicitWidth + 32; height: 32; radius: 9; color: Theme.accent
+        Txt { id: nt; anchors.centerIn: parent; text: app.page === app.pages - 1 ? "Start Using Memora" : "Continue"; color: "#ffffff"; font.weight: Font.Bold }
+        TapHandler { onTapped: app.page === app.pages - 1 ? Qt.quit() : app.page++ }
+      }
+    }
+  }
+}

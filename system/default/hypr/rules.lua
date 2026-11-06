@@ -13,8 +13,8 @@ hl.window_rule({ name = "memora-float-all", match = { class = ".*" }, float = tr
 for _, class in ipairs({ "memora-float", "memora-ai", "memora-welcome", "org.pulseaudio.pavucontrol", "nm-connection-editor", "satty" }) do
   hl.window_rule({ name = "memora-float-" .. class, match = { class = "^(" .. class .. ")$" }, float = true, center = true })
 end
-hl.window_rule({ name = "memora-ai-size", match = { class = "^(memora-ai)$" }, size = "1000 680" })
-hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welcome)$" }, size = "640 470" })
+hl.window_rule({ name = "memora-ai-size", match = { class = "^(memora-ai)$" }, size = "760 720" })
+hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welcome)$" }, size = "680 500" })
 hl.window_rule({ name = "memora-float-tool-size", match = { class = "^(memora-float)$" }, size = "900 600" })
 
 -- Glass surfaces: blur what is behind the shell's translucent layers.

@@ -11,7 +11,8 @@ PanelWindow {
   id: sp
   required property var modelData
   screen: modelData
-  readonly property bool open: Shell.open === "spotlight" && (!Shell.menuScreen || Shell.menuScreen === screen || Quickshell.screens.length === 1)
+  readonly property string mode: ["spotlight", "clipboard", "keys"].indexOf(Shell.open) >= 0 ? Shell.open : ""
+  readonly property bool open: mode !== "" && (!Shell.menuScreen || Shell.menuScreen === screen || Quickshell.screens.length === 1)
 
   visible: open || anim.running
   anchors { top: true; bottom: true; left: true; right: true }
@@ -28,7 +29,28 @@ PanelWindow {
   property int current: 0
   property var files: []
 
-  onOpenChanged: if (open) { field.text = ""; query = ""; current = 0; files = []; field.forceActiveFocus() }
+  onOpenChanged: if (open) { field.text = ""; query = ""; current = 0; files = []; field.forceActiveFocus(); if (mode === "clipboard") clipProc.running = true; if (mode === "keys") keysProc.running = true }
+  property var clips: []
+  property var binds: []
+  Process {
+    id: clipProc
+    command: ["cliphist", "list"]
+    stdout: StdioCollector { onStreamFinished: sp.clips = text.split("\n").filter(l => l).slice(0, 200).map(l => { const t = l.indexOf("\t"); return { id: l.slice(0, t), text: l.slice(t + 1) } }) }
+  }
+  Process {
+    id: keysProc
+    command: ["hyprctl", "binds", "-j"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        let list = []
+        try { list = JSON.parse(text) } catch (e) {}
+        const mods = m => [m & 64 ? "Super" : "", m & 4 ? "Ctrl" : "", m & 8 ? "Alt" : "", m & 1 ? "Shift" : ""].filter(x => x)
+        const seen = {}
+        sp.binds = list.filter(b => b.has_description && !seen[b.description] && (seen[b.description] = true))
+          .map(b => ({ keys: mods(b.modmask).concat([b.key.replace("SUPER_L", "").replace("ALT_L", "")]).filter(x => x).join(" + "), text: b.description }))
+      }
+    }
+  }
 
   // ---- results ---------------------------------------------------------------
   readonly property var settingsPages: [
@@ -48,6 +70,11 @@ PanelWindow {
 
   readonly property var results: {
     const q = query.trim()
+    const lq0 = q.toLowerCase()
+    if (mode === "clipboard")
+      return clips.filter(c => !q || c.text.toLowerCase().indexOf(lq0) >= 0).slice(0, 40).map(c => ({ kind: "clip", title: c.text.slice(0, 120), sub: "Copy again", icon: "", iconName: "edit-paste", run: () => Apps.run("cliphist decode " + c.id + " | wl-copy") }))
+    if (mode === "keys")
+      return binds.filter(b => !q || b.text.toLowerCase().indexOf(lq0) >= 0 || b.keys.toLowerCase().indexOf(lq0) >= 0).map(b => ({ kind: "key", title: b.text, sub: b.keys, icon: "", iconName: "preferences-desktop-keyboard", run: () => {} }))
     if (!q) return []
     const lq = q.toLowerCase()
     const out = []
@@ -120,7 +147,7 @@ PanelWindow {
       Keys.onDownPressed: sp.current = Math.min(sp.results.length - 1, sp.current + 1)
       Keys.onUpPressed: sp.current = Math.max(0, sp.current - 1)
       Keys.onTabPressed: sp.current = (sp.current + 1) % Math.max(1, sp.results.length)
-      Txt { visible: !field.text; text: "Spotlight Search"; color: Theme.textFaint; font.pixelSize: 22; anchors.verticalCenter: parent.verticalCenter }
+      Txt { visible: !field.text; text: sp.mode === "clipboard" ? "Clipboard History" : (sp.mode === "keys" ? "Keyboard Shortcuts" : "Spotlight Search"); color: Theme.textFaint; font.pixelSize: 22; anchors.verticalCenter: parent.verticalCenter }
     }
 
     Rectangle { visible: list.count > 0; anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 60 } height: 1; color: Theme.separator }

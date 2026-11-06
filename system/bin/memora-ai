@@ -1,253 +1,35 @@
 #!/usr/bin/env bash
 # memora-ai — the assistant built into Memora.
-#
-# Providers:
-#   anthropic    Claude through the Anthropic API (needs an API key)
-#   claude-code  the Claude Code CLI (uses your Claude login, no key)
-#   ollama       local models through Ollama (private, works offline)
-#   openai       any OpenAI-compatible endpoint (LM Studio, OpenRouter, ...)
-#
-# Memora AI keeps a memory file the user controls; it is sent with every
-# request so the assistant remembers preferences across sessions.
-set -uo pipefail
-source "${MEMORA_PATH:-/usr/share/memora}/lib/gum.sh"
+#   memora-ai [window] [QUESTION]   open the Memora AI window (and ask right away)
+#   memora-ai ask QUESTION          answer in the terminal; piped input is attached
+#   memora-ai explain-clipboard     ask about what is in the clipboard
+#   memora-ai explain-last CMD      run CMD again and explain what went wrong
+#   memora-ai remember FACT         add to the memory file;  memora-ai memory  opens it
+#   memora-ai setup                 System Settings > Memora AI
+dir="${MEMORA_PATH:-/usr/share/memora}"
+memory="$HOME/.local/share/memora/ai/memory.md"
+win="$dir/shell/ai.qml"
 
-CONF_DIR="$HOME/.config/memora"
-CONF="$CONF_DIR/ai.env"
-SECRET="$CONF_DIR/ai.secret"
-DATA="$HOME/.local/share/memora/ai"
-MEMORY="$DATA/memory.md"
-SESSIONS="$DATA/sessions"
-
-MEMORA_AI_PROVIDER=""
-MEMORA_AI_MODEL=""
-MEMORA_AI_BASE_URL=""
-MEMORA_AI_EFFORT="low"
-# shellcheck disable=SC1090
-[[ -f $CONF ]] && source "$CONF"
-# shellcheck disable=SC1090
-[[ -f $SECRET ]] && source "$SECRET"
-
-mkdir -p "$DATA" "$SESSIONS"
-[[ -f $MEMORY ]] || printf '# What Memora AI remembers about you\n\n' > "$MEMORY"
-
-c_accent=$'\e[1m'; c_dim=$'\e[2m'; c_red=$'\e[31m'; c_off=$'\e[0m'
-
-die() { echo "${c_red}memora-ai:${c_off} $*" >&2; exit 1; }
-
-need_setup() {
-  [[ -n $MEMORA_AI_PROVIDER ]] && return 0
-  if [[ -t 0 ]]; then setup; source "$CONF"; source "$SECRET" 2>/dev/null; return 0; fi
-  die "not configured yet. Run: memora-ai setup"
-}
-
-system_prompt() {
-  local gpu kernel
-  gpu="$(lspci 2>/dev/null | grep -iE 'vga|3d' | sed 's/.*: //' | head -2 | paste -sd ';')"
-  kernel="$(uname -r)"
-  cat <<EOF
-You are Memora AI, the assistant built into Memora, a Linux distribution based on Arch Linux with the Hyprland compositor.
-Answer concisely. When a task needs shell commands, give exact commands in a single \`\`\`bash block that can be run as-is, and say what they do in one line. Prefer pacman packages from the official repos; mention when something needs sudo or is destructive.
-
-The user's system:
-- Memora $(cat /usr/share/memora/version 2>/dev/null || echo dev), kernel $kernel, user $USER on $(cat /etc/hostname 2>/dev/null)
-- GPU: ${gpu:-unknown}
-- Desktop: Hyprland (Lua config in ~/.config/hypr/, user overrides in ~/.config/hypr/user.lua), waybar, fuzzel, mako, kitty
-- Filesystem: btrfs with snapper snapshots (memora snapshot list)
-- Memora commands: memora theme, memora update, memora dev install <node|python|claude|docker|flutter|android|ollama|rust|go>, memora-ai
-
-What you remember about the user (they can edit this with 'memora-ai memory'):
-$(cat "$MEMORY")
-EOF
-}
-
-# stream <messages.json> <reply-file>: prints the answer as it arrives.
-stream() {
-  local msgs="$1" out="$2" sys body
-  sys="$(system_prompt)"
-  case "$MEMORA_AI_PROVIDER" in
-    anthropic)
-      [[ -n ${ANTHROPIC_API_KEY:-} ]] || die "no ANTHROPIC_API_KEY. Run: memora-ai setup"
-      body="$(jq -n --arg m "${MEMORA_AI_MODEL:-claude-opus-5-5}" --arg s "$sys" --arg e "$MEMORA_AI_EFFORT" \
-        --slurpfile msgs "$msgs" \
-        '{model:$m, max_tokens:16000, stream:true, system:$s, messages:$msgs[0],
-          output_config:{effort:$e}, fallbacks:"default"}')"
-      curl -sN https://api.anthropic.com/v1/messages \
-        -H "content-type: application/json" \
-        -H "x-api-key: $ANTHROPIC_API_KEY" \
-        -H "anthropic-version: 2026-10-21" \
-        -H "anthropic-beta: server-side-fallback-2026-07-01" \
-        --data-binary @- <<<"$body" |
-        sed -u -n -e 's/^data: //p;t' -e '/^{/p' |
-        jq --unbuffered -rj '
-          if .type == "content_block_delta" and .delta.type == "text_delta" then .delta.text
-          elif .type == "message_delta" and .delta.stop_reason == "refusal" then "\n[memora-ai error] the request was declined.\n"
-          elif .type == "error" then "\n[memora-ai error] \(.error.message)\n"
-          else empty end' | tee "$out"
-      ;;
-    ollama|openai)
-      local url="${MEMORA_AI_BASE_URL:-http://localhost:11434/v1}" key="${OPENAI_API_KEY:-ollama}"
-      body="$(jq -n --arg m "$MEMORA_AI_MODEL" --arg s "$sys" --slurpfile msgs "$msgs" \
-        '{model:$m, stream:true, messages:([{role:"system",content:$s}] + $msgs[0])}')"
-      curl -sN "${url%/}/chat/completions" \
-        -H "content-type: application/json" -H "authorization: Bearer $key" \
-        --data-binary @- <<<"$body" |
-        sed -u -n -e '/^data: \[DONE\]/d' -e 's/^data: //p;t' -e '/^{/p' |
-        jq --unbuffered -rj '
-          if .choices then (.choices[0].delta.content // empty)
-          elif .error then "\n[memora-ai error] \(.error.message // .error)\n"
-          else empty end' | tee "$out"
-      ;;
-    *) die "provider '$MEMORA_AI_PROVIDER' cannot stream here" ;;
-  esac
-  echo
-}
-
-# ask "question" — one-shot. Piped stdin is attached as context.
-ask() {
-  need_setup
-  local q="$*" ctx=""
-  [[ ! -t 0 ]] && ctx="$(head -c 60000)"
-  [[ -n $ctx ]] && q="$q"$'\n\n```\n'"$ctx"$'\n```'
-  [[ -n ${q// } ]] || die "usage: memora-ai ask QUESTION   (or pipe text in)"
-  if [[ $MEMORA_AI_PROVIDER == claude-code ]]; then
-    exec claude -p --append-system-prompt "$(system_prompt)" "$q"
+window() {
+  if pgrep -f "qs -p $win" >/dev/null; then
+    [[ -n $* ]] && qs -p "$win" ipc call ai ask "$*"
+    exec hyprctl dispatch 'hl.dsp.focus({ window = "class:memora-ai" })' >/dev/null
   fi
-  local tmp; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN
-  jq -n --arg q "$q" '[{role:"user",content:$q}]' > "$tmp/m.json"
-  stream "$tmp/m.json" "$tmp/r"
+  MEMORA_AI_PROMPT="$*" exec uwsm app -- qs -p "$win"
 }
 
-last_code_block() {
-  awk '/^```/{ if (inb) { inb=0; done=1; next } else { inb=1; buf=""; next } } inb { buf = buf $0 "\n" } END { printf "%s", buf }' "$1"
-}
-
-chat() {
-  need_setup
-  if [[ $MEMORA_AI_PROVIDER == claude-code ]]; then
-    exec claude --append-system-prompt "$(system_prompt)"
-  fi
-  local session="$SESSIONS/$(date +%Y%m%d-%H%M%S).json" tmp line reply code
-  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-  echo '[]' > "$session"
-  printf '%sMemora AI%s %s(%s · %s)%s\n' "$c_accent" "$c_off" "$c_dim" "$MEMORA_AI_PROVIDER" "${MEMORA_AI_MODEL:-default}" "$c_off"
-  printf '%s/run runs the last command block · /remember TEXT saves a fact · /memory · /new · /quit%s\n\n' "$c_dim" "$c_off"
-  while true; do
-    IFS= read -e -r -p "${c_accent}› ${c_off}" line || break
-    [[ -z ${line// } ]] && continue
-    history -s "$line"
-    case "$line" in
-      /quit|/exit) break ;;
-      /new) echo '[]' > "$session"; session="$SESSIONS/$(date +%Y%m%d-%H%M%S).json"; echo '[]' > "$session"; echo "${c_dim}New conversation.${c_off}"; continue ;;
-      /memory) "${EDITOR:-nvim}" "$MEMORY"; continue ;;
-      /remember\ *) remember "${line#/remember }"; continue ;;
-      /run)
-        code="$(last_code_block "$tmp/r" 2>/dev/null)"
-        [[ -n $code ]] || { echo "${c_dim}No command block in the last answer.${c_off}"; continue; }
-        printf '%s%s%s\n' "$c_dim" "$code" "$c_off"
-        if gum confirm "Run this?"; then bash -c "$code"; fi
-        continue ;;
-    esac
-    jq --arg q "$line" '. + [{role:"user",content:$q}]' "$session" > "$tmp/m.json"
-    echo
-    stream "$tmp/m.json" "$tmp/r"
-    echo
-    reply="$(cat "$tmp/r")"
-    if [[ $reply == *"[memora-ai error]"* || -z $reply ]]; then continue; fi
-    jq --arg a "$reply" '. + [{role:"assistant",content:$a}]' "$tmp/m.json" > "$session"
-    [[ -n $(last_code_block "$tmp/r") ]] && printf '%s(/run to execute the command block)%s\n\n' "$c_dim" "$c_off"
-  done
-}
-
-remember() {
-  [[ -n ${*// } ]] || die "usage: memora-ai remember TEXT"
-  printf -- '- %s\n' "$*" >> "$MEMORY"
-  echo "${c_dim}Remembered.${c_off}"
-}
-
-write_conf() {
-  mkdir -p "$CONF_DIR"
-  cat > "$CONF" <<EOF
-MEMORA_AI_PROVIDER="$1"
-MEMORA_AI_MODEL="$2"
-MEMORA_AI_BASE_URL="$3"
-MEMORA_AI_EFFORT="${MEMORA_AI_EFFORT:-low}"
-EOF
-}
-
-write_secret() {
-  umask 077; mkdir -p "$CONF_DIR"
-  printf '%s=%q\n' "$1" "$2" > "$SECRET"
-}
-
-setup() {
-  local choice model key url ram
-  choice="$(gum choose --header "Where should Memora AI run?" \
-    "Claude (Anthropic API key)" \
-    "Claude Code (your Claude account)" \
-    "Local with Ollama (private, offline)" \
-    "OpenAI-compatible endpoint (LM Studio, OpenRouter, ...)")" || exit 1
-  case "$choice" in
-    "Claude (Anthropic"*)
-      key="$(gum input --password --placeholder "sk-ant-..." --header "Anthropic API key (console.anthropic.com)")" || exit 1
-      model="$(gum choose --header "Model" claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5)" || exit 1
-      write_secret ANTHROPIC_API_KEY "$key"
-      write_conf anthropic "$model" "" ;;
-    "Claude Code"*)
-      command -v claude >/dev/null || { echo "Installing Claude Code..."; memora-dev install claude || exit 1; }
-      write_conf claude-code "" ""
-      echo "Run 'claude' once to sign in if you haven't yet." ;;
-    "Local with Ollama"*)
-      command -v ollama >/dev/null || memora-dev install ollama || exit 1
-      ram="$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo)"
-      if (( ram >= 30 )); then model="qwen3:14b"; elif (( ram >= 14 )); then model="qwen3:8b"; else model="qwen3:4b"; fi
-      model="$(gum input --value "$model" --header "Ollama model (${ram} GB RAM detected)")" || exit 1
-      echo "Downloading $model ..."
-      ollama pull "$model" || exit 1
-      write_conf ollama "$model" "http://localhost:11434/v1" ;;
-    "OpenAI-compatible"*)
-      url="$(gum input --value "http://localhost:1234/v1" --header "Base URL")" || exit 1
-      model="$(gum input --header "Model name")" || exit 1
-      key="$(gum input --password --header "API key (leave empty if none)")"
-      write_secret OPENAI_API_KEY "${key:-none}"
-      write_conf openai "$model" "$url" ;;
-  esac
-  echo "Memora AI is ready. Press Super+A to chat, or use ?? in the terminal."
-}
-
-usage() {
-  cat <<EOF
-memora-ai — the assistant built into Memora
-
-  memora-ai chat                  Conversation in the terminal
-  memora-ai ask QUESTION          One answer; piped input is attached
-  memora-ai window                Open the chat window (Super+A)
-  memora-ai explain-clipboard     Explain what is on the clipboard
-  memora-ai explain-last CMD      Explain why a command failed (used by 'wtf')
-  memora-ai remember TEXT         Add a fact to its memory
-  memora-ai memory                Edit the memory file
-  memora-ai setup                 Choose provider and model
-  memora-ai status
-
-Shell shortcuts: ?? QUESTION, wtf, some-command 2>&1 | ?? explain this
-EOF
-}
-
-case "${1:-chat}" in
-  chat) chat ;;
-  ask) shift; ask "$@" ;;
-  window) exec uwsm app -- kitty --class memora-ai --title "Memora AI" -e memora-ai chat ;;
-  explain-clipboard)
-    clip="$(wl-paste 2>/dev/null | head -c 20000)"
-    [[ -n $clip ]] || { notify-send -a memora "Memora AI" "Clipboard is empty"; exit 0; }
-    printf '%s' "$clip" > "$DATA/clipboard.txt"
-    exec uwsm app -- kitty --class memora-ai --title "Memora AI" -e bash -c \
-      'memora-ai ask "Explain this concisely. If it is an error, say how to fix it." < "$HOME/.local/share/memora/ai/clipboard.txt"; echo; read -rp "Enter to close"' ;;
-  explain-last) shift; ask "This shell command failed: \`$*\`. Explain the likely causes and how to fix them." ;;
-  remember) shift; remember "$@" ;;
-  memory) exec "${EDITOR:-nvim}" "$MEMORY" ;;
-  setup) setup ;;
-  status) echo "provider=${MEMORA_AI_PROVIDER:-unset} model=${MEMORA_AI_MODEL:-default} memory=$MEMORY" ;;
-  -h|--help|help) usage ;;
-  *) usage; exit 1 ;;
+case "${1:-window}" in
+  window) shift; window "$@" ;;
+  ask) shift; exec python3 "$dir/ai/agent.py" ask "$@" ;;
+  explain-clipboard) window "Explain this, briefly: $(wl-paste -n 2>/dev/null | head -c 6000)" ;;
+  explain-last)
+    shift; cmd="$*"
+    [[ -n $cmd ]] || { echo "usage: memora-ai explain-last COMMAND"; exit 1; }
+    out="$(bash -c "$cmd" 2>&1 | tail -n 60)"
+    printf '%s\n' "$out" | python3 "$dir/ai/agent.py" ask "I ran \`$cmd\` and got the output below. What went wrong, and how do I fix it?" ;;
+  remember) shift; mkdir -p "$(dirname "$memory")"; printf -- '- %s (%s)\n' "$*" "$(date +%F)" >> "$memory"; echo "Remembered." ;;
+  memory) mkdir -p "$(dirname "$memory")"; touch "$memory"; exec xdg-open "$memory" ;;
+  setup) exec memora-settings ai ;;
+  status) python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.config/memora/ai.json'))))" 2>/dev/null || echo "not set up" ;;
+  *) window "$@" ;;
 esac

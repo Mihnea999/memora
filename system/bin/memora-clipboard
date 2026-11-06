@@ -1,4 +1,3 @@
 #!/usr/bin/env bash
-pkill -x fuzzel && exit 0
-sel="$(cliphist list | fuzzel --dmenu --prompt "Clipboard  ")" || exit 0
-printf '%s' "$sel" | cliphist decode | wl-copy
+# Clipboard history (Spotlight shows it).
+exec memora-shell toggle clipboard

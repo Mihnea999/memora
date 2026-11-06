@@ -41,18 +41,15 @@ desktop_settings() {
     $gs monospace-font-name "JetBrainsMono Nerd Font 10" 2>/dev/null || true
     $gs cursor-theme Adwaita 2>/dev/null || true
     gsettings set org.gnome.desktop.wm.preferences button-layout "close,minimize,maximize:" 2>/dev/null || true
+    gsettings set org.gnome.Ptyxis use-system-font true 2>/dev/null || true
+    gsettings set org.gnome.Ptyxis restore-session false 2>/dev/null || true
   fi
 }
 
 reload() {
   [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || return 0
-  hyprctl reload >/dev/null 2>&1 || true
-  pkill -SIGUSR2 -x waybar 2>/dev/null || true
-  pkill -RTMIN+8 -x waybar 2>/dev/null || true
-  makoctl reload 2>/dev/null || true
-  pkill -SIGUSR1 -x kitty 2>/dev/null || true
-  memora-wallpaper >/dev/null 2>&1 || true
-  memora-dock >/dev/null 2>&1 &
+  # The shell and Memora apps watch ~/.config/memora/theme and restyle themselves.
+  hyprctl reload config-only >/dev/null 2>&1 || true
 }
 
 case "${1:-current}" in
@@ -65,8 +62,7 @@ case "${1:-current}" in
     cur="$(current)"; next="${all[0]}"
     for i in "${!all[@]}"; do [[ ${all[$i]} == "$cur" ]] && next="${all[$(((i + 1) % ${#all[@]}))]}"; done
     apply "$next"
-    notify-send -a memora "Theme" "$next" 2>/dev/null || true ;;
-  pick)
-    t="$(list | fuzzel --dmenu --prompt "Theme  ")" && [[ -n $t ]] && apply "$t" ;;
-  *) echo "usage: memora-theme [list|current|set NAME|next|pick]"; exit 1 ;;
+    ;;
+
+  *) echo "usage: memora-theme [list|current|set NAME|next]"; exit 1 ;;
 esac

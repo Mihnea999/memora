@@ -12,14 +12,15 @@ Memora $(cat "$MEMORA_PATH/version")
   memora dev [list|install NAME]      Developer toolkits
   memora update                       Snapshot, then update the system
   memora snapshot [list|create]       Btrfs snapshots (snapper)
-  memora keys                         Show keybindings
+  memora keys                         Show keyboard shortcuts
+  memora settings [PANE]              System Settings
   memora version
 USAGE
 }
 
 cmd="${1:-help}"; shift || true
 case "$cmd" in
-  theme|ai|dev|update|keys|menu|welcome) exec "memora-$cmd" "$@" ;;
+  theme|ai|dev|update|keys|welcome|settings|shell) exec "memora-$cmd" "$@" ;;
   snapshot)
     case "${1:-list}" in
       list) exec sudo snapper -c root list ;;

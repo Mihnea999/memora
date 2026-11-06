@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# App launcher. Runs apps under uwsm so they get their own systemd scope.
-pkill -x fuzzel && exit 0
-exec fuzzel --launch-prefix="uwsm app -- "

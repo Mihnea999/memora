@@ -1,26 +1,8 @@
 #!/usr/bin/env bash
-source "${MEMORA_PATH:-/usr/share/memora}/lib/gum.sh"
-# First-run welcome. With --first-run it only shows once.
+# The welcome window. With --first-run it only appears once.
 flag="$HOME/.local/state/memora/welcomed"
 if [[ ${1:-} == --first-run ]]; then
   [[ -f $flag ]] && exit 0
   mkdir -p "$(dirname "$flag")"; touch "$flag"
-  exec uwsm app -- kitty --class memora-welcome -o window_padding_width=28 -e memora-welcome
 fi
-
-gum style --bold "Welcome to Memora"
-gum style --faint "Version $(cat /usr/share/memora/version)"
-echo
-while IFS='|' read -r k d; do
-  printf '  %s  %s\n' "$(gum style --bold --width 14 "$k")" "$(gum style --faint "$d")"
-done <<'KEYS'
-Super+Space|Find apps and files
-Super+Return|Terminal
-Super+A|Memora AI
-Super+M|Control center
-Super+K|All shortcuts
-Super+T|Light or dark
-KEYS
-echo
-if gum confirm "Set up Memora AI now?"; then memora-ai setup; fi
-if gum confirm "Install developer toolkits (Node, Claude Code, Flutter, Docker...)?"; then memora-dev menu; fi
+exec uwsm app -- qs -p "${MEMORA_PATH:-/usr/share/memora}/shell/welcome.qml"

@@ -110,6 +110,19 @@ mkdir -p /etc/NetworkManager/conf.d
 printf '[device]\nwifi.backend=iwd\n' > /etc/NetworkManager/conf.d/wifi-backend.conf
 printf '[zram0]\nzram-size = min(ram / 2, 8192)\ncompression-algorithm = zstd\n' > /etc/systemd/zram-generator.conf
 sed -i 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' /etc/default/ufw 2>/dev/null || true
+# Virtual pointer and keyboard for Memora AI's screen tools; usable by the input group.
+cat > /etc/systemd/system/memora-ydotoold.service <<UNIT
+[Unit]
+Description=Virtual input for Memora AI
+
+[Service]
+ExecStart=/usr/bin/ydotoold --socket-path=/run/memora-ydotool.sock --socket-own=0:$(getent group input | cut -d: -f3) --socket-perm=0660
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable memora-ydotoold.service
 
 step "Login"
 # One session only, named Memora (the stock Hyprland entries stay out of the list).
