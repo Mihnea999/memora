@@ -26,7 +26,7 @@ Item {
   Image {
     id: bg
     anchors.fill: parent
-    source: "file://" + Theme.share + "/themes/" + (Theme.dark ? "dark" : "light") + "/wallpaper.jpg"
+    source: "file://" + Theme.wallpaper
     fillMode: Image.PreserveAspectCrop
     sourceSize: Qt.size(1920, 1200)
     visible: false

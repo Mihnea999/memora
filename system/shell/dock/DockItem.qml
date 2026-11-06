@@ -22,8 +22,8 @@ Item {
 
   width: size
   height: size
-  Behavior on width { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
-  Behavior on height { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
+  Behavior on width { NumberAnimation { duration: Prefs.motion(110); easing.type: Easing.OutQuad } }
+  Behavior on height { NumberAnimation { duration: Prefs.motion(110); easing.type: Easing.OutQuad } }
 
   readonly property string label: kind === "trash" ? "Trash" : kind === "folder" ? "Downloads"
     : kind === "window" ? (entry.win.title || Apps.nameFor(appId)) : appId === "memora-launchpad" ? "Launchpad" : Apps.nameFor(appId)
@@ -135,7 +135,7 @@ Item {
     if (kind === "trash") return Apps.run("nautilus --new-window trash:///")
     if (kind === "folder") return Apps.run("nautilus --new-window ~/Downloads")
     if (kind === "window") return Apps.restore(entry.win)
-    if (!running && appId !== "memora-launchpad") bounce.restart()
+    if (Prefs.dockBounce && Prefs.animations && !running && appId !== "memora-launchpad") bounce.restart()
     Apps.activate(appId)
   }
 
@@ -143,8 +143,8 @@ Item {
   SequentialAnimation {
     id: bounce
     loops: 2
-    NumberAnimation { target: bouncer; property: "y"; to: -it.height * 0.32; duration: 260; easing.type: Easing.OutQuad }
-    NumberAnimation { target: bouncer; property: "y"; to: 0; duration: 260; easing.type: Easing.InQuad }
+    NumberAnimation { target: bouncer; property: "y"; to: -it.height * 0.32; duration: Prefs.motion(260); easing.type: Easing.OutQuad }
+    NumberAnimation { target: bouncer; property: "y"; to: 0; duration: Prefs.motion(260); easing.type: Easing.InQuad }
   }
   onRunningChanged: if (running && bounce.running) { bounce.stop(); bouncer.y = 0 }
 }

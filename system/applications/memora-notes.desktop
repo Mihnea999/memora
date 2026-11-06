@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Notes
+Comment=Quick notes, checklists and ideas
+Exec=qs -p /usr/share/memora/shell/notes.qml
+Icon=memora-notes
+Terminal=false
+Categories=Office;Utility;
+Keywords=note;notes;todo;checklist;memo;

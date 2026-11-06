@@ -12,19 +12,37 @@ Kit.Page {
   Kit.Cmd { id: find; onDone: out => p.pictures = out.split("\n").filter(l => l) }
   Component.onCompleted: find.exec(["bash", "-c", "find \"$HOME/Pictures\" -maxdepth 2 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) 2>/dev/null | head -40"])
 
-  readonly property var builtIn: [
-    { file: "", name: "Silk (follows appearance)" },
-    { file: Theme.share + "/themes/light/wallpaper.jpg", name: "Silk Light" },
-    { file: Theme.share + "/themes/dark/wallpaper.jpg", name: "Silk Dark" }
-  ]
+  readonly property var sets: [["ribbon", "Ribbon"], ["dune", "Dune"], ["prism", "Prism"], ["silk", "Silk"]]
 
   Kit.Group {
     header: "Memora"
+    footer: "Each one has a light and a dark version and follows the appearance."
     Grid {
       Layout.fillWidth: true
       Layout.margins: 12
-      columns: 3; spacing: 14
-      Repeater { model: p.builtIn; delegate: Thumb { file: modelData.file; name: modelData.name } }
+      columns: 4; spacing: 12
+      Repeater {
+        model: p.sets
+        delegate: Column {
+          required property var modelData
+          readonly property bool on: Prefs.wallpaper === "" && Prefs.wallpaperSet === modelData[0]
+          spacing: 6
+          Rectangle {
+            width: 132; height: 84; radius: 9
+            border.width: parent.on ? 3 : 1
+            border.color: parent.on ? Theme.accent : Theme.separator
+            clip: true
+            scale: wh.hovered ? 1.03 : 1
+            Behavior on scale { NumberAnimation { duration: Theme.fast } }
+            // Half light, half dark.
+            Image { x: 3; y: 3; width: (parent.width - 6) / 2; height: parent.height - 6; source: "file://" + Theme.share + "/wallpapers/" + modelData[0] + "-light.jpg"; sourceSize: Qt.size(270, 170); fillMode: Image.PreserveAspectCrop; horizontalAlignment: Image.AlignLeft; asynchronous: true }
+            Image { x: parent.width / 2; y: 3; width: (parent.width - 6) / 2; height: parent.height - 6; source: "file://" + Theme.share + "/wallpapers/" + modelData[0] + "-dark.jpg"; sourceSize: Qt.size(270, 170); fillMode: Image.PreserveAspectCrop; horizontalAlignment: Image.AlignRight; asynchronous: true }
+            HoverHandler { id: wh }
+            TapHandler { onTapped: { Prefs.set("wallpaper", ""); Prefs.set("wallpaperSet", modelData[0]) } }
+          }
+          Txt { width: 132; text: modelData[1]; horizontalAlignment: Text.AlignHCenter; font.weight: parent.on ? Font.Bold : Font.Normal; font.pixelSize: Theme.small + 0.5 }
+        }
+      }
     }
   }
   Kit.Group {
@@ -49,7 +67,7 @@ Kit.Page {
       clip: true
       Image {
         anchors.fill: parent; anchors.margins: 3
-        source: "file://" + (file || (Theme.share + "/themes/" + Theme.mode + "/wallpaper.jpg"))
+        source: "file://" + file
         sourceSize: Qt.size(340, 212); fillMode: Image.PreserveAspectCrop; asynchronous: true
       }
       TapHandler { onTapped: Prefs.set("wallpaper", file) }

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+Comment=Your documents, pictures and everything else
+Exec=memora-files %U
+Icon=memora-files
+Terminal=false
+Categories=System;FileManager;
+MimeType=inode/directory;
+Keywords=folder;finder;explorer;file;manager;

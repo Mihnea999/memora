@@ -177,9 +177,18 @@ PanelWindow {
 
   // ---- pieces -----------------------------------------------------------------
   component Module: Glass {
+    id: mod
     radius: 18
     fill: Theme.glassStrong
     shadowSize: 18
+    property real enter: cc.open ? 1 : 0
+    Behavior on enter { SequentialAnimation {
+      // Top to bottom: the delay follows how far down the module sits.
+      PauseAnimation { duration: cc.open ? Prefs.motion(Math.round((mod.y + (mod.parent ? mod.parent.y : 0)) / 3)) : 0 }
+      NumberAnimation { duration: Prefs.motion(cc.open ? 380 : 140); easing.type: cc.open ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.1 }
+    } }
+    opacity: enter
+    transform: Translate { y: -14 * (1 - mod.enter) }
   }
 
   component Toggle: Item {

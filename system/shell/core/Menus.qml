@@ -8,12 +8,73 @@ import qs.core
 Singleton {
   id: m
 
-  function titles(desktop) {
-    return [
-      { id: "file", title: "File" }, { id: "edit", title: "Edit" }, { id: "view", title: "View" },
-      { id: "go", title: "Go" }, { id: "window", title: "Window" }, { id: "help", title: "Help" }
-    ]
+  // Each app gets its own menus, as on a Mac; unknown apps get the standard set.
+  // An app's spec lists its menus in order; each menu is either its own item list
+  // or "std" for Memora's standard one of that name.
+  function spec(cls) {
+    const S = sep()
+    switch (cls) {
+    case "chromium": case "google-chrome": case "firefox": case "brave-browser": return [
+      ["File", [k("New Tab", "ctrl+t"), k("New Window", "ctrl+n"), k("New Private Window", "ctrl+shift+n"), S,
+                k("Open Location…", "ctrl+l"), k("Open File…", "ctrl+o"), S, k("Close Tab", "ctrl+w"), k("Close Window", "ctrl+shift+w"), S,
+                k("Save Page As…", "ctrl+s"), k("Print…", "ctrl+p")]],
+      ["Edit", "std"],
+      ["View", [k("Reload Page", "ctrl+r"), k("Force Reload", "ctrl+shift+r"), S, k("Actual Size", "ctrl+0"), k("Zoom In", "ctrl+equal"), k("Zoom Out", "ctrl+minus"), S,
+                k("Enter Full Screen", "F11"), k("Developer Tools", "ctrl+shift+i")]],
+      ["History", [k("Back", "alt+Left"), k("Forward", "alt+Right"), S, k("Reopen Closed Tab", "ctrl+shift+t"), k("Show All History", "ctrl+h")]],
+      ["Bookmarks", [k("Bookmark This Page…", "ctrl+d"), k("Bookmark Manager", "ctrl+shift+o"), k("Show Bookmarks Bar", "ctrl+shift+b")]],
+      ["Tab", [k("Next Tab", "ctrl+Tab"), k("Previous Tab", "ctrl+shift+Tab"), S, k("Downloads", "ctrl+j")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "org.gnome.Ptyxis": case "kitty": return [
+      ["Shell", [k("New Window", "ctrl+shift+n"), k("New Tab", "ctrl+shift+t"), S, k("Close Tab", "ctrl+shift+w"), S,
+                 { text: "Ask Memora AI About Terminal…", action: () => Apps.run("memora-ai window") }]],
+      ["Edit", [k("Copy", "ctrl+shift+c"), k("Paste", "ctrl+shift+v"), k("Select All", "ctrl+shift+a"), S, k("Find…", "ctrl+shift+f"), S,
+                { text: "Clipboard History…", keys: "Super V", action: () => Shell.show("clipboard") }]],
+      ["View", [k("Bigger", "ctrl+plus"), k("Smaller", "ctrl+minus"), k("Actual Size", "ctrl+0"), S, k("Enter Full Screen", "F11")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "memora-files": case "org.gnome.Nautilus": return [
+      ["File", [k("New Window", "ctrl+n"), k("New Folder", "ctrl+shift+n"), S, k("Open", "Return"), k("Rename…", "F2"), S,
+                k("Move to Trash", "Delete"), S, k("Close Window", "ctrl+w")]],
+      ["Edit", [k("Undo", "ctrl+z"), S, k("Cut", "ctrl+x"), k("Copy", "ctrl+c"), k("Paste", "ctrl+v"), k("Select All", "ctrl+a"), S, k("Find…", "ctrl+f")]],
+      ["View", [k("as Icons", "ctrl+1"), k("as List", "ctrl+2"), S, k("Show Hidden Files", "ctrl+h"), S, k("Bigger Icons", "ctrl+equal"), k("Smaller Icons", "ctrl+minus")]],
+      ["Go", [k("Back", "alt+Left"), k("Forward", "alt+Right"), k("Enclosing Folder", "alt+Up"), S,
+              k("Home", "alt+Home"), { text: "Desktop", action: () => m.open(m.home + "/Desktop") }, { text: "Documents", action: () => m.open(m.home + "/Documents") },
+              { text: "Downloads", action: () => m.open(m.home + "/Downloads") }, { text: "Applications", action: () => Shell.show("launchpad") }, S,
+              k("Go to Folder…", "ctrl+l")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "memora-notes": return [
+      ["File", [k("New Note", "ctrl+n"), k("New Folder", "ctrl+shift+n"), S, k("Delete Note", "ctrl+BackSpace"), S, k("Export as Text…", "ctrl+e")]],
+      ["Edit", [k("Undo", "ctrl+z"), k("Redo", "ctrl+shift+z"), S, k("Cut", "ctrl+x"), k("Copy", "ctrl+c"), k("Paste", "ctrl+v"), k("Select All", "ctrl+a"), S, k("Find in Notes…", "ctrl+f")]],
+      ["Format", [k("Title", "ctrl+1"), k("Heading", "ctrl+2"), k("Body", "ctrl+0"), S, k("Checklist", "ctrl+shift+l"), k("Bulleted List", "ctrl+shift+8"), S,
+                  k("Bold", "ctrl+b"), k("Italic", "ctrl+i"), k("Strikethrough", "ctrl+shift+x")]],
+      ["View", [k("Show Folders", "ctrl+alt+s"), S, k("Bigger Text", "ctrl+equal"), k("Smaller Text", "ctrl+minus")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "org.gnome.TextEditor": return [
+      ["File", [k("New", "ctrl+n"), k("Open…", "ctrl+o"), S, k("Save", "ctrl+s"), k("Save As…", "ctrl+shift+s"), S, k("Print…", "ctrl+p"), S, k("Close", "ctrl+w")]],
+      ["Edit", "std"],
+      ["View", [k("Bigger", "ctrl+plus"), k("Smaller", "ctrl+minus"), k("Actual Size", "ctrl+0"), S, k("Enter Full Screen", "F11")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "org.gnome.Loupe": return [
+      ["File", [k("Open…", "ctrl+o"), S, k("Copy Image", "ctrl+c"), k("Move to Trash", "Delete"), S, k("Close", "ctrl+w")]],
+      ["View", [k("Zoom In", "ctrl+equal"), k("Zoom Out", "ctrl+minus"), k("Best Fit", "ctrl+0"), S, k("Rotate Left", "ctrl+Left"), k("Rotate Right", "ctrl+Right"), S, k("Enter Full Screen", "F11")]],
+      ["Go", [k("Previous Image", "Left"), k("Next Image", "Right")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "org.gnome.Calculator": return [
+      ["Edit", [k("Copy Result", "ctrl+c"), k("Paste", "ctrl+v"), S, k("Clear", "Escape")]],
+      ["View", [k("Basic", "ctrl+b"), k("Advanced", "ctrl+a"), k("Programming", "ctrl+p"), k("Financial", "ctrl+f"), k("Conversion", "ctrl+k")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "mpv": return [
+      ["Playback", [k("Play / Pause", "space"), S, k("Back 10 Seconds", "Left"), k("Forward 10 Seconds", "Right"), S, k("Louder", "0"), k("Quieter", "9"), k("Mute", "m")]],
+      ["View", [k("Enter Full Screen", "f"), k("Show Info", "i")]],
+      ["Window", "std"], ["Help", "std"]]
+    case "memora-settings": case "memora-ai": case "memora-activity": case "memora-welcome": return [
+      ["Edit", "std"], ["Window", "std"], ["Help", "std"]]
+    case "": return [["File", "std"], ["Edit", "std"], ["View", "std"], ["Go", "std"], ["Window", "std"], ["Help", "std"]]
+    }
+    return [["File", "std"], ["Edit", "std"], ["View", "std"], ["Window", "std"], ["Help", "std"]]
   }
+
+  function titles(cls) { return spec(cls).map((e, i) => ({ id: "m" + i + ":" + e[0], title: e[0] })) }
 
   function sep() { return { separator: true } }
   readonly property var keyNames: ({ ctrl: "Ctrl", shift: "Shift", alt: "Alt", comma: ",", equal: "+", minus: "-", Left: "Left", Right: "Right" })
@@ -23,11 +84,17 @@ Singleton {
   function k(text, keys, enabled) {
     return { text: text, keys: label(keys), action: () => Apps.keys(keys), enabled: enabled !== false }
   }
-  function open(path) { Apps.run("nautilus --new-window " + path) }
+  function open(path) { Apps.run("memora-files '" + path + "'") }
   readonly property string home: Quickshell.env("HOME")
 
   function items(id, cls, appName, win) {
     const hasWin = !!win && cls !== ""
+    if (id.startsWith("m")) {
+      const name = id.slice(id.indexOf(":") + 1)
+      const e = spec(cls).find(x => x[0] === name)
+      if (e && e[1] !== "std") return e[1]
+      id = name.toLowerCase()
+    }
     switch (id) {
     case "system": return [
       { text: "About This Memora", action: () => Apps.run("memora-settings about") },

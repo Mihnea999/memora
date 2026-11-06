@@ -12,7 +12,8 @@ Singleton {
   property int magnifySize: 80
   property bool clock24: true
   property bool showDate: true
-  property string wallpaper: ""        // empty: the theme's own picture
+  property string wallpaper: ""        // a picture of yours; empty: the set below
+  property string wallpaperSet: "ribbon" // ribbon | dune | prism | silk, follows light/dark
   // Motion
   property bool animations: true
   property real animationSpeed: 1.0    // 0.5 slow … 2 fast
@@ -23,7 +24,7 @@ Singleton {
   property real transparency: 1.0      // 0 solid … 1 full glass
   property bool menuBarTransparent: true
 
-  readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper",
+  readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "snapping", "transparency", "menuBarTransparent"]
 
   // A duration, scaled by the speed setting; 0 when animations are off.

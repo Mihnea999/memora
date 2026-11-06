@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# memora-files [FOLDER|FILE] — Files. With Files open, opens another window.
+dir="${MEMORA_PATH:-/usr/share/memora}/shell/files.qml"
+p="${1:-$HOME}"
+p="${p#file://}"; p="${p/#\~/$HOME}"
+[[ $p == trash:* ]] && p="$HOME/.local/share/Trash/files"
+[[ -f $p ]] && p="$(dirname "$p")"
+p="$(realpath -m "$p")"
+if pgrep -f "qs -p $dir" >/dev/null; then exec qs -p "$dir" ipc call files open "$p"; fi
+MEMORA_FILES_PATH="$p" exec qs -p "$dir"

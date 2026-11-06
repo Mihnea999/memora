@@ -22,6 +22,14 @@ MEMORA_PATH="$MEMORA_PATH" "$MEMORA_PATH/bin/memora-theme" set "${MEMORA_THEME:-
 
 xdg-user-dirs-update || true
 
+# Default apps for common kinds of files.
+xdg-mime default memora-files.desktop inode/directory
+for t in image/png image/jpeg image/webp image/gif image/bmp image/svg+xml image/heic image/tiff; do xdg-mime default org.gnome.Loupe.desktop "$t"; done
+for t in video/mp4 video/x-matroska video/webm video/quicktime audio/mpeg audio/flac audio/ogg audio/x-wav audio/mp4; do xdg-mime default mpv.desktop "$t"; done
+xdg-mime default org.gnome.Papers.desktop application/pdf
+for t in text/plain text/markdown text/x-log application/json text/x-python text/x-shellscript; do xdg-mime default org.gnome.TextEditor.desktop "$t"; done
+for t in x-scheme-handler/http x-scheme-handler/https text/html; do xdg-mime default chromium.desktop "$t"; done
+
 printf '%s\n' --no-first-run --no-default-browser-check --password-store=gnome-libsecret --ozone-platform-hint=auto \
   > "$cfg/chromium-flags.conf"
 

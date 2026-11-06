@@ -84,6 +84,20 @@ ICONS["apps/org.gnome.Nautilus"] = icon(
     folder_glyph("#a9d6ff", "url(#ff)",
                  '<rect x="420" y="520" width="184" height="22" rx="11" fill="#5aa6f2"/>'))
 
+ICONS["apps/memora-files"] = ICONS["apps/org.gnome.Nautilus"]
+
+# Notes: a cream page with ruled lines and a golden header, a pencil across it.
+ICONS["apps/memora-notes"] = icon(
+    "notes", lg("bg", "#fffdf6", "#f1ead8") + lg("band", "#ffd25e", "#f5b72e"), "url(#bg)",
+    '''<rect x="100" y="100" width="824" height="210" fill="url(#band)"/>
+    <rect x="100" y="300" width="824" height="14" fill="#000" fill-opacity="0.06"/>
+    <g stroke="#e3dccb" stroke-width="12" stroke-linecap="round"><path d="M250 430 h524 M250 530 h524 M250 630 h524 M250 730 h360"/></g>
+    <g filter="url(#soft)" transform="rotate(-38 640 640)">
+      <rect x="610" y="380" width="64" height="380" rx="10" fill="#4d8dff"/>
+      <path d="M610 760 h64 l-32 70 Z" fill="#f3d3a6"/><path d="M632 808 h20 l-10 22 Z" fill="#3a3a3f"/>
+      <rect x="610" y="380" width="64" height="44" rx="10" fill="#ff7a8a"/>
+    </g>''', rim="#000000", rim_op=0.07)
+
 # Launchpad: nine coloured tiles on graphite.
 tiles = ["#ff6b6b", "#ffb347", "#ffd84d", "#5fd38a", "#3fc3c9", "#4d8dff", "#8f6bff", "#e86bd8", "#b8bcc6"]
 tile_svg = "".join(

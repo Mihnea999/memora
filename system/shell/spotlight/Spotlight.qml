@@ -116,7 +116,7 @@ PanelWindow {
 
   // ---- view -----------------------------------------------------------------
   Item { id: full; anchors.fill: parent }
-  TapHandler { onTapped: Shell.close() }
+  TapHandler { onTapped: ev => { if (!card.contains(card.mapFromItem(sp.contentItem, ev.position.x, ev.position.y))) Shell.close() } }
 
   Glass {
     id: card

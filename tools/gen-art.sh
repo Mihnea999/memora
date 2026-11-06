@@ -5,15 +5,21 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 source "$root/system/lib/render.sh"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
-wallpaper() { # theme-dir name — folded silk sheets (tools/silk.py) at 8K, dithered against banding
-  local dir=$1 t=$2 out="$1/wallpaper.jpg"
-  # Rendering at 8K takes a while: only redo it when the drawing changed.
-  [[ -f $out && $out -nt $root/tools/silk.py ]] && return 0
-  python3 "$root/tools/silk.py" "$t" > "$tmp/silk.svg"
-  rsvg-convert -w 7680 -h 4800 "$tmp/silk.svg" -o "$tmp/silk.png"
-  magick "$tmp/silk.png" -depth 16 -attenuate 0.12 +noise Gaussian -depth 8 \
-    -sampling-factor 4:4:4 -quality 94 "$out"
-  rm -f "$dir/wallpaper.png"
+# 8K wallpapers: silk (tools/silk.py) and the crisp sets (tools/walls.py), each in
+# light and dark. Rendering takes a while, so each is only redone when its drawing changes.
+render_wall() { # name mode script...
+  local name=$1 mode=$2 out="$root/system/wallpapers/$1-$2.jpg"; shift 2
+  [[ -f $out && $out -nt $1 ]] && return 0
+  mkdir -p "$root/system/wallpapers"
+  python3 "$@" > "$tmp/w.svg"
+  rsvg-convert -w 7680 -h 4800 "$tmp/w.svg" -o "$tmp/w.png"
+  magick "$tmp/w.png" -depth 16 -attenuate 0.10 +noise Gaussian -depth 8 -sampling-factor 4:4:4 -quality 94 "$out"
+}
+wallpaper() { # theme-dir mode
+  local m=$2
+  render_wall silk "$m" "$root/tools/silk.py" "$m"
+  for n in ribbon dune prism; do render_wall "$n" "$m" "$root/tools/walls.py" "$n" "$m"; done
+  ln -sf "../../wallpapers/ribbon-$m.jpg" "$1/wallpaper.jpg"
 }
 
 for theme in "$root"/system/themes/*/; do

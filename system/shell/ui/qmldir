@@ -6,3 +6,4 @@ Sym 1.0 Sym.qml
 AppIcon 1.0 AppIcon.qml
 Slider 1.0 Slider.qml
 OutsideClick 1.0 OutsideClick.qml
+WindowControls 1.0 WindowControls.qml

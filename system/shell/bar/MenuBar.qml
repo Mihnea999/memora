@@ -34,6 +34,15 @@ PanelWindow {
     color: Theme.bar
     Behavior on color { ColorAnimation { duration: Theme.slow } }
   }
+  // Transparent bar: a faint veil keeps the text readable on any picture.
+  Rectangle {
+    visible: Prefs.menuBarTransparent
+    anchors.fill: parent
+    gradient: Gradient {
+      GradientStop { position: 0; color: Theme.dark ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(1, 1, 1, 0.22) }
+      GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0) }
+    }
+  }
 
   // ---------------------------------------------------------------- left side
   RowLayout {
@@ -54,13 +63,28 @@ PanelWindow {
       implicitWidth: 34
     }
 
+    // The app's name and its own menus; when another app comes forward they
+    // slide in one after another.
     Repeater {
-      model: [{ id: "app", title: bar.appName, bold: true }].concat(Menus.titles(bar.desktop))
+      model: [{ id: "app:" + bar.cls, title: bar.appName, bold: true }].concat(Menus.titles(bar.cls).map(t => ({ id: t.id, title: t.title, cls: bar.cls })))
       delegate: BarTitle {
+        id: bt
         required property var modelData
-        menuId: modelData.id
+        required property int index
+        menuId: modelData.id.startsWith("app:") ? "app" : modelData.id
         label: modelData.title
         bold: !!modelData.bold
+        opacity: 0
+        transform: Translate { id: tx; x: 8 }
+        Component.onCompleted: arrive.start()
+        SequentialAnimation {
+          id: arrive
+          PauseAnimation { duration: Prefs.motion(index * 28) }
+          ParallelAnimation {
+            NumberAnimation { target: bt; property: "opacity"; to: 1; duration: Prefs.motion(260); easing.type: Easing.OutCubic }
+            NumberAnimation { target: tx; property: "x"; to: 0; duration: Prefs.motion(320); easing.type: Easing.OutQuint }
+          }
+        }
       }
     }
   }

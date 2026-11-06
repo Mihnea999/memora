@@ -100,6 +100,7 @@ PanelWindow {
         Repeater {
           model: lp.pages
           delegate: Grid {
+            id: pageGrid
             required property int index
             width: pager.width; height: pager.height
             columns: lp.cols
@@ -109,7 +110,16 @@ PanelWindow {
               model: lp.apps.slice(index * lp.perPage, (index + 1) * lp.perPage)
               delegate: Item {
                 required property var modelData
+                required property int index
                 width: parent.cellW; height: parent.cellH
+                // Each icon settles in a moment after the one before it.
+                property real enter: lp.open ? 1 : 0
+                Behavior on enter { SequentialAnimation {
+                  PauseAnimation { duration: lp.open ? Prefs.motion(Math.min(index, 34) * 9) : 0 }
+                  NumberAnimation { duration: Prefs.motion(lp.open ? 420 : 160); easing.type: lp.open ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.2 }
+                } }
+                opacity: (lp.dragApp === modelData.id ? 0.35 : 1) * enter
+                transform: [Scale { origin.x: width / 2; origin.y: height / 2; xScale: 1.25 - 0.25 * enter; yScale: 1.25 - 0.25 * enter }]
                 AppIcon {
                   id: ic
                   appId: modelData.id
@@ -145,7 +155,7 @@ PanelWindow {
                   }
                   onCentroidChanged: if (active) lp.dragPos = parent.mapToItem(lp.contentItem, centroid.position.x, centroid.position.y)
                 }
-                opacity: lp.dragApp === modelData.id ? 0.35 : 1
+
               }
             }
           }

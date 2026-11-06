@@ -24,7 +24,7 @@ Kit.Page {
               border.width: Theme.mode === modelData.id ? 3 : 1
               border.color: Theme.mode === modelData.id ? Theme.accent : Theme.separator
               clip: true
-              Image { anchors.fill: parent; anchors.margins: 3; source: "file://" + Theme.share + "/themes/" + modelData.id + "/wallpaper.jpg"; sourceSize: Qt.size(300, 190); fillMode: Image.PreserveAspectCrop }
+              Image { anchors.fill: parent; anchors.margins: 3; source: "file://" + Theme.wallpaperFor(modelData.id); sourceSize: Qt.size(300, 190); fillMode: Image.PreserveAspectCrop }
               Rectangle { x: 14; y: 16; width: 74; height: 50; radius: 6; color: modelData.id === "dark" ? "#2a2a2e" : "#ffffff"; opacity: 0.92
                 Row { x: 6; y: 6; spacing: 3; Repeater { model: ["#ff5f57", "#febc2e", "#28c840"]; delegate: Rectangle { required property string modelData; width: 5; height: 5; radius: 2.5; color: modelData } } } }
               TapHandler { onTapped: Quickshell.execDetached(["memora-theme", "set", modelData.id]) }
@@ -37,6 +37,11 @@ Kit.Page {
   }
   Kit.Group {
     footer: "Windows, the menu bar, the Dock and every Memora app follow the appearance. The font is JetBrains Mono everywhere."
+    Kit.Row {
+      label: "Transparency"; detail: "How much of the desktop shows through menus and panels"
+      Slider { implicitWidth: 200; sym: "sun"; value: Prefs.transparency; onMoved: v => Prefs.set("transparency", Math.round(v * 20) / 20) }
+    }
+    Kit.Row { label: "Transparent menu bar"; Kit.Switch { checked: Prefs.menuBarTransparent; onToggled: on => Prefs.set("menuBarTransparent", on) } }
     Kit.Row { label: "Accent colour"; last: true; Rectangle { width: 18; height: 18; radius: 9; color: Theme.accent; border.color: Theme.separator } }
   }
 }

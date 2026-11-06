@@ -20,6 +20,9 @@ Singleton {
   }
 
   readonly property string share: Quickshell.env("MEMORA_PATH") || "/usr/share/memora"
+  // The desktop picture for a mode (yours if you picked one, else the chosen set).
+  function wallpaperFor(m) { return Prefs.wallpaper !== "" ? Prefs.wallpaper : share + "/wallpapers/" + (Prefs.wallpaperSet || "ribbon") + "-" + m + ".jpg" }
+  readonly property string wallpaper: wallpaperFor(mode)
 
   // Type
   readonly property string font: "JetBrainsMono Nerd Font"
