@@ -29,6 +29,27 @@ PanelWindow {
   mask: Region { item: hit }
 
   property real mouseX: -1000
+  property string draggingId: ""
+
+  // An icon was let go: remove it if pulled out, else move it to where it landed.
+  function dropped(item, d) {
+    const id = item.appId
+    const pinned = Apps.pinned.slice()
+    const from = pinned.indexOf(id)
+    if (d.y < -item.height * 1.3) { if (from >= 0) { Apps.unpin(id); poof.at(item) } return }
+    const x = item.centerX + d.x
+    // Slot under the drop point, among the pinned apps.
+    let to = 0
+    for (let i = 0; i < items.count && i < pinned.length; i++) {
+      const slot = row.itemAtIndex(i)
+      if (slot && x > slot.x + dock.rowX + slot.width / 2) to = i + 1
+    }
+    if (from < 0) { pinned.splice(Math.min(to, pinned.length), 0, id); Apps.savePinned(pinned); return }
+    pinned.splice(from, 1)
+    if (to > from) to--
+    pinned.splice(Math.min(to, pinned.length), 0, id)
+    Apps.savePinned(pinned)
+  }
   readonly property real rowX: row.x - row.contentX
   readonly property real hitX: hit.x
   readonly property bool magnifying: mouseX > -999
@@ -39,7 +60,7 @@ PanelWindow {
     const out = []
     Apps.windows.forEach(w => {
       const c = Apps.classOf(w)
-      if (!c || seen[c] || Apps.isMinimized(w)) return
+      if (!c || seen[c] || Apps.isMinimized(w) || Apps.helperClasses.indexOf(c) >= 0) return
       seen[c] = true
       if (!Apps.pinned.some(p => Apps.sameApp(c, p))) out.push(c)
     })
@@ -131,6 +152,38 @@ PanelWindow {
     }
   }
 
+  // A small puff where a removed icon was.
+  Item {
+    id: poof
+    width: 60; height: 60
+    opacity: 0
+    function at(item) {
+      const p = item.mapToItem(dock.contentItem, item.width / 2, item.height / 2 + item.drag.y)
+      x = p.x - 30; y = p.y - 30
+      puff.restart()
+    }
+    Repeater {
+      model: 6
+      delegate: Rectangle {
+        required property int index
+        readonly property real ang: index / 6 * Math.PI * 2
+        width: 12; height: 12; radius: 6
+        color: Theme.text
+        opacity: 0.6
+        x: 24 + Math.cos(ang) * 22 * poof.spread; y: 24 + Math.sin(ang) * 22 * poof.spread
+      }
+    }
+    property real spread: 0
+    ParallelAnimation {
+      id: puff
+      NumberAnimation { target: poof; property: "spread"; from: 0.2; to: 1.4; duration: 380; easing.type: Easing.OutCubic }
+      SequentialAnimation {
+        NumberAnimation { target: poof; property: "opacity"; from: 0; to: 1; duration: 60 }
+        NumberAnimation { target: poof; property: "opacity"; to: 0; duration: 320 }
+      }
+    }
+  }
+
   ListModel { id: items }
   property var entries: ({})
   function keyOf(e) { return e.kind === "window" ? "w:" + e.win.address : e.kind + ":" + e.id }
@@ -184,13 +237,13 @@ PanelWindow {
       id: ctxPanel
       width: implicitWidth; height: implicitHeight
       items: dock.menuFor ? dock.menuItems(dock.menuFor) : []
-      onPicked: item => { dock.menuFor = null; if (item.action) item.action() }
+      onPicked: item => { const run = item.action; dock.menuFor = null; if (run) Qt.callLater(run) }
     }
   }
-  HyprlandFocusGrab {
-    active: ctx.visible
+  OutsideClick {
+    when: ctx.visible
     windows: [ctx, dock]
-    onCleared: dock.menuFor = null
+    onOutside: dock.menuFor = null
   }
 
   function menuItems(e) {

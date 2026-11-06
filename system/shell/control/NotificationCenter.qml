@@ -27,7 +27,7 @@ PanelWindow {
   property real shown: open ? 1 : 0
   Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
 
-  HyprlandFocusGrab { active: nc.open; windows: [nc]; onCleared: if (nc.open) Shell.close() }
+  OutsideClick { when: nc.open; windows: [nc]; onOutside: if (nc.open) Shell.close() }
 
   SystemClock { id: clock; precision: SystemClock.Minutes }
   property date month: new Date()

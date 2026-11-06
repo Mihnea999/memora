@@ -28,9 +28,49 @@ Item {
   readonly property string label: kind === "trash" ? "Trash" : kind === "folder" ? "Downloads"
     : kind === "window" ? (entry.win.title || Apps.nameFor(appId)) : appId === "memora-launchpad" ? "Launchpad" : Apps.nameFor(appId)
 
+  // Drag to rearrange; drag up out of the Dock to remove (apps only).
+  readonly property bool draggable: kind === "app" && appId !== ""
+  property point drag: Qt.point(0, 0)
+  readonly property bool dragging: dragger.active
+  readonly property bool leaving: dragging && drag.y < -it.height * 1.3 && Apps.pinned.indexOf(appId) >= 0
+  z: dragging ? 10 : 0
+  DragHandler {
+    id: dragger
+    enabled: it.draggable
+    target: null
+    onTranslationChanged: it.drag = Qt.point(translation.x, translation.y)
+    onActiveChanged: {
+      if (active) { it.dockRoot.draggingId = it.appId; return }
+      it.dockRoot.dropped(it, it.drag)
+      it.drag = Qt.point(0, 0)
+      it.dockRoot.draggingId = ""
+    }
+  }
+
   Item {
     id: bouncer
     width: parent.width; height: parent.height
+    transform: Translate {
+      x: it.dragging ? it.drag.x : 0
+      y: it.dragging ? it.drag.y : 0
+      Behavior on x { enabled: !it.dragging; NumberAnimation { duration: Theme.normal; easing.type: Theme.easingEmph } }
+      Behavior on y { enabled: !it.dragging; NumberAnimation { duration: Theme.normal; easing.type: Theme.easingEmph } }
+    }
+    opacity: it.leaving ? 0.45 : 1
+    scale: it.dragging ? 1.08 : 1
+    Behavior on scale { NumberAnimation { duration: Theme.fast } }
+    Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+
+    // "Remove" sign while it is being pulled out.
+    Rectangle {
+      visible: it.leaving
+      z: 2
+      anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.top; bottomMargin: 6 }
+      width: rt.implicitWidth + 16; height: 22; radius: 11
+      color: Theme.glassSolid
+      border.color: Theme.separator
+      Txt { id: rt; anchors.centerIn: parent; text: "Remove"; font.pixelSize: Theme.small }
+    }
 
     AppIcon {
       id: icon
@@ -67,7 +107,7 @@ Item {
   Glass {
     id: tip
     visible: opacity > 0
-    opacity: hover.hovered && it.dockRoot.menuFor === null ? 1 : 0
+    opacity: hover.hovered && it.dockRoot.menuFor === null && !it.dragging ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     radius: 8
     fill: Theme.glassStrong

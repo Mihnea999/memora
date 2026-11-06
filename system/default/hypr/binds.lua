@@ -73,3 +73,7 @@ b("XF86AudioPlay", run("playerctl play-pause"), "Play/pause", { locked = true })
 b("XF86AudioPause", run("playerctl play-pause"), "Play/pause", { locked = true })
 b("XF86AudioNext", run("playerctl next"), "Next track", { locked = true })
 b("XF86AudioPrev", run("playerctl previous"), "Previous track", { locked = true })
+
+-- Window docking: the shell follows a window being dragged between these two.
+hl.bind("mouse:272", run("memora-shell snap begin"), { non_consuming = true, description = "Window docking (drag to an edge)" })
+hl.bind("mouse:272", run("memora-shell snap end"), { non_consuming = true, release = true })

@@ -38,10 +38,12 @@ Singleton {
   readonly property color green: "#28c840"
 
   // Glass: translucent fill (Hyprland blurs what is behind), a bright inner edge and a dark outer edge.
-  readonly property color glass: dark ? Qt.rgba(0.10, 0.10, 0.12, 0.34) : Qt.rgba(0.98, 0.98, 0.99, 0.34)
-  readonly property color glassStrong: dark ? Qt.rgba(0.12, 0.12, 0.14, 0.46) : Qt.rgba(0.99, 0.99, 1.0, 0.50)
+  // Glass opacity: lower with more transparency (System Settings > Appearance).
+  function see(a) { return a + (0.94 - a) * (1 - Prefs.transparency) }
+  readonly property color glass: dark ? Qt.rgba(0.10, 0.10, 0.12, see(0.34)) : Qt.rgba(0.98, 0.98, 0.99, see(0.34))
+  readonly property color glassStrong: dark ? Qt.rgba(0.12, 0.12, 0.14, see(0.46)) : Qt.rgba(0.99, 0.99, 1.0, see(0.50))
   readonly property color glassSolid: dark ? "#232326" : "#f5f5f7"
-  readonly property color bar: dark ? Qt.rgba(0.06, 0.06, 0.08, 0.28) : Qt.rgba(1, 1, 1, 0.30)
+  readonly property color bar: Prefs.menuBarTransparent ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.06, 0.06, 0.08, see(0.30)) : Qt.rgba(1, 1, 1, see(0.34)))
   readonly property color edge: dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.75)
   readonly property color outline: dark ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(0, 0, 0, 0.10)
   readonly property color hover: dark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.06)
@@ -59,9 +61,9 @@ Singleton {
   readonly property real radiusPanel: 22
 
   // Motion: quick and calm, nothing bouncy except the dock.
-  readonly property int fast: 120
-  readonly property int normal: 220
-  readonly property int slow: 340
+  readonly property int fast: Prefs.motion(140)
+  readonly property int normal: Prefs.motion(260)
+  readonly property int slow: Prefs.motion(420)
   readonly property int easing: Easing.OutCubic
   readonly property int easingEmph: Easing.OutQuint
 }

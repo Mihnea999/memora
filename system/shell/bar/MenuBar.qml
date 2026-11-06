@@ -158,16 +158,16 @@ PanelWindow {
       width: implicitWidth
       height: implicitHeight
       items: drop.visible ? Menus.items(Shell.menu, bar.cls, bar.appName, bar.active) : []
-      onPicked: item => { Shell.close(); if (item.action) item.action() }
+      onPicked: item => { const run = item.action; Shell.close(); if (run) Qt.callLater(run) }
       opacity: drop.visible ? 1 : 0
       Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     }
   }
 
-  HyprlandFocusGrab {
-    active: drop.visible
+  OutsideClick {
+    when: drop.visible
     windows: [drop, bar]
-    onCleared: if (Shell.open === "menu") Shell.close()
+    onOutside: if (Shell.open === "menu") Shell.close()
   }
 
   // A title in the bar that opens a menu; while any menu is open, hovering

@@ -46,23 +46,37 @@ hl.config({
   ecosystem = { no_update_news = true, no_donation_nag = true },
 })
 
--- Motion: calm ease-outs, the way a desktop should feel. Speeds are in 100 ms.
+-- Motion, from System Settings > Animations (~/.config/memora/motion.lua).
+local ok, mo = pcall(dofile, os.getenv("HOME") .. "/.config/memora/motion.lua")
+if not ok or type(mo) ~= "table" then mo = {} end
+local on = mo.enabled ~= false
+local k = math.max(0.25, tonumber(mo.speed) or 1)   -- speed multiplier
+local style = mo.style or "pop"
+local function sp(v) return v / k end                -- Hyprland speeds are in 100 ms units
+
 hl.curve("smooth", { type = "bezier", points = { { 0.22, 1 }, { 0.36, 1 } } })
 hl.curve("swift", { type = "bezier", points = { { 0.32, 0.72 }, { 0, 1 } } })
 hl.curve("exit", { type = "bezier", points = { { 0.4, 0 }, { 1, 1 } } })
 hl.curve("linear", { type = "bezier", points = { { 0, 0 }, { 1, 1 } } })
-hl.animation({ leaf = "global", enabled = true, speed = 4, bezier = "smooth" })
-hl.animation({ leaf = "windowsIn", enabled = true, speed = 3.2, bezier = "smooth", style = "popin 88%" })
-hl.animation({ leaf = "windowsOut", enabled = true, speed = 1.8, bezier = "exit", style = "popin 92%" })
-hl.animation({ leaf = "windowsMove", enabled = true, speed = 3.4, bezier = "smooth" })
-hl.animation({ leaf = "fadeIn", enabled = true, speed = 2.4, bezier = "smooth" })
-hl.animation({ leaf = "fadeOut", enabled = true, speed = 1.6, bezier = "exit" })
-hl.animation({ leaf = "fadeSwitch", enabled = true, speed = 3, bezier = "smooth" })
-hl.animation({ leaf = "fadeShadow", enabled = true, speed = 3, bezier = "smooth" })
-hl.animation({ leaf = "border", enabled = true, speed = 3, bezier = "smooth" })
-hl.animation({ leaf = "layersIn", enabled = true, speed = 2.2, bezier = "smooth", style = "fade" })
-hl.animation({ leaf = "layersOut", enabled = true, speed = 1.6, bezier = "exit", style = "fade" })
-hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 2.2, bezier = "smooth" })
-hl.animation({ leaf = "fadeLayersOut", enabled = true, speed = 1.6, bezier = "exit" })
-hl.animation({ leaf = "workspaces", enabled = true, speed = 4.5, bezier = "swift", style = "slide" })
-hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3.5, bezier = "smooth", style = "slidefadevert 20%" })
+hl.curve("spring", { type = "spring", mass = 1, stiffness = 170, dampening = 19 })
+
+local open_style = ({ pop = "popin 82%", slide = "slide bottom", fade = "popin 98%" })[style] or "popin 82%"
+local close_style = ({ pop = "popin 86%", slide = "slide bottom", fade = "popin 98%" })[style] or "popin 86%"
+
+hl.config({ animations = { enabled = on } })
+hl.animation({ leaf = "global", enabled = on, speed = sp(4.5), bezier = "smooth" })
+hl.animation({ leaf = "windowsIn", enabled = on, speed = sp(4.2), spring = "spring", style = open_style })
+hl.animation({ leaf = "windowsOut", enabled = on, speed = sp(2.6), bezier = "exit", style = close_style })
+hl.animation({ leaf = "windowsMove", enabled = on, speed = sp(4.4), spring = "spring" })
+hl.animation({ leaf = "fadeIn", enabled = on, speed = sp(3), bezier = "smooth" })
+hl.animation({ leaf = "fadeOut", enabled = on, speed = sp(2.4), bezier = "exit" })
+hl.animation({ leaf = "fadeSwitch", enabled = on, speed = sp(3.5), bezier = "smooth" })
+hl.animation({ leaf = "fadeShadow", enabled = on, speed = sp(3.5), bezier = "smooth" })
+hl.animation({ leaf = "fadeDim", enabled = on, speed = sp(3.5), bezier = "smooth" })
+hl.animation({ leaf = "border", enabled = on, speed = sp(3), bezier = "smooth" })
+hl.animation({ leaf = "layersIn", enabled = on, speed = sp(3), bezier = "smooth", style = "popin 94%" })
+hl.animation({ leaf = "layersOut", enabled = on, speed = sp(2.2), bezier = "exit", style = "fade" })
+hl.animation({ leaf = "fadeLayersIn", enabled = on, speed = sp(3), bezier = "smooth" })
+hl.animation({ leaf = "fadeLayersOut", enabled = on, speed = sp(2.2), bezier = "exit" })
+hl.animation({ leaf = "workspaces", enabled = on, speed = sp(5), spring = "spring", style = "slide" })
+hl.animation({ leaf = "specialWorkspace", enabled = on, speed = sp(4.2), bezier = "smooth", style = "slidefadevert 20%" })

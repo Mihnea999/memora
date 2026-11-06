@@ -36,7 +36,16 @@ PanelWindow {
   readonly property int pages: Math.max(1, Math.ceil(apps.length / perPage))
   property int page: 0
 
-  onOpenChanged: if (open) { query = ""; search.text = ""; page = 0; search.forceActiveFocus() }
+  onOpenChanged: if (open) { query = ""; search.text = ""; page = 0; menuApp = ""; search.forceActiveFocus() }
+
+  // Dragging to the Dock, and the right-click menu.
+  property string dragApp: ""
+  property point dragPos: Qt.point(0, 0)
+  readonly property bool overDock: dragApp !== "" && dragPos.y > height - 150
+  property bool pinnedFlash: false
+  Timer { id: flashOff; interval: 900; onTriggered: lp.pinnedFlash = false }
+  property string menuApp: ""
+  property point menuPos: Qt.point(0, 0)
 
   Rectangle {
     anchors.fill: parent
@@ -44,8 +53,8 @@ PanelWindow {
     opacity: lp.shown
   }
 
-  // Click on empty space closes.
-  TapHandler { onTapped: Shell.close() }
+  // Click on empty space closes (or just the menu, if one is open).
+  TapHandler { onTapped: lp.menuApp !== "" ? lp.menuApp = "" : Shell.close() }
 
   Item {
     anchors.fill: parent
@@ -122,6 +131,21 @@ PanelWindow {
                 }
                 HoverHandler { id: hov }
                 TapHandler { id: tap; onTapped: { Apps.launch(modelData.id); Shell.close() } }
+                TapHandler {
+                  acceptedButtons: Qt.RightButton
+                  onTapped: ev => { const p = parent.mapToItem(lp.contentItem, ev.position.x, ev.position.y); lp.menuApp = modelData.id; lp.menuPos = p }
+                }
+                // Drag an app down onto the Dock to keep it there.
+                DragHandler {
+                  target: null
+                  onActiveChanged: {
+                    if (active) { lp.dragApp = modelData.id; return }
+                    if (lp.overDock) { Apps.pin(modelData.id); lp.pinnedFlash = true; flashOff.restart() }
+                    lp.dragApp = ""
+                  }
+                  onCentroidChanged: if (active) lp.dragPos = parent.mapToItem(lp.contentItem, centroid.position.x, centroid.position.y)
+                }
+                opacity: lp.dragApp === modelData.id ? 0.35 : 1
               }
             }
           }
@@ -154,5 +178,39 @@ PanelWindow {
         }
       }
     }
+  }
+
+  // Where to drop to keep an app in the Dock.
+  Glass {
+    visible: opacity > 0
+    opacity: lp.dragApp !== "" || lp.pinnedFlash ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: Theme.normal } }
+    anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 14 }
+    width: 520; height: 96
+    radius: 26
+    fill: lp.overDock || lp.pinnedFlash ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.glass
+    Behavior on fill { ColorAnimation { duration: Theme.fast } }
+    Txt { anchors.centerIn: parent; text: lp.pinnedFlash ? "Added to the Dock" : (lp.overDock ? "Release to keep in the Dock" : "Drag here to keep in the Dock"); font.weight: Font.Medium }
+  }
+  AppIcon {
+    visible: lp.dragApp !== ""
+    appId: lp.dragApp
+    width: 96; height: 96
+    x: lp.dragPos.x - 48; y: lp.dragPos.y - 48
+    scale: lp.overDock ? 0.8 : 1.05
+    Behavior on scale { NumberAnimation { duration: Theme.fast } }
+  }
+  MenuPanel {
+    visible: lp.menuApp !== ""
+    x: Math.min(lp.menuPos.x, lp.width - width - 10); y: Math.min(lp.menuPos.y, lp.height - height - 10)
+    width: implicitWidth; height: implicitHeight
+    items: lp.menuApp === "" ? [] : [
+      { text: "Open", action: () => { Apps.launch(lp.menuApp); Shell.close() } },
+      { separator: true },
+      Apps.pinned.indexOf(lp.menuApp) >= 0
+        ? { text: "Remove from Dock", action: () => Apps.unpin(lp.menuApp) }
+        : { text: "Keep in Dock", action: () => Apps.pin(lp.menuApp) }
+    ]
+    onPicked: item => { const run = item.action; Qt.callLater(() => { run(); lp.menuApp = "" }) }
   }
 }

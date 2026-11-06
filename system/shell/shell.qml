@@ -16,6 +16,7 @@ import qs.osd
 import qs.polkit
 import qs.switcher
 import qs.lock
+import qs.snap
 
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
@@ -32,6 +33,7 @@ ShellRoot {
   PolkitDialog {}
   Switcher {}
   Lock {}
+  Snap {}
 
   IpcHandler {
     target: "osd"

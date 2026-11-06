@@ -29,10 +29,10 @@ PanelWindow {
   Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
   onOpenChanged: if (open) Net.refresh()
 
-  HyprlandFocusGrab {
-    active: cc.open
+  OutsideClick {
+    when: cc.open
     windows: [cc]
-    onCleared: if (cc.open) Shell.close()
+    onOutside: if (cc.open) Shell.close()
   }
 
   Item {

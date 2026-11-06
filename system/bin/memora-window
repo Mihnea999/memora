@@ -1,24 +1,50 @@
 #!/usr/bin/env bash
-# memora-window left|right|fill|center — place the focused window in the free
-# area of its screen (below the menu bar, above the Dock). Hyprland animates it.
+# memora-window ZONE [ADDRESS] — place a window (the focused one by default) in
+# the free area of its screen, below the menu bar and above the Dock.
+# ZONES: left right top bottom fill center top-left top-right bottom-left bottom-right
+#        left-third center-third right-third left-two-thirds right-two-thirds
 set -euo pipefail
-gap=10
+zone="${1:-}"; addr="${2:-}"
+gap="${MEMORA_GAP:-10}"
+sel=""; [[ -n $addr ]] && sel=", window = \"address:$addr\""
 read -r mx my mw mh l t r b < <(hyprctl -j monitors | python3 -c '
 import json, sys
 m = next(x for x in json.load(sys.stdin) if x["focused"])
 s = m["scale"]; rl, rt, rr, rb = m["reserved"]
 print(m["x"], m["y"], int(m["width"] / s), int(m["height"] / s), rl, rt, rr, rb)')
 ax=$((mx + l + gap)); ay=$((my + t + gap)); aw=$((mw - l - r - 2 * gap)); ah=$((mh - t - b - 2 * gap))
-float() { hyprctl -j activewindow | grep -q '"floating": true' || hyprctl dispatch 'hl.dsp.window.float({ action = "enable" })' >/dev/null; }
-place() { float; hyprctl dispatch "hl.dsp.window.resize({ x = $3, y = $4 })" >/dev/null; hyprctl dispatch "hl.dsp.window.move({ x = $1, y = $2 })" >/dev/null; }
-half=$(((aw - gap) / 2))
-case "${1:-}" in
-  left) place "$ax" "$ay" "$half" "$ah" ;;
-  right) place "$((ax + half + gap))" "$ay" "$half" "$ah" ;;
+hw=$(((aw - gap) / 2)); hh=$(((ah - gap) / 2)); tw=$(((aw - 2 * gap) / 3))
+d() { hyprctl dispatch "$1" >/dev/null; }
+place() {
+  d "hl.dsp.window.float({ action = \"enable\"$sel })"
+  d "hl.dsp.window.resize({ x = $3, y = $4$sel })"
+  d "hl.dsp.window.move({ x = $1, y = $2$sel })"
+}
+case "$zone" in
+  left) place "$ax" "$ay" "$hw" "$ah" ;;
+  right) place "$((ax + hw + gap))" "$ay" "$hw" "$ah" ;;
+  top) place "$ax" "$ay" "$aw" "$hh" ;;
+  bottom) place "$ax" "$((ay + hh + gap))" "$aw" "$hh" ;;
   fill) place "$ax" "$ay" "$aw" "$ah" ;;
+  top-left) place "$ax" "$ay" "$hw" "$hh" ;;
+  top-right) place "$((ax + hw + gap))" "$ay" "$hw" "$hh" ;;
+  bottom-left) place "$ax" "$((ay + hh + gap))" "$hw" "$hh" ;;
+  bottom-right) place "$((ax + hw + gap))" "$((ay + hh + gap))" "$hw" "$hh" ;;
+  left-third) place "$ax" "$ay" "$tw" "$ah" ;;
+  center-third) place "$((ax + tw + gap))" "$ay" "$tw" "$ah" ;;
+  right-third) place "$((ax + 2 * (tw + gap)))" "$ay" "$tw" "$ah" ;;
+  left-two-thirds) place "$ax" "$ay" "$((2 * tw + gap))" "$ah" ;;
+  right-two-thirds) place "$((ax + tw + gap))" "$ay" "$((2 * tw + gap))" "$ah" ;;
   center)
-    read -r w h < <(hyprctl -j activewindow | python3 -c 'import json,sys; d=json.load(sys.stdin); print(*d["size"])')
+    read -r w h < <(hyprctl -j clients | python3 -c '
+import json, sys
+a = sys.argv[1]
+cs = json.load(sys.stdin)
+c = next((c for c in cs if c["address"] == a), None) if a else None
+if c is None:
+    import subprocess; c = json.loads(subprocess.run(["hyprctl", "-j", "activewindow"], capture_output=True, text=True).stdout)
+print(*c["size"])' "$addr")
     w=$((w > aw ? aw : w)); h=$((h > ah ? ah : h))
     place "$((ax + (aw - w) / 2))" "$((ay + (ah - h) / 2))" "$w" "$h" ;;
-  *) echo "usage: memora-window left|right|fill|center"; exit 1 ;;
+  *) sed -n '2,5p' "$0"; exit 1 ;;
 esac

@@ -10,6 +10,7 @@ case "${1:-}" in
   switch) exec qs -p "$dir" ipc call switcher "${2:-next}" ;;
   osd) exec qs -p "$dir" ipc call osd "$2" "${3:-up}" ;;
   lock) exec qs -p "$dir" ipc call lock lock ;;
+  snap) exec qs -p "$dir" ipc call snap "${2:-end}" ;;
   minimize) exec qs -p "$dir" ipc call shell minimize ;;
   show-desktop) exec qs -p "$dir" ipc call shell showDesktop ;;
   *) exec qs -p "$dir" ipc call shell "$@" ;;
