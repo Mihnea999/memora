@@ -2,3 +2,6 @@ out/
 test/*.qcow2
 test/*.fd
 test/*.log
+test/*.sock
+test/*.png
+test/*.ppm

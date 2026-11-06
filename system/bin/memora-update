@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Take a snapshot, then update everything.
 set -euo pipefail
+source "${MEMORA_PATH:-/usr/share/memora}/lib/gum.sh"
 gum style --foreground 255 --bold "Memora update"
 if command -v snapper >/dev/null; then
   echo "Creating snapshot..."

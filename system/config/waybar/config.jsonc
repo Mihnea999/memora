@@ -3,10 +3,18 @@
   "position": "top",
   "height": 32,
   "spacing": 0,
-  "modules-left": ["custom/logo", "hyprland/window", "hyprland/workspaces"],
+  "modules-left": ["image#logo", "hyprland/window", "hyprland/workspaces"],
   "modules-center": [],
   "modules-right": ["tray", "custom/ai", "bluetooth", "network", "pulseaudio", "battery", "clock"],
 
+  "image#logo": {
+    "exec": "echo $HOME/.config/memora/current/logo.png",
+    "size": 15,
+    "interval": 3600,
+    "signal": 8,
+    "tooltip": false,
+    "on-click": "memora-menu"
+  },
   "custom/logo": {
     "format": "󰬔",
     "tooltip-format": "Memora menu",

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
+source "${MEMORA_PATH:-/usr/share/memora}/lib/gum.sh"
 # First-run welcome. With --first-run it only shows once.
 flag="$HOME/.local/state/memora/welcomed"
 if [[ ${1:-} == --first-run ]]; then
   [[ -f $flag ]] && exit 0
   mkdir -p "$(dirname "$flag")"; touch "$flag"
-  exec uwsm app -- kitty --class memora-float -e memora-welcome
+  exec uwsm app -- kitty --class memora-welcome -o window_padding_width=28 -e memora-welcome
 fi
 
 gum style --border rounded --padding "1 3" --border-foreground 255 \

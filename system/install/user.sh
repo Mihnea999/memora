@@ -9,9 +9,9 @@ for d in "$MEMORA_PATH"/config/*/; do
   name="$(basename "$d")"
   [[ $name == bash ]] && continue
   mkdir -p "$cfg/$name"
-  cp -rn "$d". "$cfg/$name/"
+  cp -r --update=none "$d". "$cfg/$name/"
 done
-cp -n "$MEMORA_PATH/config/starship.toml" "$cfg/starship.toml"
+cp --update=none "$MEMORA_PATH/config/starship.toml" "$cfg/starship.toml"
 cp "$MEMORA_PATH/config/bash/bashrc" "$HOME/.bashrc"
 printf '[[ -f ~/.bashrc ]] && . ~/.bashrc\n' > "$HOME/.bash_profile"
 

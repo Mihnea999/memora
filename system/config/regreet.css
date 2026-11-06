@@ -1,0 +1,42 @@
+/* Memora login: one glass card over the wallpaper. */
+* { font-family: "JetBrainsMono Nerd Font"; }
+
+window { background: transparent; }
+
+frame.background, .background > frame {
+  background: alpha(#16161a, 0.55);
+  border: 1px solid alpha(#ffffff, 0.12);
+  border-radius: 26px;
+  box-shadow: 0 20px 60px alpha(#000000, 0.35);
+  padding: 28px 32px;
+  margin: 28px;
+}
+
+label { color: #f4f4f6; }
+
+entry, combobox button, dropdown > button {
+  background: alpha(#ffffff, 0.08);
+  color: #f4f4f6;
+  border: 1px solid alpha(#ffffff, 0.14);
+  border-radius: 14px;
+  min-height: 40px;
+  box-shadow: none;
+}
+entry:focus-within { border-color: alpha(#6b9bff, 0.8); }
+
+button {
+  border-radius: 14px;
+  min-height: 38px;
+  padding: 0 16px;
+  background: alpha(#ffffff, 0.10);
+  color: #f4f4f6;
+  border: none;
+  box-shadow: none;
+}
+button:hover { background: alpha(#ffffff, 0.18); }
+button.suggested-action { background: #f4f4f6; }
+button.suggested-action label { color: #0a0a0c; font-weight: 700; }
+button.suggested-action:hover { background: #ffffff; }
+button.destructive-action { background: alpha(#ffffff, 0.10); }
+button.destructive-action label { color: alpha(#f4f4f6, 0.85); }
+button.destructive-action:hover { background: alpha(#ffffff, 0.18); }

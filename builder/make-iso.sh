@@ -15,6 +15,12 @@ cp -rT "$src/iso/airootfs" "$prof/airootfs"
 mkdir -p "$prof/airootfs/opt"
 cp -a "$src/system" "$prof/airootfs/opt/memora"
 rm -f "$prof"/airootfs/opt/memora/branding/*.tpl
+# mkarchiso resets modes; list every executable explicitly.
+{
+  echo 'file_permissions+=('
+  (cd "$prof/airootfs" && find opt/memora -type f -perm -u+x) | sed 's|.*|  ["/&"]="0:0:755"|'
+  echo ')'
+} >> "$prof/profiledef.sh"
 
 # Rename boot menu entries and shorten the timeout.
 grep -rlZ 'Arch Linux install medium' "$prof"/{efiboot,syslinux,grub} | xargs -0 sed -i \

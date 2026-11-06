@@ -2,7 +2,8 @@
 hyprland
 uwsm
 greetd
-greetd-tuigreet
+greetd-regreet
+cage
 xdg-desktop-portal-hyprland
 xdg-desktop-portal-gtk
 hyprlock

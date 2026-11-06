@@ -43,6 +43,10 @@ EOF
 install -Dm644 $MEMORA_PATH/branding/logo.svg /usr/share/pixmaps/memora.svg
 install -Dm644 $MEMORA_PATH/branding/logo.png /usr/share/pixmaps/memora.png
 install -Dm644 -t /usr/share/applications $MEMORA_PATH/applications/*.desktop
+install -Dm644 $MEMORA_PATH/branding/app-icon.svg /usr/share/icons/hicolor/scalable/apps/memora-ai.svg
+install -Dm644 $MEMORA_PATH/branding/app-icon.png /usr/share/icons/hicolor/256x256/apps/memora-ai.png
+gtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true
+bash $MEMORA_PATH/install/apps.sh
 for f in $MEMORA_PATH/bin/*; do ln -sf "$f" "/usr/local/bin/$(basename "$f")"; done
 mkdir -p /etc/memora
 mkdir -p /etc/environment.d
@@ -98,38 +102,70 @@ done
 step "Services"
 systemctl enable NetworkManager.service bluetooth.service power-profiles-daemon.service \
   fstrim.timer systemd-resolved.service ufw.service
-ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+# /etc/resolv.conf is bind-mounted by arch-chroot; memora-install links it afterwards.
 mkdir -p /etc/NetworkManager/conf.d
 printf '[device]\nwifi.backend=iwd\n' > /etc/NetworkManager/conf.d/wifi-backend.conf
 printf '[zram0]\nzram-size = min(ram / 2, 8192)\ncompression-algorithm = zstd\n' > /etc/systemd/zram-generator.conf
 sed -i 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' /etc/default/ufw 2>/dev/null || true
 
 step "Login"
-mkdir -p /etc/greetd
-if [[ $MEMORA_ENCRYPT == 1 ]]; then
-  # The disk passphrase already authenticates the user: log straight in.
-  cat > /etc/greetd/config.toml <<EOF
-[terminal]
-vt = 1
+# One session only, named Memora (the stock Hyprland entries stay out of the list).
+rm -f /usr/share/wayland-sessions/hyprland.desktop /usr/share/wayland-sessions/hyprland-uwsm.desktop
+sed -i 's|^#NoExtract.*|NoExtract   = usr/share/wayland-sessions/hyprland.desktop usr/share/wayland-sessions/hyprland-uwsm.desktop|' /etc/pacman.conf
+cat > /usr/share/wayland-sessions/memora.desktop <<'DESKTOP'
+[Desktop Entry]
+Name=Memora
+Comment=Memora desktop
+Exec=uwsm start -e -D Hyprland -N Memora -- start-hyprland
+Type=Application
+DesktopNames=Hyprland
+DESKTOP
+session_cmd="uwsm start -e -D Hyprland -N Memora -- start-hyprland"
 
-[initial_session]
-command = "uwsm start -- hyprland.desktop"
-user = "$MEMORA_USER"
+mkdir -p /etc/greetd /var/lib/regreet
+install -Dm644 "$MEMORA_PATH/themes/$MEMORA_THEME/wallpaper.png" /usr/share/memora/login-wallpaper.png
+dark=true; [[ $MEMORA_THEME == light ]] && dark=false
+cat > /etc/greetd/regreet.toml <<TOML
+[background]
+path = "/usr/share/memora/login-wallpaper.png"
+fit = "Cover"
 
-[default_session]
-command = "tuigreet --time --remember --asterisks --cmd 'uwsm start -- hyprland.desktop'"
-user = "greeter"
-EOF
-else
-  cat > /etc/greetd/config.toml <<'EOF'
-[terminal]
-vt = 1
+[GTK]
+application_prefer_dark_theme = $dark
+font_name = "JetBrainsMono Nerd Font 12"
+icon_theme_name = "Papirus-Dark"
+cursor_theme_name = "Adwaita"
+theme_name = "Adwaita"
 
-[default_session]
-command = "tuigreet --time --remember --asterisks --greeting 'Memora' --cmd 'uwsm start -- hyprland.desktop'"
-user = "greeter"
-EOF
-fi
+[commands]
+reboot = ["systemctl", "reboot"]
+poweroff = ["systemctl", "poweroff"]
+
+[appearance]
+greeting_msg = "Welcome back"
+
+[widget.clock]
+format = "%H:%M"
+resolution = "500ms"
+label_width = 150
+TOML
+install -Dm644 "$MEMORA_PATH/config/regreet.css" /etc/greetd/regreet.css
+cat > /var/lib/regreet/state.toml <<TOML
+last_user = "$MEMORA_USER"
+
+[user_to_last_sess]
+$MEMORA_USER = "Memora"
+TOML
+chown -R greeter:greeter /var/lib/regreet
+
+{
+  printf '[terminal]\nvt = 1\n\n'
+  if [[ $MEMORA_ENCRYPT == 1 ]]; then
+    # The disk passphrase already proves who you are: go straight to the desktop.
+    printf '[initial_session]\ncommand = "%s"\nuser = "%s"\n\n' "$session_cmd" "$MEMORA_USER"
+  fi
+  printf '[default_session]\ncommand = "cage -s -mlast -- regreet"\nuser = "greeter"\n'
+} > /etc/greetd/config.toml
 systemctl enable greetd.service
 
 step "Boot splash"
@@ -192,7 +228,7 @@ rm -rf /.snapshots
 snapper --no-dbus -c root create-config /
 btrfs subvolume delete /.snapshots
 mkdir /.snapshots
-mount -a
+mount /.snapshots
 chmod 750 /.snapshots
 sed -i -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="no"/' \
        -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/' \

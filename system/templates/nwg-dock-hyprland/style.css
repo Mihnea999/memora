@@ -2,7 +2,7 @@
 window {
   background: alpha(#{{glass}}, {{glass_opacity}});
   border-radius: 24px;
-  border: 1px solid #{{border_active}};
+  border: 1px solid alpha(#{{fg}}, 0.14);
 }
 
 #box { padding: 6px 8px; }

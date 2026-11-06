@@ -24,7 +24,9 @@ alias g='git'
 alias lg='lazygit'
 alias v='nvim'
 
-# Ask Memora AI from the shell:  ?? how do I find large files
-??() { memora-ai ask "$*"; }
+# Ask Memora AI from the shell:  ?? how do I find large files   (or: ai ...)
+ai() { memora-ai ask "$*"; }
+alias '??'='memora-ai ask' '?'='memora-ai ask'
 # Explain why the last command failed
 wtf() { memora-ai explain-last "$(fc -ln -2 -2 | sed "s/^[[:space:]]*//")"; }
+source /usr/share/memora/lib/gum.sh

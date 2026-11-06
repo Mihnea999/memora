@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # memora-dev — optional developer toolkits.
 set -euo pipefail
+source "${MEMORA_PATH:-/usr/share/memora}/lib/gum.sh"
 
 declare -A DESC=(
   [node]="Node.js LTS via mise"

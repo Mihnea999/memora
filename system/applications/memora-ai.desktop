@@ -3,6 +3,6 @@ Type=Application
 Name=Memora AI
 Comment=The assistant built into Memora
 Exec=memora-ai window
-Icon=memora
+Icon=memora-ai
 Terminal=false
 Categories=Utility;

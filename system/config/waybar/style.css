@@ -13,6 +13,10 @@ window#waybar {
   color: @fg;
 }
 
+#image.logo, #image {
+  padding: 0 10px 0 18px;
+}
+
 #custom-logo {
   font-size: 15px;
   font-weight: 800;

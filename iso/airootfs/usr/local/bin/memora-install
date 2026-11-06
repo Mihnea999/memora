@@ -129,7 +129,7 @@ questions() {
     pick_disk; pick_keyboard
     FULLNAME="Memora"; USERNAME=memora; PASSWORD=memora; HOSTNAME_=memora
     TIMEZONE=UTC; LOCALE=en_US.UTF-8; THEME=dark; TOOLKITS=""
-    ENCRYPT=0; grep -qw memora.encrypt /proc/cmdline && ENCRYPT=1
+    ENCRYPT=0; if grep -qw memora.encrypt /proc/cmdline; then ENCRYPT=1; fi
     return
   fi
 
@@ -250,6 +250,7 @@ configure() {
   title "Configuring Memora"
   mkdir -p "$TARGET/usr/share"
   cp -a "$PAYLOAD" "$TARGET/usr/share/memora"
+  chmod 755 "$TARGET"/usr/share/memora/{bin/*,install/*.sh,lib/*.sh}
   install -m600 /dev/null "$TARGET/root/memora.env"
   {
     printf 'MEMORA_%s=%q\n' \
@@ -260,6 +261,7 @@ configure() {
   arch-chroot "$TARGET" bash /usr/share/memora/install/chroot.sh 2>&1 | tee -a "$LOG" | grep --line-buffered -E '==>|failed' || true
   [[ -f $TARGET/boot/loader/entries/memora.conf ]] || { log "chroot setup did not finish"; false; }
   [[ ! -f $TARGET/root/memora.env ]] || { log "chroot setup did not finish"; false; }
+  ln -sf /run/systemd/resolve/stub-resolv.conf "$TARGET/etc/resolv.conf"
   cp "$LOG" "$TARGET/var/log/memora-install.log"
 }
 
