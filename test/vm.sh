@@ -3,6 +3,7 @@
 #   test/vm.sh install   unattended install of out/*.iso onto test/disk.qcow2
 #   test/vm.sh boot      boot the installed disk (headless, VNC :5 / screenshots)
 #   test/vm.sh shot FILE take a screenshot of the running VM
+#   test/vm.sh run       boot the installed disk in a window (user memora / memora)
 #   test/vm.sh live      boot the ISO interactively in a window
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -61,6 +62,10 @@ case "${1:-}" in
       (echo "sendkey $k"; sleep 0.08) | socat - "UNIX-CONNECT:$mon" >/dev/null
     done ;;
   stop) (echo quit; sleep 0.5) | socat - "UNIX-CONNECT:$mon" >/dev/null || true ;;
+  run)
+    [[ -f $disk ]] || { echo "No installed disk. Run: test/vm.sh install"; exit 1; }
+    qemu-system-x86_64 "${common[@]}" -drive "file=$disk,if=virtio,format=qcow2" \
+      -device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=on -serial "file:boot.log" ;;
   live)
     cp -n "$ovmf_vars" vars.fd 2>/dev/null || true
     qemu-system-x86_64 "${common[@]}" -cdrom "$iso" -drive "file=$disk,if=virtio,format=qcow2" \
