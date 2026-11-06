@@ -14,11 +14,10 @@ hyprpolkitagent
 gnome-keyring
 qt5-wayland
 qt6-wayland
-waybar
-fuzzel
-mako
+quickshell
 swaybg
 nwg-dock-hyprland
+ptyxis
 kitty
 nautilus
 gnome-text-editor
@@ -49,3 +48,5 @@ gnome-themes-extra
 papirus-icon-theme
 adwaita-icon-theme
 adwaita-cursors
+python-anthropic
+libnotify

@@ -1,0 +1,3 @@
+module qs.notify
+NotificationCard 1.0 NotificationCard.qml
+Banners 1.0 Banners.qml

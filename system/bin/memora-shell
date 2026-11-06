@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# memora-shell — the desktop shell (menu bar, Dock, Launchpad, Control Center…).
+#   memora-shell                 start it (from the Hyprland session)
+#   memora-shell toggle NAME     launchpad | spotlight | control | calendar | switcher
+#   memora-shell close
+dir="${MEMORA_PATH:-/usr/share/memora}/shell"
+case "${1:-}" in
+  "") exec qs -p "$dir" ;;
+  restart) pkill -f "qs -p $dir" ; sleep 0.3; exec uwsm app -- qs -p "$dir" ;;
+  switch) exec qs -p "$dir" ipc call switcher "${2:-next}" ;;
+  osd) exec qs -p "$dir" ipc call osd "$2" "${3:-up}" ;;
+  lock) exec qs -p "$dir" ipc call lock lock ;;
+  minimize) exec qs -p "$dir" ipc call shell minimize ;;
+  show-desktop) exec qs -p "$dir" ipc call shell showDesktop ;;
+  *) exec qs -p "$dir" ipc call shell "$@" ;;
+esac

@@ -1,0 +1,3 @@
+module qs.control
+ControlCenter 1.0 ControlCenter.qml
+NotificationCenter 1.0 NotificationCenter.qml

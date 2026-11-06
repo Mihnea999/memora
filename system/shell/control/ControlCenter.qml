@@ -1,0 +1,240 @@
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+import Quickshell.Wayland
+import Quickshell.Hyprland
+import qs.core
+import qs.ui
+
+// Control Center: connectivity, focus, appearance, display, sound and media,
+// hanging from the menu bar's right side.
+PanelWindow {
+  id: cc
+  required property var modelData
+  screen: modelData
+  readonly property bool open: Shell.open === "control" && (Shell.menuScreen === screen || !Shell.menuScreen)
+
+  visible: open || anim.running
+  anchors { top: true; right: true }
+  margins { top: 6; right: 8 }
+  implicitWidth: 340
+  implicitHeight: body.implicitHeight + 40
+  exclusiveZone: 0
+  color: "transparent"
+  WlrLayershell.layer: WlrLayer.Overlay
+  WlrLayershell.namespace: "memora-panel"
+  WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+  property real shown: open ? 1 : 0
+  Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
+  onOpenChanged: if (open) Net.refresh()
+
+  HyprlandFocusGrab {
+    active: cc.open
+    windows: [cc]
+    onCleared: if (cc.open) Shell.close()
+  }
+
+  Item {
+    anchors.fill: parent
+    anchors.margins: 10
+    opacity: cc.shown
+    transform: Translate { y: -8 * (1 - cc.shown) }
+    Keys.onEscapePressed: Shell.close()
+
+    ColumnLayout {
+      id: body
+      width: parent.width
+      spacing: 10
+
+      RowLayout {
+        spacing: 10
+        Layout.fillWidth: true
+
+        // Wi-Fi, Bluetooth, Focus
+        Module {
+          Layout.preferredWidth: 160
+          Layout.preferredHeight: 152
+          ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 4
+            Toggle {
+              sym: Net.wifiEnabled ? "wifi" : "wifi-off"; title: "Wi-Fi"
+              sub: !Net.wifiEnabled ? "Off" : (Net.online ? Net.label : "Not connected")
+              on: Net.wifiEnabled
+              onToggled: Sys.setWifi(!Net.wifiEnabled)
+              onOpened: Apps.run("memora-settings wifi")
+            }
+            Toggle {
+              sym: "bluetooth"; title: "Bluetooth"
+              sub: !Sys.btAvailable ? "Unavailable" : (Sys.btOn ? (Sys.btConnected.length ? Sys.btConnected[0].name : "On") : "Off")
+              on: Sys.btOn
+              enabled: Sys.btAvailable
+              onToggled: Sys.toggleBt()
+              onOpened: Apps.run("memora-settings bluetooth")
+            }
+            Toggle {
+              sym: "moon"; title: "Focus"
+              sub: Shell.focusMode ? "Do Not Disturb" : "Off"
+              on: Shell.focusMode
+              onToggled: Shell.focusMode = !Shell.focusMode
+              onOpened: Shell.focusMode = !Shell.focusMode
+            }
+          }
+        }
+
+        ColumnLayout {
+          spacing: 10
+          Layout.fillWidth: true
+          Module {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 71
+            Tile {
+              anchors.fill: parent
+              sym: Theme.dark ? "moon" : "sun"
+              title: Theme.dark ? "Dark" : "Light"
+              sub: "Appearance"
+              onClicked: Apps.run("memora-theme next")
+            }
+          }
+          RowLayout {
+            spacing: 10
+            Module {
+              Layout.preferredWidth: 71; Layout.preferredHeight: 71
+              Square { anchors.fill: parent; sym: "lock"; label: "Lock"; onClicked: { Shell.close(); Apps.run("memora-lock") } }
+            }
+            Module {
+              Layout.preferredWidth: 71; Layout.preferredHeight: 71
+              Square { anchors.fill: parent; sym: "ai"; label: "Ask AI"; onClicked: { Shell.close(); Apps.run("memora-ai window") } }
+            }
+          }
+        }
+      }
+
+      Module {
+        visible: Sys.hasBacklight
+        Layout.fillWidth: true
+        Layout.preferredHeight: 70
+        Txt { text: "Display"; font.weight: Font.Bold; x: 12; y: 10 }
+        Slider { x: 12; y: 32; width: parent.width - 24; sym: "sun"; value: Sys.brightness; onMoved: v => Sys.setBrightness(v) }
+      }
+
+      Module {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 70
+        Txt { text: "Sound"; font.weight: Font.Bold; x: 12; y: 10 }
+        Slider { x: 12; y: 32; width: parent.width - 24; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.setVolume(v) }
+      }
+
+      Module {
+        visible: !!Sys.player
+        Layout.fillWidth: true
+        Layout.preferredHeight: 70
+        Rectangle {
+          id: art
+          x: 10; y: 10; width: 50; height: 50; radius: 10
+          color: Theme.tile
+          clip: true
+          Image { anchors.fill: parent; source: Sys.player ? (Sys.player.trackArtUrl || "") : ""; fillMode: Image.PreserveAspectCrop }
+        }
+        Column {
+          anchors { left: art.right; leftMargin: 10; right: controls.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+          Txt { width: parent.width; text: Sys.player ? (Sys.player.trackTitle || Sys.player.identity) : ""; font.weight: Font.Medium }
+          Txt { width: parent.width; text: Sys.player ? (Sys.player.trackArtist || "") : ""; color: Theme.textDim; font.pixelSize: Theme.small }
+        }
+        Row {
+          id: controls
+          anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+          spacing: 14
+          Sym { name: Sys.player && Sys.player.isPlaying ? "pause" : "play"; width: 18; height: 18; TapHandler { onTapped: Sys.player.togglePlaying() } }
+          Sym { name: "next"; width: 18; height: 18; TapHandler { onTapped: Sys.player.next() } }
+        }
+      }
+
+      Module {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 44
+        RowLayout {
+          anchors.fill: parent
+          anchors.margins: 6
+          spacing: 6
+          Repeater {
+            model: [["gear", "Settings", "memora-settings"], ["sleep", "Sleep", "systemctl suspend"], ["restart", "Restart", "memora-power restart"], ["power", "Shut Down", "memora-power shutdown"]]
+            delegate: Item {
+              required property var modelData
+              Layout.fillWidth: true; Layout.fillHeight: true
+              Rectangle { anchors.fill: parent; radius: 9; color: bh.hovered ? Theme.hover : "transparent" }
+              Sym { anchors.centerIn: parent; name: modelData[0]; width: 16; height: 16 }
+              HoverHandler { id: bh }
+              TapHandler { onTapped: { Shell.close(); Apps.run(modelData[2]) } }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ---- pieces -----------------------------------------------------------------
+  component Module: Glass {
+    radius: 18
+    fill: Theme.glassStrong
+    shadowSize: 18
+  }
+
+  component Toggle: Item {
+    id: tg
+    property string sym; property string title; property string sub; property bool on
+    signal toggled(); signal opened()
+    Layout.fillWidth: true
+    Layout.fillHeight: true
+    opacity: enabled ? 1 : 0.45
+    Rectangle {
+      id: dot
+      width: 30; height: 30; radius: 15
+      anchors.verticalCenter: parent.verticalCenter
+      color: tg.on ? Theme.accent : (Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.08))
+      Behavior on color { ColorAnimation { duration: Theme.fast } }
+      Sym { anchors.centerIn: parent; name: tg.sym; width: 15; height: 15; color: tg.on ? "#ffffff" : Theme.text }
+      TapHandler { onTapped: tg.toggled() }
+    }
+    Column {
+      anchors { left: dot.right; leftMargin: 9; right: parent.right; verticalCenter: parent.verticalCenter }
+      Txt { width: parent.width; text: tg.title; font.weight: Font.Bold; font.pixelSize: Theme.small + 0.5 }
+      Txt { width: parent.width; text: tg.sub; color: Theme.textDim; font.pixelSize: Theme.small - 0.5 }
+      TapHandler { onTapped: tg.opened() }
+    }
+  }
+
+  component Tile: Item {
+    id: tl
+    property string sym; property string title; property string sub
+    signal clicked()
+    Rectangle {
+      id: tdot
+      x: 10; width: 30; height: 30; radius: 15
+      anchors.verticalCenter: parent.verticalCenter
+      color: Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.08)
+      Sym { anchors.centerIn: parent; name: tl.sym; width: 15; height: 15 }
+    }
+    Column {
+      anchors { left: tdot.right; leftMargin: 9; verticalCenter: parent.verticalCenter }
+      Txt { text: tl.title; font.weight: Font.Bold; font.pixelSize: Theme.small + 0.5 }
+      Txt { text: tl.sub; color: Theme.textDim; font.pixelSize: Theme.small - 0.5 }
+    }
+    TapHandler { onTapped: tl.clicked() }
+  }
+
+  component Square: Item {
+    id: sq
+    property string sym; property string label
+    signal clicked()
+    Column {
+      anchors.centerIn: parent
+      spacing: 5
+      Sym { anchors.horizontalCenter: parent.horizontalCenter; name: sq.sym; width: 18; height: 18 }
+      Txt { anchors.horizontalCenter: parent.horizontalCenter; text: sq.label; font.pixelSize: Theme.small - 1; color: Theme.textDim }
+    }
+    TapHandler { onTapped: sq.clicked() }
+  }
+}

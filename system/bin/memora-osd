@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-# Volume and brightness with an on-screen progress notification.
-step=5
-case "$1 $2" in
-  "volume up") wpctl set-volume -l 1.5 @DEFAULT_AUDIO_SINK@ "${step}%+" ;;
-  "volume down") wpctl set-volume @DEFAULT_AUDIO_SINK@ "${step}%-" ;;
-  "volume mute") wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
-  "brightness up") brightnessctl -q set "${step}%+" ;;
-  "brightness down") brightnessctl -q set "${step}%-" ;;
-esac
-if [[ $1 == volume ]]; then
-  out="$(wpctl get-volume @DEFAULT_AUDIO_SINK@)"
-  v="$(awk '{printf "%d", $2*100}' <<<"$out")"
-  [[ $out == *MUTED* ]] && label="Muted" || label="Volume $v%"
-else
-  v="$(brightnessctl -m | cut -d, -f4 | tr -d %)"; label="Brightness $v%"
-fi
-notify-send -a memora-osd -h string:x-canonical-private-synchronous:osd -h "int:value:$v" "$label"
+# memora-osd volume up|down|mute, memora-osd brightness up|down — the hardware keys.
+# The shell changes the level and shows its on-screen pill.
+exec memora-shell osd "$1" "${2:-up}"

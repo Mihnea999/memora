@@ -17,7 +17,7 @@ hl.config({
     dim_inactive = false,
     blur = {
       enabled = true,
-      size = 9,
+      size = 10,
       passes = 3,
       noise = 0.012,
       contrast = 1.05,
@@ -25,6 +25,7 @@ hl.config({
       vibrancy = 0.25,
       vibrancy_darkness = 0.2,
       popups = true,
+      popups_ignorealpha = 0.18,
       xray = false,
       new_optimizations = true,
     },
@@ -42,17 +43,23 @@ hl.config({
   ecosystem = { no_update_news = true, no_donation_nag = true },
 })
 
--- Springy, quick motion.
-hl.curve("glass", { type = "spring", mass = 1, stiffness = 260, dampening = 26 })
-hl.curve("out", { type = "bezier", points = { { 0.16, 1 }, { 0.3, 1 } } })
+-- Motion: calm ease-outs, the way a desktop should feel. Speeds are in 100 ms.
+hl.curve("smooth", { type = "bezier", points = { { 0.22, 1 }, { 0.36, 1 } } })
+hl.curve("swift", { type = "bezier", points = { { 0.32, 0.72 }, { 0, 1 } } })
+hl.curve("exit", { type = "bezier", points = { { 0.4, 0 }, { 1, 1 } } })
 hl.curve("linear", { type = "bezier", points = { { 0, 0 }, { 1, 1 } } })
-hl.animation({ leaf = "global", enabled = true, speed = 6, bezier = "out" })
-hl.animation({ leaf = "windowsIn", enabled = true, speed = 4, spring = "glass", style = "popin 90%" })
-hl.animation({ leaf = "windowsMove", enabled = true, speed = 4, spring = "glass" })
-hl.animation({ leaf = "windowsOut", enabled = true, speed = 2.2, bezier = "out", style = "popin 94%" })
-hl.animation({ leaf = "border", enabled = true, speed = 4, bezier = "out" })
-hl.animation({ leaf = "fade", enabled = true, speed = 3, bezier = "out" })
-hl.animation({ leaf = "layersIn", enabled = true, speed = 3, bezier = "out", style = "popin 96%" })
-hl.animation({ leaf = "layersOut", enabled = true, speed = 1.6, bezier = "linear", style = "fade" })
-hl.animation({ leaf = "workspaces", enabled = true, speed = 4, spring = "glass", style = "slide" })
-hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 4, spring = "glass", style = "slidevert" })
+hl.animation({ leaf = "global", enabled = true, speed = 4, bezier = "smooth" })
+hl.animation({ leaf = "windowsIn", enabled = true, speed = 3.2, bezier = "smooth", style = "popin 88%" })
+hl.animation({ leaf = "windowsOut", enabled = true, speed = 1.8, bezier = "exit", style = "popin 92%" })
+hl.animation({ leaf = "windowsMove", enabled = true, speed = 3.4, bezier = "smooth" })
+hl.animation({ leaf = "fadeIn", enabled = true, speed = 2.4, bezier = "smooth" })
+hl.animation({ leaf = "fadeOut", enabled = true, speed = 1.6, bezier = "exit" })
+hl.animation({ leaf = "fadeSwitch", enabled = true, speed = 3, bezier = "smooth" })
+hl.animation({ leaf = "fadeShadow", enabled = true, speed = 3, bezier = "smooth" })
+hl.animation({ leaf = "border", enabled = true, speed = 3, bezier = "smooth" })
+hl.animation({ leaf = "layersIn", enabled = true, speed = 2.2, bezier = "smooth", style = "fade" })
+hl.animation({ leaf = "layersOut", enabled = true, speed = 1.6, bezier = "exit", style = "fade" })
+hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 2.2, bezier = "smooth" })
+hl.animation({ leaf = "fadeLayersOut", enabled = true, speed = 1.6, bezier = "exit" })
+hl.animation({ leaf = "workspaces", enabled = true, speed = 4.5, bezier = "swift", style = "slide" })
+hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3.5, bezier = "smooth", style = "slidefadevert 20%" })

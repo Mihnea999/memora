@@ -46,8 +46,11 @@ install -Dm644 -t /usr/share/applications $MEMORA_PATH/applications/*.desktop
 install -Dm644 $MEMORA_PATH/branding/app-icon.svg /usr/share/icons/hicolor/scalable/apps/memora-ai.svg
 install -Dm644 $MEMORA_PATH/branding/app-icon.png /usr/share/icons/hicolor/256x256/apps/memora-ai.png
 gtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true
+# Memora icon theme: a link, so system updates bring new icons with them.
+ln -sfn $MEMORA_PATH/icons/Memora /usr/share/icons/Memora
 bash $MEMORA_PATH/install/apps.sh
 for f in $MEMORA_PATH/bin/*; do ln -sf "$f" "/usr/local/bin/$(basename "$f")"; done
+echo 'case ":$PATH:" in *":/usr/share/memora/bin:"*) ;; *) PATH="/usr/share/memora/bin:$PATH" ;; esac' > /etc/profile.d/memora.sh
 mkdir -p /etc/memora
 mkdir -p /etc/environment.d
 echo 'MEMORA_PATH=/usr/share/memora' > /etc/environment.d/memora.conf

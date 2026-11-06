@@ -1,0 +1,7 @@
+module qs.ui
+Txt 1.0 Txt.qml
+Glass 1.0 Glass.qml
+MenuPanel 1.0 MenuPanel.qml
+Sym 1.0 Sym.qml
+AppIcon 1.0 AppIcon.qml
+Slider 1.0 Slider.qml

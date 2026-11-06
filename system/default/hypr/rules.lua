@@ -1,4 +1,3 @@
-hl.window_rule({ name = "memora-suppress-maximize", match = { class = ".*" }, suppress_event = "maximize" })
 
 hl.window_rule({
   name = "memora-xwayland-drag",
@@ -18,7 +17,9 @@ hl.window_rule({ name = "memora-ai-size", match = { class = "^(memora-ai)$" }, s
 hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welcome)$" }, size = "640 470" })
 hl.window_rule({ name = "memora-float-tool-size", match = { class = "^(memora-float)$" }, size = "900 600" })
 
--- Glass surfaces: blur everything behind bar, dock, launcher, notifications and lock.
-for _, ns in ipairs({ "waybar", "launcher", "notifications", "nwg-dock", "hyprlock" }) do
-  hl.layer_rule({ name = "memora-glass-" .. ns, match = { namespace = "^(" .. ns .. ")$" }, blur = true, ignore_alpha = 0.1 })
+-- Glass surfaces: blur what is behind the shell's translucent layers.
+for _, ns in ipairs({ "memora-bar", "memora-dock", "memora-panel", "memora-launchpad", "memora-spotlight",
+  "memora-notifications", "memora-osd", "memora-dialog", "memora-switcher" }) do
+  hl.layer_rule({ name = "memora-glass-" .. ns, match = { namespace = "^(" .. ns .. ")$" }, blur = true, ignore_alpha = 0.18 })
 end
+hl.layer_rule({ name = "memora-no-anim-wallpaper", match = { namespace = "^(memora-wallpaper)$" }, no_anim = true })
