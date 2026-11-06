@@ -1,17 +1,26 @@
--- Keyboard layout comes from the installer (~/.config/memora/keyboard.lua).
-local layout = "us"
-local ok, kb = pcall(dofile, os.getenv("HOME") .. "/.config/memora/keyboard.lua")
-if ok and type(kb) == "table" and kb.layout then layout = kb.layout end
+-- Keyboard and pointer. The installer writes ~/.config/memora/keyboard.lua and
+-- System Settings writes ~/.config/memora/input.lua; both return a table.
+local function load(name)
+  local ok, t = pcall(dofile, os.getenv("HOME") .. "/.config/memora/" .. name)
+  return (ok and type(t) == "table") and t or {}
+end
+local kb, pref = load("keyboard.lua"), load("input.lua")
+local function pick(v, d) if v == nil then return d end return v end
 
 hl.config({
   input = {
-    kb_layout = layout,
+    kb_layout = pref.layout or kb.layout or "us",
     kb_options = "compose:caps",
-    repeat_rate = 40,
-    repeat_delay = 250,
+    repeat_rate = pick(pref.repeat_rate, 40),
+    repeat_delay = pick(pref.repeat_delay, 250),
     follow_mouse = 1,
-    sensitivity = 0,
-    touchpad = { natural_scroll = true },
+    sensitivity = pick(pref.speed, 0),
+    natural_scroll = pick(pref.mouse_natural, false),
+    touchpad = {
+      natural_scroll = pick(pref.natural_scroll, true),
+      tap_to_click = pick(pref.tap_to_click, true),
+      clickfinger_behavior = true,
+    },
   },
 })
 

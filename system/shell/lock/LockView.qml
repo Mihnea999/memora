@@ -28,7 +28,7 @@ Item {
     anchors.fill: parent
     source: "file://" + Theme.share + "/themes/" + (Theme.dark ? "dark" : "light") + "/wallpaper.png"
     fillMode: Image.PreserveAspectCrop
-    sourceSize: Qt.size(v.width / 2, v.height / 2)
+    sourceSize: Qt.size(1920, 1200)
     visible: false
   }
   MultiEffect {

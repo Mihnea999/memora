@@ -217,6 +217,63 @@ Canvas {
       ctx.beginPath(); ctx.moveTo(8, 3.5); ctx.lineTo(14.5, 8); ctx.lineTo(8, 12.5); ctx.closePath(); ctx.fill()
       break
     }
+    case "display": {
+      ctx.lineWidth = 1.5
+      rr(ctx, 1.5, 2.5, 13, 9, 1.8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(5.5, 14); ctx.lineTo(10.5, 14); ctx.moveTo(8, 11.5); ctx.lineTo(8, 14); ctx.stroke()
+      break
+    }
+    case "photo": {
+      ctx.lineWidth = 1.4
+      rr(ctx, 1.5, 2.5, 13, 11, 2); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(2.5, 12); ctx.lineTo(6, 7.8); ctx.lineTo(9, 10.6); ctx.lineTo(10.8, 9); ctx.lineTo(13.6, 12); ctx.stroke()
+      ctx.beginPath(); ctx.arc(10.6, 5.8, 1.2, 0, Math.PI * 2); ctx.fill()
+      break
+    }
+    case "keyboard": {
+      ctx.lineWidth = 1.3
+      rr(ctx, 0.8, 3.5, 14.4, 9, 1.8); ctx.stroke()
+      for (let r = 0; r < 2; r++) for (let k = 0; k < 5; k++) { ctx.fillRect(2.6 + k * 2.4, 5.3 + r * 2.2, 1.4, 1.3) }
+      ctx.fillRect(4.4, 9.8, 7.2, 1.3)
+      break
+    }
+    case "mouse": {
+      ctx.lineWidth = 1.5
+      rr(ctx, 4, 1.5, 8, 13, 4); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(8, 3.5); ctx.lineTo(8, 6.5); ctx.stroke()
+      break
+    }
+    case "clock": {
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.arc(8, 8, 6.2, 0, Math.PI * 2); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(8, 4.2); ctx.lineTo(8, 8.2); ctx.lineTo(10.8, 9.8); ctx.stroke()
+      break
+    }
+    case "bell": {
+      ctx.beginPath(); ctx.moveTo(8, 1.8); ctx.quadraticCurveTo(3.2, 2.4, 3.6, 8); ctx.lineTo(2.2, 11.6); ctx.lineTo(13.8, 11.6)
+      ctx.lineTo(12.4, 8); ctx.quadraticCurveTo(12.8, 2.4, 8, 1.8); ctx.fill()
+      ctx.beginPath(); ctx.arc(8, 12.8, 1.8, 0, Math.PI); ctx.fill()
+      break
+    }
+    case "dock": {
+      ctx.lineWidth = 1.4
+      rr(ctx, 1.5, 2, 13, 12, 2); ctx.stroke()
+      rr(ctx, 3.5, 10, 9, 2.4, 1.2); ctx.fill()
+      break
+    }
+    case "globe": {
+      ctx.lineWidth = 1.3
+      ctx.beginPath(); ctx.arc(8, 8, 6.2, 0, Math.PI * 2); ctx.stroke()
+      ctx.beginPath(); ctx.ellipse(5.4, 1.8, 5.2, 12.4); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(1.8, 8); ctx.lineTo(14.2, 8); ctx.stroke()
+      break
+    }
+    case "info": {
+      ctx.beginPath(); ctx.arc(8, 8, 6.6, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = Theme.dark ? "#2a2a2e" : "#ffffff"
+      ctx.fillRect(7.1, 7, 1.8, 5); ctx.beginPath(); ctx.arc(8, 4.9, 1.1, 0, Math.PI * 2); ctx.fill()
+      break
+    }
     case "user": {
       ctx.beginPath(); ctx.arc(8, 5.6, 3, 0, Math.PI * 2); ctx.fill()
       ctx.beginPath(); ctx.moveTo(2.2, 14.4); ctx.quadraticCurveTo(2.6, 9.4, 8, 9.4)

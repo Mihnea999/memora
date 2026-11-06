@@ -8,7 +8,7 @@ import Quickshell.Io
 Singleton {
   id: t
 
-  property string mode: "dark"
+  property string mode: Quickshell.env("MEMORA_MODE") || "dark"
   readonly property bool dark: mode !== "light"
 
   property FileView modeFile: FileView {
@@ -19,7 +19,6 @@ Singleton {
     onLoaded: t.mode = (text() || "dark").trim()
   }
 
-  readonly property string wallpaper: Quickshell.env("HOME") + "/.config/memora/current/wallpaper.png"
   readonly property string share: Quickshell.env("MEMORA_PATH") || "/usr/share/memora"
 
   // Type

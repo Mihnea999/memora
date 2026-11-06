@@ -125,41 +125,11 @@ DesktopNames=Hyprland
 DESKTOP
 session_cmd="uwsm start -e -D Hyprland -N Memora -- start-hyprland"
 
-mkdir -p /etc/greetd /var/lib/regreet
-install -Dm644 "$MEMORA_PATH/themes/$MEMORA_THEME/wallpaper.png" /usr/share/memora/login-wallpaper.png
-dark=true; [[ $MEMORA_THEME == light ]] && dark=false
-cat > /etc/greetd/regreet.toml <<TOML
-[background]
-path = "/usr/share/memora/login-wallpaper.png"
-fit = "Cover"
-
-[GTK]
-application_prefer_dark_theme = $dark
-font_name = "JetBrainsMono Nerd Font 12"
-icon_theme_name = "Papirus-Dark"
-cursor_theme_name = "Adwaita"
-theme_name = "Adwaita"
-
-[commands]
-reboot = ["systemctl", "reboot"]
-poweroff = ["systemctl", "poweroff"]
-
-[appearance]
-greeting_msg = "Welcome back"
-
-[widget.clock]
-format = "%H:%M"
-resolution = "500ms"
-label_width = 150
-TOML
-install -Dm644 "$MEMORA_PATH/config/regreet.css" /etc/greetd/regreet.css
-cat > /var/lib/regreet/state.toml <<TOML
-last_user = "$MEMORA_USER"
-
-[user_to_last_sess]
-$MEMORA_USER = "Memora"
-TOML
-chown -R greeter:greeter /var/lib/regreet
+# The login screen is part of the Memora shell (shell/greeter.qml), shown by greetd in cage.
+mkdir -p /etc/greetd /var/lib/memora
+printf %s "$MEMORA_USER" > /var/lib/memora/last-user
+chown -R greeter:greeter /var/lib/memora
+greeter_cmd="cage -s -mlast -- env MEMORA_MODE=$MEMORA_THEME QS_ICON_THEME=Memora QT_WAYLAND_DISABLE_WINDOWDECORATION=1 qs -p $MEMORA_PATH/shell/greeter.qml"
 
 {
   printf '[terminal]\nvt = 1\n\n'
@@ -167,7 +137,7 @@ chown -R greeter:greeter /var/lib/regreet
     # The disk passphrase already proves who you are: go straight to the desktop.
     printf '[initial_session]\ncommand = "%s"\nuser = "%s"\n\n' "$session_cmd" "$MEMORA_USER"
   fi
-  printf '[default_session]\ncommand = "cage -s -mlast -- regreet"\nuser = "greeter"\n'
+  printf '[default_session]\ncommand = "%s"\nuser = "greeter"\n' "$greeter_cmd"
 } > /etc/greetd/config.toml
 systemctl enable greetd.service
 

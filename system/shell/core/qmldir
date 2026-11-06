@@ -7,3 +7,5 @@ singleton Net 1.0 Net.qml
 singleton Sys 1.0 Sys.qml
 singleton Notifs 1.0 Notifs.qml
 singleton Osd 1.0 Osd.qml
+singleton Prefs 1.0 Prefs.qml
+singleton Host 1.0 Host.qml

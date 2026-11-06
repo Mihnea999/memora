@@ -14,8 +14,8 @@ PanelWindow {
   required property var modelData
   screen: modelData
 
-  readonly property real base: 52
-  readonly property real peak: 80
+  readonly property real base: Prefs.dockSize
+  readonly property real peak: Prefs.magnify ? Math.max(Prefs.magnifySize, base) : base
   readonly property real reach: 150      // how far magnification spreads, in px
   readonly property real gap: 6
   readonly property bool hidden: Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.hasFullscreen

@@ -133,7 +133,7 @@ PanelWindow {
         id: clockText
         anchors.centerIn: parent
         font.weight: Font.Medium
-        text: Qt.formatDateTime(now.date, "ddd MMM d   HH:mm")
+        text: (Prefs.showDate ? Qt.formatDateTime(now.date, "ddd MMM d") + "   " : "") + Qt.formatDateTime(now.date, Prefs.clock24 ? "HH:mm" : "h:mm AP")
       }
       onClicked: { Shell.menuScreen = bar.screen; Shell.toggle("calendar") }
     }
