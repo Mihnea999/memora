@@ -153,6 +153,28 @@ greeter_cmd="cage -s -mlast -- env MEMORA_MODE=$MEMORA_THEME QS_ICON_THEME=Memor
   printf '[default_session]\ncommand = "%s"\nuser = "greeter"\n' "$greeter_cmd"
 } > /etc/greetd/config.toml
 systemctl enable greetd.service
+# The login password also unlocks the keyring, so the browser and other apps never ask for one.
+grep -q pam_gnome_keyring /etc/pam.d/greetd || {
+  sed -i '/^auth.*system-local-login/a auth       optional     pam_gnome_keyring.so' /etc/pam.d/greetd
+  sed -i '/^session.*system-local-login/a session    optional     pam_gnome_keyring.so auto_start' /etc/pam.d/greetd
+}
+grep -q pam_gnome_keyring /etc/pam.d/passwd || echo 'password   optional     pam_gnome_keyring.so' >> /etc/pam.d/passwd
+
+# fastfetch shows Memora, not the Arch logo.
+install -Dm644 $MEMORA_PATH/fastfetch/config.jsonc /etc/xdg/fastfetch/config.jsonc
+
+# Browser: no first-run screens, passwords in the keyring, native Wayland.
+mkdir -p /etc/chromium/policies/managed
+cat > /etc/chromium/policies/managed/memora.json <<'JSON'
+{
+  "PromotionalTabsEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "PrivacySandboxPromptEnabled": false,
+  "BrowserSignin": 1,
+  "MetricsReportingEnabled": false,
+  "ShowFullUrlsInAddressBar": false
+}
+JSON
 
 step "Boot splash"
 theme=/usr/share/plymouth/themes/memora
@@ -227,7 +249,7 @@ grep -q ILoveCandy /etc/pacman.conf || sed -i '/^Color/a ILoveCandy' /etc/pacman
 
 step "Home directory"
 sudo -u "$MEMORA_USER" -H env MEMORA_XKB="$MEMORA_XKB" MEMORA_THEME="$MEMORA_THEME" \
-  MEMORA_USER_TOOLKITS="$user_kits" MEMORA_SKIP_PKGS=1 bash $MEMORA_PATH/install/user.sh
+  MEMORA_ENCRYPT="$MEMORA_ENCRYPT" MEMORA_USER_TOOLKITS="$user_kits" MEMORA_SKIP_PKGS=1 bash $MEMORA_PATH/install/user.sh
 
 rm -f /root/memora.env
 step "Done"

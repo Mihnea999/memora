@@ -14,3 +14,4 @@ windowcontrols > button.minimize > image { background: #febc2e; }
 windowcontrols > button.maximize > image { background: #28c840; }
 windowcontrols:hover > button > image { color: rgba(0,0,0,0.55); }
 windowcontrols > button:backdrop > image { background: alpha(#{{fg}}, 0.16); }
+

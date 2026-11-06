@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Activity Monitor
+Comment=See what is running and how much it uses
+Exec=qs -p /usr/share/memora/shell/activity.qml
+Icon=memora-activity
+Terminal=false
+Categories=System;Monitor;
+Keywords=task;process;cpu;memory;kill;

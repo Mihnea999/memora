@@ -67,7 +67,7 @@ ShellRoot {
                     border.width: Theme.mode === modelData.id ? 3 : 1
                     border.color: Theme.mode === modelData.id ? Theme.accent : Theme.separator
                     clip: true
-                    Image { anchors.fill: parent; anchors.margins: 3; source: "file://" + Theme.share + "/themes/" + modelData.id + "/wallpaper.png"; sourceSize: Qt.size(400, 256); fillMode: Image.PreserveAspectCrop }
+                    Image { anchors.fill: parent; anchors.margins: 3; source: "file://" + Theme.share + "/themes/" + modelData.id + "/wallpaper.jpg"; sourceSize: Qt.size(400, 256); fillMode: Image.PreserveAspectCrop }
                     Rectangle { x: 18; y: 22; width: 100; height: 66; radius: 7; color: modelData.id === "dark" ? "#2a2a2e" : "#ffffff"; opacity: 0.92 }
                     TapHandler { onTapped: Quickshell.execDetached(["memora-theme", "set", modelData.id]) }
                   }

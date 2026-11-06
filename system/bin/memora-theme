@@ -17,7 +17,7 @@ apply() {
   (cd "$MEMORA_PATH/templates" && find . -type f) | while read -r rel; do
     memora_render "$dir/colors" "$MEMORA_PATH/templates/$rel" "$HOME/.config/${rel#./}"
   done
-  ln -sfn "$dir/wallpaper.png" "$HOME/.config/memora/current/wallpaper.png"
+  ln -sfn "$dir/wallpaper.jpg" "$HOME/.config/memora/current/wallpaper.jpg"
   ln -sfn "$dir/logo.png" "$HOME/.config/memora/current/logo.png"
 
   # shellcheck disable=SC1091

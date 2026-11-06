@@ -109,7 +109,11 @@ Singleton {
     case "window": return [
       { text: "Minimize", keys: "Super M", enabled: hasWin, action: () => Apps.minimize(win.address) },
       { text: "Zoom", enabled: hasWin, action: () => Apps.zoom(win) },
-      { text: "Center", enabled: hasWin, action: () => Apps.dispatch("hl.dsp.window.center()") },
+      { text: "Fill", keys: "Super Up", enabled: hasWin, action: () => Apps.run("memora-window fill") },
+      { text: "Center", keys: "Super C", enabled: hasWin, action: () => Apps.run("memora-window center") },
+      sep(),
+      { text: "Move to Left Half", keys: "Super Left", enabled: hasWin, action: () => Apps.run("memora-window left") },
+      { text: "Move to Right Half", keys: "Super Right", enabled: hasWin, action: () => Apps.run("memora-window right") },
       { text: "Tile Window", keys: "Super T", enabled: hasWin, action: () => Apps.dispatch('hl.dsp.window.float({ action = "toggle" })') },
       sep(),
       { text: "Show All Windows", action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) },

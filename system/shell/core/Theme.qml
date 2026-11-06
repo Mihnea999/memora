@@ -38,8 +38,8 @@ Singleton {
   readonly property color green: "#28c840"
 
   // Glass: translucent fill (Hyprland blurs what is behind), a bright inner edge and a dark outer edge.
-  readonly property color glass: dark ? Qt.rgba(0.11, 0.11, 0.13, 0.50) : Qt.rgba(0.98, 0.98, 0.99, 0.46)
-  readonly property color glassStrong: dark ? Qt.rgba(0.13, 0.13, 0.15, 0.74) : Qt.rgba(0.99, 0.99, 1.0, 0.76)
+  readonly property color glass: dark ? Qt.rgba(0.10, 0.10, 0.12, 0.34) : Qt.rgba(0.98, 0.98, 0.99, 0.34)
+  readonly property color glassStrong: dark ? Qt.rgba(0.12, 0.12, 0.14, 0.46) : Qt.rgba(0.99, 0.99, 1.0, 0.50)
   readonly property color glassSolid: dark ? "#232326" : "#f5f5f7"
   readonly property color bar: dark ? Qt.rgba(0.06, 0.06, 0.08, 0.28) : Qt.rgba(1, 1, 1, 0.30)
   readonly property color edge: dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.75)

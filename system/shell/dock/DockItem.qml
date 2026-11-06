@@ -15,7 +15,7 @@ Item {
   readonly property bool running: wins.length > 0 || (appId === "memora-launchpad" && Shell.open === "launchpad")
 
   // Centre in the dock plate's coordinates (where the pointer is tracked).
-  readonly property real centerX: (parent ? parent.x : 0) + dockRoot.rowX + width / 2
+  readonly property real centerX: (parent && parent.parent ? parent.parent.x : 0) + dockRoot.rowX + width / 2
   readonly property real dist: Math.abs(dockRoot.mouseX - centerX)
   readonly property real grow: dockRoot.magnifying && dist < dockRoot.reach ? (Math.cos(dist / dockRoot.reach * Math.PI) + 1) / 2 : 0
   readonly property real size: dockRoot.base + (dockRoot.peak - dockRoot.base) * grow

@@ -1,0 +1,36 @@
+// Memora's fastfetch: the M, and the facts that matter.
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "file",
+    "source": "/usr/share/memora/fastfetch/logo.txt",
+    "color": { "1": "white", "2": "blue" },
+    "padding": { "top": 1, "left": 2, "right": 4 }
+  },
+  "display": {
+    "separator": "  ",
+    "color": { "keys": "90", "title": "white" },
+    "bar": { "width": 14, "char": { "elapsed": "━", "total": "─" }, "border": { "left": "", "right": "" } },
+    "percent": { "type": 3, "color": { "green": "white", "yellow": "white", "red": "red" } }
+  },
+  "modules": [
+    { "type": "title", "format": "{user-name}@{host-name}", "color": { "user": "white", "at": "90", "host": "white" } },
+    "break",
+    { "type": "os", "key": "System   ", "format": "{pretty-name}" },
+    { "type": "kernel", "key": "Kernel   ", "format": "Linux {release}" },
+    { "type": "wm", "key": "Desktop  ", "format": "Memora shell on Hyprland {version}" },
+    { "type": "host", "key": "Computer " },
+    { "type": "cpu", "key": "Chip     ", "format": "{name} ({cores-logical} cores)" },
+    { "type": "gpu", "key": "Graphics ", "format": "{name}" },
+    { "type": "memory", "key": "Memory   ", "format": "{used} of {total}  {percentage-bar}" },
+    { "type": "disk", "key": "Disk     ", "folders": "/", "format": "{size-used} of {size-total}  {size-percentage-bar}" },
+    { "type": "battery", "key": "Battery  ", "format": "{capacity}  {status}" },
+    { "type": "display", "key": "Display  ", "format": "{width}×{height} @ {refresh-rate} Hz" },
+    { "type": "uptime", "key": "Up       " },
+    { "type": "packages", "key": "Packages ", "format": "{all}" },
+    { "type": "shell", "key": "Shell    " },
+    { "type": "terminal", "key": "Terminal " },
+    "break",
+    { "type": "colors", "symbol": "circle", "paddingLeft": 14 }
+  ]
+}

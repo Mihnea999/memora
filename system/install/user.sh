@@ -22,6 +22,18 @@ MEMORA_PATH="$MEMORA_PATH" "$MEMORA_PATH/bin/memora-theme" set "${MEMORA_THEME:-
 
 xdg-user-dirs-update || true
 
+printf '%s\n' --no-first-run --no-default-browser-check --password-store=gnome-libsecret --ozone-platform-hint=auto \
+  > "$cfg/chromium-flags.conf"
+
+# With disk encryption the session starts without a password, so there is none
+# to unlock a keyring with: give it an open one (the disk itself is encrypted).
+if [[ ${MEMORA_ENCRYPT:-0} == 1 ]]; then
+  mkdir -p "$HOME/.local/share/keyrings"
+  printf '[keyring]\ndisplay-name=Login\nctime=0\nmtime=0\nlock-on-idle=false\nlock-after=false\n' > "$HOME/.local/share/keyrings/login.keyring"
+  printf 'login\n' > "$HOME/.local/share/keyrings/default"
+  chmod 700 "$HOME/.local/share/keyrings"; chmod 600 "$HOME/.local/share/keyrings/"*
+fi
+
 # Optional toolkits picked in the installer that live in $HOME.
 for t in ${MEMORA_USER_TOOLKITS:-}; do
   echo "Installing toolkit: $t"

@@ -12,7 +12,7 @@ PanelWindow {
   required property var modelData
   screen: modelData
   readonly property string mode: ["spotlight", "clipboard", "keys"].indexOf(Shell.open) >= 0 ? Shell.open : ""
-  readonly property bool open: mode !== "" && (!Shell.menuScreen || Shell.menuScreen === screen || Quickshell.screens.length === 1)
+  readonly property bool open: mode !== "" && (!Shell.menuScreen || Shell.menuScreen === modelData.name || Quickshell.screens.length === 1)
 
   visible: open || anim.running
   anchors { top: true; bottom: true; left: true; right: true }

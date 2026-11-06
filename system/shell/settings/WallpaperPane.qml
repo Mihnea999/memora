@@ -14,8 +14,8 @@ Kit.Page {
 
   readonly property var builtIn: [
     { file: "", name: "Silk (follows appearance)" },
-    { file: Theme.share + "/themes/light/wallpaper.png", name: "Silk Light" },
-    { file: Theme.share + "/themes/dark/wallpaper.png", name: "Silk Dark" }
+    { file: Theme.share + "/themes/light/wallpaper.jpg", name: "Silk Light" },
+    { file: Theme.share + "/themes/dark/wallpaper.jpg", name: "Silk Dark" }
   ]
 
   Kit.Group {
@@ -49,7 +49,7 @@ Kit.Page {
       clip: true
       Image {
         anchors.fill: parent; anchors.margins: 3
-        source: "file://" + (file || (Theme.share + "/themes/" + Theme.mode + "/wallpaper.png"))
+        source: "file://" + (file || (Theme.share + "/themes/" + Theme.mode + "/wallpaper.jpg"))
         sourceSize: Qt.size(340, 212); fillMode: Image.PreserveAspectCrop; asynchronous: true
       }
       TapHandler { onTapped: Prefs.set("wallpaper", file) }

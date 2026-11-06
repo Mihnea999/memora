@@ -42,3 +42,4 @@ adwaita-cursors
 python-anthropic
 libnotify
 ydotool
+adw-gtk-theme

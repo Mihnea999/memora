@@ -32,15 +32,15 @@ b("ALT + F4", hl.dsp.window.close(), "Close window")
 b(S .. " + Q", hl.dsp.window.close(), "Close window")
 b(S .. " + M", run("memora-shell minimize"), "Minimize window")
 b(S .. " + D", run("memora-shell show-desktop"), "Show desktop")
-b(S .. " + UP", hl.dsp.window.fullscreen({ mode = "maximized" }), "Zoom (maximize)")
+b(S .. " + UP", run("memora-window fill"), "Fill the screen")
+b(S .. " + LEFT", run("memora-window left"), "Move to left half")
+b(S .. " + RIGHT", run("memora-window right"), "Move to right half")
+b(S .. " + DOWN", run("memora-window center"), "Center window")
 b("F11", hl.dsp.window.fullscreen({ mode = "fullscreen" }), "Full screen", { non_consuming = true })
 b(S .. " + T", hl.dsp.window.float({ action = "toggle" }), "Tile or float window")
-b(S .. " + C", hl.dsp.window.center(), "Center window")
+b(S .. " + C", run("memora-window center"), "Center window")
 b(S .. " + mouse:272", hl.dsp.window.drag(), "Move window", { mouse = true })
 b(S .. " + mouse:273", hl.dsp.window.resize(), "Resize window", { mouse = true })
-for key, dir in pairs({ left = "l", right = "r" }) do
-  b(S .. " + " .. key, hl.dsp.focus({ direction = dir }), "Focus " .. key)
-end
 
 -- Desktops (workspaces)
 for i = 1, 9 do

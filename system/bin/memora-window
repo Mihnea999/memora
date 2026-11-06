@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# memora-window left|right|fill|center — place the focused window in the free
+# area of its screen (below the menu bar, above the Dock). Hyprland animates it.
+set -euo pipefail
+gap=10
+read -r mx my mw mh l t r b < <(hyprctl -j monitors | python3 -c '
+import json, sys
+m = next(x for x in json.load(sys.stdin) if x["focused"])
+s = m["scale"]; rl, rt, rr, rb = m["reserved"]
+print(m["x"], m["y"], int(m["width"] / s), int(m["height"] / s), rl, rt, rr, rb)')
+ax=$((mx + l + gap)); ay=$((my + t + gap)); aw=$((mw - l - r - 2 * gap)); ah=$((mh - t - b - 2 * gap))
+float() { hyprctl -j activewindow | grep -q '"floating": true' || hyprctl dispatch 'hl.dsp.window.float({ action = "enable" })' >/dev/null; }
+place() { float; hyprctl dispatch "hl.dsp.window.resize({ x = $3, y = $4 })" >/dev/null; hyprctl dispatch "hl.dsp.window.move({ x = $1, y = $2 })" >/dev/null; }
+half=$(((aw - gap) / 2))
+case "${1:-}" in
+  left) place "$ax" "$ay" "$half" "$ah" ;;
+  right) place "$((ax + half + gap))" "$ay" "$half" "$ah" ;;
+  fill) place "$ax" "$ay" "$aw" "$ah" ;;
+  center)
+    read -r w h < <(hyprctl -j activewindow | python3 -c 'import json,sys; d=json.load(sys.stdin); print(*d["size"])')
+    w=$((w > aw ? aw : w)); h=$((h > ah ? ah : h))
+    place "$((ax + (aw - w) / 2))" "$((ay + (ah - h) / 2))" "$w" "$h" ;;
+  *) echo "usage: memora-window left|right|fill|center"; exit 1 ;;
+esac

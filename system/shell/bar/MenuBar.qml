@@ -120,22 +120,22 @@ PanelWindow {
     BarButton {
       id: ccButton
       tip: "Control Center"
-      highlighted: Shell.open === "control" && Shell.menuScreen === bar.screen
+      highlighted: Shell.open === "control" && Shell.menuScreen === bar.modelData.name
       Sym { anchors.centerIn: parent; name: "control"; width: 16; height: 16 }
-      onClicked: { Shell.menuScreen = bar.screen; Shell.toggle("control") }
+      onClicked: { Shell.menuScreen = bar.modelData.name; Shell.toggle("control") }
     }
 
     BarButton {
       id: clock
       implicitWidth: clockText.implicitWidth + 16
-      highlighted: Shell.open === "calendar" && Shell.menuScreen === bar.screen
+      highlighted: Shell.open === "calendar" && Shell.menuScreen === bar.modelData.name
       Txt {
         id: clockText
         anchors.centerIn: parent
         font.weight: Font.Medium
         text: (Prefs.showDate ? Qt.formatDateTime(now.date, "ddd MMM d") + "   " : "") + Qt.formatDateTime(now.date, Prefs.clock24 ? "HH:mm" : "h:mm AP")
       }
-      onClicked: { Shell.menuScreen = bar.screen; Shell.toggle("calendar") }
+      onClicked: { Shell.menuScreen = bar.modelData.name; Shell.toggle("calendar") }
     }
   }
 
@@ -144,7 +144,7 @@ PanelWindow {
   // ------------------------------------------------------------- the dropdown
   PopupWindow {
     id: drop
-    visible: Shell.open === "menu" && Shell.menuScreen === bar.screen
+    visible: Shell.open === "menu" && Shell.menuScreen === bar.modelData.name
     anchor.window: bar
     anchor.rect.x: Shell.menuX
     anchor.rect.y: bar.height + 2
@@ -177,7 +177,7 @@ PanelWindow {
     property string menuId: ""
     property string label: ""
     property bool bold: false
-    readonly property bool current: Shell.open === "menu" && Shell.menu === menuId && Shell.menuScreen === bar.screen
+    readonly property bool current: Shell.open === "menu" && Shell.menu === menuId && Shell.menuScreen === bar.modelData.name
     implicitHeight: 24
     implicitWidth: labelText.implicitWidth + 18
 
@@ -193,9 +193,9 @@ PanelWindow {
       font.weight: title.bold ? Font.Bold : Font.Normal
       visible: title.label !== ""
     }
-    function openHere() { Shell.openMenu(menuId, title.mapToItem(null, 0, 0).x, bar.screen) }
+    function openHere() { Shell.openMenu(menuId, title.mapToItem(null, 0, 0).x, bar.modelData.name) }
     HoverHandler {
-      onHoveredChanged: if (hovered && Shell.open === "menu" && Shell.menuScreen === bar.screen && Shell.menu !== title.menuId) title.openHere()
+      onHoveredChanged: if (hovered && Shell.open === "menu" && Shell.menuScreen === bar.modelData.name && Shell.menu !== title.menuId) title.openHere()
     }
     TapHandler {
       onTapped: title.current ? Shell.close() : title.openHere()

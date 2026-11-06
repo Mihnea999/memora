@@ -22,7 +22,7 @@ Singleton {
     "kitty": "Terminal", "memora-ai": "Memora AI", "memora-settings": "Settings",
     "org.gnome.TextEditor": "Text Editor", "org.gnome.Calculator": "Calculator",
     "org.gnome.Papers": "Documents", "org.gnome.Loupe": "Photos", "mpv": "Media Player",
-    "memora-float": "Memora", "memora-welcome": "Welcome", "": "Files"
+    "memora-float": "Memora", "memora-activity": "Activity Monitor", "memora-welcome": "Welcome", "gcr-prompter": "Passwords", "": "Files"
   })
 
   function nameFor(appId) {
@@ -34,7 +34,7 @@ Singleton {
   // Icons drawn for Memora (tools/icons.py); others are shown on a tile.
   readonly property var nativeIcons: ["org.gnome.Nautilus", "memora-launchpad", "chromium", "org.gnome.Ptyxis",
     "kitty", "memora-ai", "org.gnome.TextEditor", "org.gnome.Calculator", "org.gnome.Loupe", "org.gnome.Papers",
-    "mpv", "memora-settings", "btop", "folder", "folder-download", "user-trash", "user-trash-full"]
+    "mpv", "memora-settings", "memora-activity", "folder", "folder-download", "user-trash", "user-trash-full"]
 
   function iconNameFor(appId) {
     if (appId === "memora-launchpad" || appId === "memora-settings") return appId
@@ -104,6 +104,7 @@ Singleton {
 
   // Focused app, from Hyprland's activewindow event ("class,title"; empty on the desktop).
   property string activeClass: ""
+  readonly property var helperClasses: ["xdg-desktop-portal-gtk", "xdg-desktop-portal-gnome", "gcr-prompter", "org.gnome.Nautilus.FileChooser"]
   property Process activeProc: Process {
     running: true
     command: ["hyprctl", "-j", "activewindow"]
@@ -113,7 +114,12 @@ Singleton {
   Connections {
     target: Hyprland
     function onRawEvent(ev) {
-      if (ev.name === "activewindow") apps.activeClass = ev.data.split(",")[0]
+      if (ev.name === "activewindow") {
+        const c = ev.data.split(",")[0]
+        // File dialogs and password prompts belong to the app that opened them:
+        // the menu bar keeps that app's name.
+        if (apps.helperClasses.indexOf(c) < 0) apps.activeClass = c
+      }
       if (["openwindow", "closewindow", "movewindowv2", "windowtitlev2", "activewindowv2"].indexOf(ev.name) >= 0)
         Hyprland.refreshToplevels()
       // An app asked to be minimized (its yellow button): park it in the dock.

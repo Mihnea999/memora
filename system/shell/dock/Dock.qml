@@ -16,7 +16,7 @@ PanelWindow {
 
   readonly property real base: Prefs.dockSize
   readonly property real peak: Prefs.magnify ? Math.max(Prefs.magnifySize, base) : base
-  readonly property real reach: 150      // how far magnification spreads, in px
+  readonly property real reach: 200      // how far magnification spreads, in px
   readonly property real gap: 6
   readonly property bool hidden: Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.hasFullscreen
 
@@ -29,7 +29,7 @@ PanelWindow {
   mask: Region { item: hit }
 
   property real mouseX: -1000
-  readonly property real rowX: row.x
+  readonly property real rowX: row.x - row.contentX
   readonly property real hitX: hit.x
   readonly property bool magnifying: mouseX > -999
 
@@ -89,25 +89,68 @@ PanelWindow {
       onHoveredChanged: if (!hovered) dock.mouseX = -1000
     }
 
-    Row {
+    // A ListView over a ListModel kept in step with `model`, so icons that
+    // arrive grow in, icons that leave shrink away, and the rest slide aside.
+    ListView {
       id: row
       anchors.bottom: parent.bottom
       anchors.bottomMargin: 8
       anchors.horizontalCenter: parent.horizontalCenter
+      orientation: ListView.Horizontal
+      interactive: false
       spacing: 4
-
-      Repeater {
-        model: dock.model
-        delegate: Loader {
-          required property var modelData
-          required property int index
-          sourceComponent: modelData.kind === "sep" ? sepComp : itemComp
-          anchors.bottom: parent ? parent.bottom : undefined
-          property var entry: modelData
+      width: contentWidth
+      height: dock.base
+      model: items
+      // Each slot is as tall as the Dock; its icon sits on the bottom and grows upwards.
+      delegate: Item {
+        id: slot
+        required property string key
+        required property string kind
+        readonly property var entry: dock.entries[key] || null
+        width: icon.item ? icon.item.width : 0
+        height: dock.base
+        Loader {
+          id: icon
+          anchors.bottom: parent.bottom
+          sourceComponent: slot.kind === "sep" ? sepComp : itemComp
+          property var entry: slot.entry
         }
       }
+      add: Transition {
+        NumberAnimation { property: "scale"; from: 0.1; to: 1; duration: Theme.slow; easing.type: Easing.OutBack; easing.overshoot: 1.4 }
+        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.normal }
+      }
+      remove: Transition {
+        NumberAnimation { property: "scale"; to: 0.1; duration: Theme.normal; easing.type: Easing.InCubic }
+        NumberAnimation { property: "opacity"; to: 0; duration: Theme.normal }
+      }
+      displaced: Transition { NumberAnimation { properties: "x"; duration: Theme.slow; easing.type: Theme.easingEmph } }
+      addDisplaced: Transition { NumberAnimation { properties: "x"; duration: Theme.slow; easing.type: Theme.easingEmph } }
+      removeDisplaced: Transition { NumberAnimation { properties: "x"; duration: Theme.slow; easing.type: Theme.easingEmph } }
     }
   }
+
+  ListModel { id: items }
+  property var entries: ({})
+  function keyOf(e) { return e.kind === "window" ? "w:" + e.win.address : e.kind + ":" + e.id }
+  function sync() {
+    const want = dock.model
+    const map = {}
+    want.forEach(e => map[keyOf(e)] = e)
+    entries = map
+    // Drop what is gone, then insert or move the rest into place.
+    for (let i = items.count - 1; i >= 0; i--) if (!map[items.get(i).key]) items.remove(i)
+    want.forEach((e, i) => {
+      const k = keyOf(e)
+      let at = -1
+      for (let j = i; j < items.count; j++) if (items.get(j).key === k) { at = j; break }
+      if (at === -1) items.insert(i, { key: k, kind: e.kind })
+      else if (at !== i) items.move(at, i, 1)
+    })
+  }
+  onModelChanged: sync()
+  Component.onCompleted: sync()
 
   Component {
     id: sepComp

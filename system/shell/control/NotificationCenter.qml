@@ -12,7 +12,7 @@ PanelWindow {
   id: nc
   required property var modelData
   screen: modelData
-  readonly property bool open: Shell.open === "calendar" && (Shell.menuScreen === screen || !Shell.menuScreen)
+  readonly property bool open: Shell.open === "calendar" && (Shell.menuScreen === modelData.name || !Shell.menuScreen)
 
   visible: open || anim.running
   anchors { top: true; right: true; bottom: true }

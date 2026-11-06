@@ -10,3 +10,13 @@ headerbar button.titlebutton.close { background-color: #ff5f57; }
 headerbar button.titlebutton.minimize { background-color: #febc2e; }
 headerbar button.titlebutton.maximize { background-color: #28c840; }
 headerbar button.titlebutton:backdrop { background-color: alpha(#{{fg}}, 0.18); }
+
+/* File dialogs and other GTK3 windows: quieter, rounder, like Memora's own apps. */
+placessidebar, .sidebar, placessidebar list { background-color: alpha(#{{glass}}, 0.55); }
+placessidebar row { border-radius: 7px; margin: 1px 6px; min-height: 30px; }
+placessidebar row:selected { background-color: #{{accent2}}; color: #ffffff; }
+headerbar { min-height: 46px; box-shadow: none; }
+headerbar button { border-radius: 8px; }
+filechooser .path-bar button, pathbar button { border-radius: 7px; }
+entry, button { border-radius: 8px; }
+treeview.view { border-radius: 0; }

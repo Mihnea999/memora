@@ -175,7 +175,7 @@ ICONS["apps/memora-settings"] = icon(
       <circle cx="512" cy="512" r="96" fill="url(#gear)"/></g>''', rim_op=0.4)
 
 # System monitor: a pulse on dark.
-ICONS["apps/btop"] = icon(
+ICONS["apps/memora-activity"] = icon(
     "monitor", lg("bg", "#30333b", "#0f1013"), "url(#bg)",
     '''<g stroke="#ffffff" stroke-opacity="0.08" stroke-width="6"><path d="M100 400 h824 M100 560 h824 M100 720 h824"/></g>
     <path filter="url(#soft)" d="M200 600 h150 l70 -200 l100 340 l90 -260 l60 120 h154" fill="none" stroke="#5fe0a0" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>''',
@@ -214,6 +214,7 @@ PLACES = {
     "folder-desktop": '<rect x="420" y="480" width="184" height="126" rx="16" fill="none" stroke-width="28"/><path d="M470 652 h84" stroke-width="28" stroke-linecap="round"/>',
     "folder-publicshare": '<circle cx="470" cy="560" r="34" stroke-width="0"/><circle cx="590" cy="500" r="34" stroke-width="0"/><circle cx="590" cy="620" r="34" stroke-width="0"/><path d="M470 560 L590 500 M470 560 L590 620" stroke-width="20"/>',
     "folder-templates": '<path d="M440 470 h144 v190 h-144 Z" fill="none" stroke-width="26" stroke-dasharray="30 18"/>',
+    "user-desktop": '<rect x="420" y="480" width="184" height="126" rx="16" fill="none" stroke-width="28"/><path d="M470 652 h84" stroke-width="28" stroke-linecap="round"/>',
     "user-home": '<path d="M512 456 l120 100 v110 h-80 v-70 h-80 v70 h-80 v-110 Z" stroke-width="0"/>',
     "folder-projects": '<path d="M450 520 l-50 50 l50 50 M574 520 l50 50 l-50 50" fill="none" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>',
 }

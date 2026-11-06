@@ -14,7 +14,7 @@ PanelWindow {
   WlrLayershell.namespace: "memora-wallpaper"
   color: "black"
 
-  property string file: Prefs.wallpaper !== "" ? Prefs.wallpaper : Theme.share + "/themes/" + (Theme.dark ? "dark" : "light") + "/wallpaper.png"
+  property string file: Prefs.wallpaper !== "" ? Prefs.wallpaper : Theme.share + "/themes/" + (Theme.dark ? "dark" : "light") + "/wallpaper.jpg"
   property bool flip: false
 
   Image { id: a; anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(w.width, w.height); opacity: w.flip ? 0 : 1; Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } } }
