@@ -263,6 +263,14 @@ configure() {
   [[ ! -f $TARGET/root/memora.env ]] || { log "chroot setup did not finish"; false; }
   ln -sf /run/systemd/resolve/stub-resolv.conf "$TARGET/etc/resolv.conf"
   cp "$LOG" "$TARGET/var/log/memora-install.log"
+  if [[ $AUTO == 1 ]]; then
+    # Test installs: when the VM shares the source tree (test/vm.sh dev), it replaces
+    # /usr/share/memora live, and test/share is writable at /mnt/share.
+    mkdir -p "$TARGET/mnt/share"
+    printf '%s\n' \
+      "memora /usr/share/memora 9p trans=virtio,version=9p2000.L,ro,nofail,x-systemd.device-timeout=2s 0 0" \
+      "share /mnt/share 9p trans=virtio,version=9p2000.L,nofail,x-systemd.device-timeout=2s 0 0" >> "$TARGET/etc/fstab"
+  fi
 }
 
 finish() {

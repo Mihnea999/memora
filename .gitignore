@@ -5,3 +5,4 @@ test/*.log
 test/*.sock
 test/*.png
 test/*.ppm
+test/share/

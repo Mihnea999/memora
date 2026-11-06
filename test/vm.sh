@@ -3,7 +3,8 @@
 #   test/vm.sh install   unattended install of out/*.iso onto test/disk.qcow2
 #   test/vm.sh boot      boot the installed disk (headless, VNC :5 / screenshots)
 #   test/vm.sh shot FILE take a screenshot of the running VM
-#   test/vm.sh run       boot the installed disk in a window (user memora / memora)
+#   test/vm.sh run       boot the installed disk in a fast GPU window (user memora / memora)
+#   test/vm.sh dev       same, running system/ live from this checkout
 #   test/vm.sh live      boot the ISO interactively in a window
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -13,10 +14,11 @@ ovmf_code=/usr/share/edk2/x64/OVMF_CODE.4m.fd
 ovmf_vars=/usr/share/edk2/x64/OVMF_VARS.4m.fd
 mon=monitor.sock
 
-common=(-machine q35,accel=kvm -cpu host -smp 4 -m 6G
+common=(-machine q35,accel=kvm -cpu host -smp 6 -m 8G
+  -device virtio-tablet-pci -device virtio-keyboard-pci
   -drive "if=pflash,format=raw,readonly=on,file=$ovmf_code"
   -drive "if=pflash,format=raw,file=vars.fd"
-  -nic user,model=virtio-net-pci
+  -netdev user,id=net0 -device virtio-net-pci,netdev=net0,romfile=
   -monitor "unix:$mon,server,nowait")
 
 case "${1:-}" in
@@ -35,7 +37,7 @@ case "${1:-}" in
     grep -q MEMORA_INSTALL_OK install.log && echo "INSTALL OK" || { echo "INSTALL FAILED, see test/install.log"; exit 1; }
     ;;
   boot)
-    qemu-system-x86_64 "${common[@]}" -drive "file=$disk,if=virtio,format=qcow2" \
+    qemu-system-x86_64 "${common[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2" -device virtio-blk-pci,drive=hd,bootindex=0 \
       ${GPU:--device virtio-vga-gl,xres=1920,yres=1080 -display egl-headless,rendernode=/dev/dri/renderD128} \
       -vnc :5 -serial "file:boot.log" &
     echo "VM started (VNC localhost:5905). Screenshot: test/vm.sh shot out.png"
@@ -62,10 +64,19 @@ case "${1:-}" in
       (echo "sendkey $k"; sleep 0.08) | socat - "UNIX-CONNECT:$mon" >/dev/null
     done ;;
   stop) (echo quit; sleep 0.5) | socat - "UNIX-CONNECT:$mon" >/dev/null || true ;;
-  run)
+  run|dev)
+    # GPU-accelerated window (virgl). "dev" also shares the source tree: the VM then
+    # runs system/ live from this checkout, and test/share is writable inside it.
     [[ -f $disk ]] || { echo "No installed disk. Run: test/vm.sh install"; exit 1; }
-    qemu-system-x86_64 "${common[@]}" -drive "file=$disk,if=virtio,format=qcow2" \
-      -device virtio-vga,xres=1920,yres=1080 -display gtk,gl=off,zoom-to-fit=on -serial "file:boot.log" ;;
+    share=()
+    if [[ $1 == dev ]]; then
+      mkdir -p share
+      share=(-virtfs "local,path=$(cd .. && pwd)/system,mount_tag=memora,security_model=none,readonly=on"
+        -virtfs "local,path=$PWD/share,mount_tag=share,security_model=none")
+    fi
+    qemu-system-x86_64 "${common[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2,cache=unsafe,aio=io_uring" -device virtio-blk-pci,drive=hd,bootindex=0 \
+      -device virtio-vga-gl,hostmem=1G,blob=true,xres=1920,yres=1080 -object memory-backend-memfd,id=mem,size=8G,share=on -machine memory-backend=mem \
+      -display sdl,gl=on -serial "file:boot.log" ;;
   live)
     cp -n "$ovmf_vars" vars.fd 2>/dev/null || true
     qemu-system-x86_64 "${common[@]}" -cdrom "$iso" -drive "file=$disk,if=virtio,format=qcow2" \
