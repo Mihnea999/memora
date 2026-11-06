@@ -10,3 +10,4 @@
 @define-color red #{{red}};
 @define-color green #{{green}};
 @define-color yellow #{{yellow}};
+@define-color bar alpha(#{{glass}}, {{bar_opacity}});

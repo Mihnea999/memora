@@ -65,7 +65,7 @@ case "${1:-}" in
   run)
     [[ -f $disk ]] || { echo "No installed disk. Run: test/vm.sh install"; exit 1; }
     qemu-system-x86_64 "${common[@]}" -drive "file=$disk,if=virtio,format=qcow2" \
-      -device virtio-vga-gl -display gtk,gl=on,zoom-to-fit=on -serial "file:boot.log" ;;
+      -device virtio-vga,xres=1920,yres=1080 -display gtk,gl=off,zoom-to-fit=on -serial "file:boot.log" ;;
   live)
     cp -n "$ovmf_vars" vars.fd 2>/dev/null || true
     qemu-system-x86_64 "${common[@]}" -cdrom "$iso" -drive "file=$disk,if=virtio,format=qcow2" \

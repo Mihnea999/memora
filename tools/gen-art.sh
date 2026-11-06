@@ -5,20 +5,11 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 source "$root/system/lib/render.sh"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
-wallpaper() { # theme-dir name
-  local dir=$1 t=$2 base="" args=() pos size col
-  while IFS='=' read -r k v; do
-    case $k in
-      base) base=$v ;;
-      blob) read -r pos size col <<<"$v"; args+=(-fill "$col" -draw "ellipse ${pos} ${size} 0,360") ;;
-    esac
-  done < "$dir/wallpaper.spec"
-  rsvg-convert -w 3840 -h 2160 "$root/system/branding/wallpaper-$t-lines.svg" -o "$tmp/lines.png"
-  # Blobs are blurred at low resolution in 16-bit, then upscaled and dithered: no banding.
-  magick -size 960x540 -depth 16 "xc:$base" "${args[@]}" -blur 0x95 \
-    -filter Gaussian -resize 3840x2160! \
-    "$tmp/lines.png" -composite \
-    -attenuate 0.35 +noise Gaussian \
+wallpaper() { # theme-dir name — folded silk sheets (tools/silk.py), dithered against banding
+  local dir=$1 t=$2
+  python3 "$root/tools/silk.py" "$t" > "$tmp/silk.svg"
+  rsvg-convert -w 3840 -h 2400 "$tmp/silk.svg" -o "$tmp/silk.png"
+  magick "$tmp/silk.png" -depth 16 -attenuate 0.3 +noise Gaussian \
     -dither FloydSteinberg -depth 8 "$dir/wallpaper.png"
 }
 

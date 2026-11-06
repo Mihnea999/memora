@@ -1,15 +1,15 @@
 {
   "layer": "top",
   "position": "top",
-  "height": 32,
+  "height": 30,
   "spacing": 0,
-  "modules-left": ["image#logo", "hyprland/window", "hyprland/workspaces"],
+  "modules-left": ["image#logo", "hyprland/window"],
   "modules-center": [],
-  "modules-right": ["tray", "custom/ai", "bluetooth", "network", "pulseaudio", "battery", "clock"],
+  "modules-right": ["tray", "custom/ai", "bluetooth", "pulseaudio", "battery", "network", "custom/control", "clock"],
 
   "image#logo": {
     "exec": "echo $HOME/.config/memora/current/logo.png",
-    "size": 15,
+    "size": 16,
     "interval": 3600,
     "signal": 8,
     "tooltip": false,
@@ -18,6 +18,11 @@
   "custom/logo": {
     "format": "󰬔",
     "tooltip-format": "Memora menu",
+    "on-click": "memora-menu"
+  },
+  "custom/control": {
+    "format": "󰒓",
+    "tooltip-format": "Control center",
     "on-click": "memora-menu"
   },
   "custom/ai": {
@@ -37,7 +42,7 @@
     "persistent-workspaces": { "*": 3 }
   },
   "clock": {
-    "format": "{:%a %d %b  %H:%M}",
+    "format": "{:%a %b %d   %H:%M}",
     "on-click": "memora-float bash -c 'cal -3; read -rsn1'",
     "tooltip-format": "<tt>{calendar}</tt>"
   },

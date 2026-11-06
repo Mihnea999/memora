@@ -22,6 +22,16 @@ apply() {
 
   # shellcheck disable=SC1091
   source "$dir/colors"
+  desktop_settings "$dir"
+  reload
+}
+
+# GTK/libadwaita settings live in dconf, which needs the session bus:
+# applied on every login too (autostart), not only when switching themes.
+desktop_settings() {
+  local dir="${1:-$themes/$(current)}"
+  # shellcheck disable=SC1091
+  source "$dir/colors"
   if command -v gsettings >/dev/null; then
     local gs="gsettings set org.gnome.desktop.interface"
     $gs color-scheme "$scheme" 2>/dev/null || true
@@ -32,7 +42,6 @@ apply() {
     $gs cursor-theme Adwaita 2>/dev/null || true
     gsettings set org.gnome.desktop.wm.preferences button-layout "close,minimize,maximize:" 2>/dev/null || true
   fi
-  reload
 }
 
 reload() {
@@ -48,6 +57,7 @@ reload() {
 
 case "${1:-current}" in
   list) list ;;
+  desktop-settings) desktop_settings ;;
   current) current ;;
   set) apply "${2:?usage: memora-theme set NAME}" ;;
   next)

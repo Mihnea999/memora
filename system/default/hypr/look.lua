@@ -1,18 +1,20 @@
--- Glass look: soft shadows, large radius, strong blur behind translucent surfaces.
+-- Memora look: floating windows with deep soft shadows, hairline edges, glass surfaces.
 hl.config({
   general = {
-    gaps_in = 6,
-    gaps_out = 14,
+    gaps_in = 5,
+    gaps_out = 10,
+    float_gaps = 0,
     border_size = 1,
     resize_on_border = true,
     layout = "dwindle",
   },
   decoration = {
-    rounding = 14,
+    rounding = 12,
     rounding_power = 3,
     active_opacity = 1.0,
-    inactive_opacity = 0.97,
-    shadow = { enabled = true, range = 40, render_power = 4, offset = "0 10", scale = 0.98 },
+    inactive_opacity = 1.0,
+    shadow = { enabled = true, range = 70, render_power = 3, offset = "0 22", scale = 0.97, color = "rgba(00000059)", color_inactive = "rgba(0000002e)" },
+    dim_inactive = false,
     blur = {
       enabled = true,
       size = 9,

@@ -6,13 +6,17 @@ hl.window_rule({
   no_focus = true,
 })
 
+-- Windows float like on a desktop and open centred at their own size.
+-- Super+V puts one into the tiled layout; Super+Shift+F maximizes.
+hl.window_rule({ name = "memora-float-all", match = { class = ".*" }, float = true, center = true })
+
 -- Floating utility windows launched by Memora tools.
 for _, class in ipairs({ "memora-float", "memora-ai", "memora-welcome", "org.pulseaudio.pavucontrol", "nm-connection-editor", "satty" }) do
   hl.window_rule({ name = "memora-float-" .. class, match = { class = "^(" .. class .. ")$" }, float = true, center = true })
 end
 hl.window_rule({ name = "memora-ai-size", match = { class = "^(memora-ai)$" }, size = "1000 680" })
 hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welcome)$" }, size = "640 470" })
-hl.window_rule({ name = "memora-float-size", match = { class = "^(memora-float)$" }, size = "900 600" })
+hl.window_rule({ name = "memora-float-tool-size", match = { class = "^(memora-float)$" }, size = "900 600" })
 
 -- Glass surfaces: blur everything behind bar, dock, launcher, notifications and lock.
 for _, ns in ipairs({ "waybar", "launcher", "notifications", "nwg-dock", "hyprlock" }) do

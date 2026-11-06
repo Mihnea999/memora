@@ -3,12 +3,12 @@
 pinned="$HOME/.cache/nwg-dock-pinned"
 if [[ ! -s $pinned ]]; then
   mkdir -p "$(dirname "$pinned")"
-  printf '%s\n' org.gnome.Nautilus chromium kitty memora-ai org.gnome.Papers mpv > "$pinned"
+  printf '%s\n' org.gnome.Nautilus chromium kitty memora-ai org.gnome.TextEditor org.gnome.Calculator org.gnome.Papers mpv > "$pinned"
 fi
 # Match the command line: the kernel truncates the process name to 15 chars.
 pat='^(/usr/bin/)?nwg-dock-hyprland( |$)'
 pkill -f "$pat"
 for _ in $(seq 30); do pgrep -f "$pat" >/dev/null || break; sleep 0.1; done
 rm -f "${XDG_RUNTIME_DIR:-/tmp}"/nwg-dock*.lock 2>/dev/null
-exec uwsm app -- nwg-dock-hyprland -r -x -i 46 -mb 10 -hd 0 -p bottom -l top -g "memora-float memora-welcome" \
+exec uwsm app -- nwg-dock-hyprland -r -x -i 52 -mb 8 -hd 0 -p bottom -l top -g "memora-float memora-welcome" \
   -c memora-launch -ico view-app-grid-symbolic -lp start
