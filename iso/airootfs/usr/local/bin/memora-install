@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+# memora-install — installs Memora from the live ISO onto a disk.
+#
+# Unattended test mode: boot with "memora.auto" on the kernel command line
+# (optionally "memora.encrypt") and it installs to the first disk with user
+# memora / password memora, then powers off.
+set -Eeuo pipefail
+
+PAYLOAD=/opt/memora
+LOG=/var/log/memora-install.log
+TARGET=/mnt
+AUTO=0; grep -qw memora.auto /proc/cmdline && AUTO=1
+
+: > "$LOG"
+log() { printf '[%(%H:%M:%S)T] %s\n' -1 "$*" >> "$LOG"; }
+
+accent=255
+title() { gum style --foreground "$accent" --bold "$*"; }
+info() { gum style --foreground 245 "$*"; }
+fail() { gum style --foreground 203 --bold "$*"; }
+
+on_error() {
+  local line=$1
+  log "error at line $line"
+  echo
+  fail "Installation failed (line $line). Full log: $LOG"
+  tail -n 15 "$LOG" 2>/dev/null || true
+  cleanup
+  if [[ $AUTO == 1 ]]; then sleep 5; poweroff; fi
+  exit 1
+}
+trap 'on_error $LINENO' ERR
+
+cleanup() {
+  swapoff -a 2>/dev/null || true
+  umount -R "$TARGET" 2>/dev/null || true
+  cryptsetup close cryptroot 2>/dev/null || true
+}
+
+banner() {
+  clear
+  gum style --border rounded --border-foreground "$accent" --padding "1 4" --margin "1 2" \
+    "$(gum style --foreground "$accent" --bold 'Memora')" \
+    "$(gum style --foreground 245 "Installer $(cat $PAYLOAD/version)")"
+}
+
+ask() { # ask VAR "header" [default] [--password]
+  local __var=$1 header=$2 def=${3:-} pw=${4:-} val
+  while true; do
+    if [[ $pw == --password ]]; then
+      val="$(gum input --password --header "$header" --placeholder "$def")"
+    else
+      val="$(gum input --header "$header" --value "$def")"
+    fi
+    [[ -n $val ]] && break
+  done
+  printf -v "$__var" '%s' "$val"
+}
+
+# ---------------------------------------------------------------- checks
+preflight() {
+  [[ $EUID -eq 0 ]] || { echo "Run as root."; exit 1; }
+  if [[ ! -d /sys/firmware/efi ]]; then
+    fail "This computer booted in legacy BIOS mode."
+    info "Memora needs UEFI. Enable UEFI boot in the firmware settings and boot the USB again."
+    exit 1
+  fi
+}
+
+online() { curl -sfI --max-time 5 https://geo.mirror.pkgbuild.com >/dev/null; }
+
+network() {
+  online && return 0
+  [[ $AUTO == 1 ]] && { sleep 10; online && return 0; fail "No network"; exit 1; }
+  title "Network"
+  info "An internet connection is needed to download packages."
+  while ! online; do
+    local dev ssid pass
+    dev="$(iwctl device list 2>/dev/null | awk '/station/ {print $2; exit}')"
+    if [[ -z $dev ]]; then
+      info "No Wi-Fi adapter found. Plug in an Ethernet cable, then press Enter."
+      read -r _; continue
+    fi
+    iwctl station "$dev" scan; sleep 3
+    ssid="$(iwctl station "$dev" get-networks | sed -e 's/\x1b\[[0-9;]*m//g' | awk 'NR>4 && NF {sub(/^ *> */,""); print}' |
+      awk '{ $NF=""; $(NF-1)=""; sub(/ +$/,""); print }' | grep -v '^$' | gum choose --header "Wi-Fi network")" || continue
+    pass="$(gum input --password --header "Password for $ssid (empty for open networks)")"
+    if [[ -n $pass ]]; then iwctl --passphrase "$pass" station "$dev" connect "$ssid" || true
+    else iwctl station "$dev" connect "$ssid" || true; fi
+    gum spin --title "Connecting..." -- sleep 6
+    online || fail "Still offline. Try again."
+  done
+}
+
+# ---------------------------------------------------------------- questions
+live_disk() {
+  local src
+  src="$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || true)"
+  [[ -n $src ]] && lsblk -no PKNAME "$src" 2>/dev/null | head -1
+}
+
+pick_disk() {
+  local live; live="$(live_disk || true)"
+  mapfile -t disks < <(lsblk -dpno NAME,SIZE,MODEL,TYPE | awk '$NF=="disk"' |
+    grep -vE '^/dev/(loop|sr|zram|fd)' | { if [[ -n $live ]]; then grep -v "^/dev/$live "; else cat; fi } |
+    sed 's/ *disk$//')
+  ((${#disks[@]})) || { fail "No disk found to install on."; exit 1; }
+  if [[ $AUTO == 1 ]]; then DISK="${disks[0]%% *}"; return; fi
+  title "Disk"
+  local sel; sel="$(printf '%s\n' "${disks[@]}" | gum choose --header "Install Memora on (everything on it will be erased):")"
+  DISK="${sel%% *}"
+}
+
+pick_keyboard() {
+  local rows=(
+    "English (US)|us|us" "Romanian|ro_std|ro" "English (UK)|uk|gb" "German|de-latin1|de"
+    "French|fr|fr" "Spanish|es|es" "Italian|it|it" "Polish|pl|pl" "Hungarian|hu|hu"
+  )
+  local sel="English (US)"
+  [[ $AUTO == 1 ]] || sel="$(printf '%s\n' "${rows[@]%%|*}" | gum choose --header "Keyboard layout")"
+  for r in "${rows[@]}"; do
+    if [[ ${r%%|*} == "$sel" ]]; then IFS='|' read -r _ KEYMAP XKB <<<"$r"; fi
+  done
+  loadkeys "$KEYMAP" 2>/dev/null || true
+}
+
+questions() {
+  if [[ $AUTO == 1 ]]; then
+    pick_disk; pick_keyboard
+    FULLNAME="Memora"; USERNAME=memora; PASSWORD=memora; HOSTNAME_=memora
+    TIMEZONE=UTC; LOCALE=en_US.UTF-8; THEME=dark; TOOLKITS=""
+    ENCRYPT=0; grep -qw memora.encrypt /proc/cmdline && ENCRYPT=1
+    return
+  fi
+
+  title "Keyboard"; pick_keyboard
+  title "You"
+  ask FULLNAME "Full name" ""
+  while true; do
+    ask USERNAME "Username" "$(tr '[:upper:]' '[:lower:]' <<<"${FULLNAME%% *}" | tr -cd 'a-z0-9_-')"
+    [[ $USERNAME =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && break
+    fail "Use lowercase letters, digits, - and _ (start with a letter)."
+  done
+  while true; do
+    ask PASSWORD "Password (also used for sudo)" "" --password
+    local again; ask again "Repeat password" "" --password
+    [[ $PASSWORD == "$again" ]] && break
+    fail "Passwords do not match."
+  done
+  while true; do
+    ask HOSTNAME_ "Computer name" "memora"
+    [[ $HOSTNAME_ =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$ ]] && break
+    fail "Letters, digits and - only."
+  done
+
+  title "Region"
+  TIMEZONE="$(timedatectl list-timezones | gum filter --placeholder "Type a city, e.g. Bucharest" --header "Time zone")"
+  LOCALE="$(printf '%s\n' en_US.UTF-8 en_GB.UTF-8 ro_RO.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 es_ES.UTF-8 it_IT.UTF-8 |
+    gum choose --header "Language and formats")"
+
+  pick_disk
+  if gum confirm --default=yes "Encrypt the disk? (recommended; you type the password at boot)"; then ENCRYPT=1; else ENCRYPT=0; fi
+
+  title "Look"
+  THEME="$(printf '%s\n' dark light | gum choose --header "Appearance: dark or light glass (switch any time with Super+T)")"
+
+  title "Developer tools"
+  TOOLKITS="$(printf '%s\n' \
+    "node      Node.js LTS (mise)" "claude    Claude Code CLI" "python    Python + uv (mise)" \
+    "docker    Docker + Compose" "ollama    Local AI models" "flutter   Flutter SDK" \
+    "android   Android adb + JDK" "rust      Rust (rustup)" "go        Go (mise)" |
+    gum choose --no-limit --selected "node      Node.js LTS (mise),claude    Claude Code CLI" \
+      --header "Install now (space to toggle, enter to continue). More later with: memora dev" |
+    awk '{print $1}' | paste -sd' ')" || TOOLKITS=""
+}
+
+confirm() {
+  [[ $AUTO == 1 ]] && return 0
+  banner
+  gum style --border normal --padding "0 2" --border-foreground 240 \
+    "Disk        $DISK  (will be erased)" \
+    "Encryption  $([[ $ENCRYPT == 1 ]] && echo yes || echo no)" \
+    "User        $USERNAME ($FULLNAME)" \
+    "Computer    $HOSTNAME_" \
+    "Time zone   $TIMEZONE" \
+    "Language    $LOCALE" \
+    "Keyboard    $XKB" \
+    "Theme       $THEME" \
+    "Toolkits    ${TOOLKITS:-none}"
+  gum confirm --default=no "Erase $DISK and install Memora?" || { info "Nothing was changed."; exit 1; }
+}
+
+# ---------------------------------------------------------------- install
+part() { [[ $1 =~ [0-9]$ ]] && echo "${1}p$2" || echo "${1}$2"; }
+
+prepare_disk() {
+  title "Preparing $DISK"
+  log "disk $DISK encrypt=$ENCRYPT"
+  cleanup
+  wipefs -af "$DISK" >> "$LOG" 2>&1
+  sgdisk --zap-all "$DISK" >> "$LOG" 2>&1
+  sgdisk -n1:0:+2G -t1:ef00 -c1:MEMORA_EFI -n2:0:0 -t2:8309 -c2:MEMORA "$DISK" >> "$LOG" 2>&1
+  [[ $ENCRYPT == 1 ]] || sgdisk -t2:8300 "$DISK" >> "$LOG" 2>&1
+  partprobe "$DISK" 2>/dev/null || true; udevadm settle
+  EFI_PART="$(part "$DISK" 1)"; ROOT_PART="$(part "$DISK" 2)"
+
+  mkfs.fat -F32 -n MEMORA_EFI "$EFI_PART" >> "$LOG" 2>&1
+  local dev=$ROOT_PART
+  if [[ $ENCRYPT == 1 ]]; then
+    printf '%s' "$PASSWORD" | cryptsetup luksFormat --type luks2 --batch-mode --pbkdf argon2id \
+      --label MEMORA_LUKS --key-file=- "$ROOT_PART" >> "$LOG" 2>&1
+    printf '%s' "$PASSWORD" | cryptsetup open --allow-discards --key-file=- "$ROOT_PART" cryptroot >> "$LOG" 2>&1
+    dev=/dev/mapper/cryptroot
+    LUKS_UUID="$(blkid -s UUID -o value "$ROOT_PART")"
+  fi
+  mkfs.btrfs -f -L memora "$dev" >> "$LOG" 2>&1
+  ROOT_UUID="$(blkid -s UUID -o value "$dev")"
+
+  mount "$dev" "$TARGET"
+  for sv in @ @home @log @pkg @snapshots; do btrfs subvolume create "$TARGET/$sv" >> "$LOG"; done
+  umount "$TARGET"
+  local o=noatime,compress=zstd:1
+  mount -o "$o,subvol=@" "$dev" "$TARGET"
+  mkdir -p "$TARGET"/{boot,home,var/log,var/cache/pacman/pkg,.snapshots}
+  mount -o "$o,subvol=@home" "$dev" "$TARGET/home"
+  mount -o "$o,subvol=@log" "$dev" "$TARGET/var/log"
+  mount -o "$o,subvol=@pkg" "$dev" "$TARGET/var/cache/pacman/pkg"
+  mount -o "$o,subvol=@snapshots" "$dev" "$TARGET/.snapshots"
+  mount -o umask=0077 "$EFI_PART" "$TARGET/boot"
+}
+
+package_list() {
+  cat "$PAYLOAD"/packages/{base,desktop,cli}.txt | sed 's/#.*//' | awk 'NF'
+  grep -q GenuineIntel /proc/cpuinfo && echo intel-ucode
+  grep -q AuthenticAMD /proc/cpuinfo && echo amd-ucode
+  return 0
+}
+
+install_base() {
+  title "Downloading and installing packages"
+  info "This takes a few minutes, depending on your connection."
+  mapfile -t pkgs < <(package_list)
+  log "pacstrap ${#pkgs[@]} packages"
+  pacstrap -K "$TARGET" "${pkgs[@]}" 2>&1 | tee -a "$LOG" | grep --line-buffered -E '^(::|\([ 0-9]+/[0-9]+\) installing)' || true
+  [[ -x $TARGET/usr/bin/Hyprland || -x $TARGET/usr/bin/hyprland ]] || { log "pacstrap did not install hyprland"; false; }
+  genfstab -U "$TARGET" >> "$TARGET/etc/fstab"
+}
+
+configure() {
+  title "Configuring Memora"
+  mkdir -p "$TARGET/usr/share"
+  cp -a "$PAYLOAD" "$TARGET/usr/share/memora"
+  install -m600 /dev/null "$TARGET/root/memora.env"
+  {
+    printf 'MEMORA_%s=%q\n' \
+      USER "$USERNAME" FULLNAME "$FULLNAME" PASSWORD "$PASSWORD" HOSTNAME "$HOSTNAME_" \
+      TIMEZONE "$TIMEZONE" LOCALE "$LOCALE" KEYMAP "$KEYMAP" XKB "$XKB" THEME "$THEME" \
+      TOOLKITS "$TOOLKITS" ENCRYPT "$ENCRYPT" LUKS_UUID "${LUKS_UUID:-}" ROOT_UUID "$ROOT_UUID"
+  } > "$TARGET/root/memora.env"
+  arch-chroot "$TARGET" bash /usr/share/memora/install/chroot.sh 2>&1 | tee -a "$LOG" | grep --line-buffered -E '==>|failed' || true
+  [[ -f $TARGET/boot/loader/entries/memora.conf ]] || { log "chroot setup did not finish"; false; }
+  [[ ! -f $TARGET/root/memora.env ]] || { log "chroot setup did not finish"; false; }
+  cp "$LOG" "$TARGET/var/log/memora-install.log"
+}
+
+finish() {
+  sync
+  cleanup
+  if [[ $AUTO == 1 ]]; then echo "MEMORA_INSTALL_OK"; sleep 2; poweroff; exit 0; fi
+  banner
+  gum style --foreground 114 --bold "Memora is installed."
+  info "Remove the USB stick, then restart."
+  if gum confirm "Restart now?"; then reboot; fi
+}
+
+main() {
+  preflight
+  banner
+  network
+  timedatectl set-ntp true 2>/dev/null || true
+  questions
+  confirm
+  prepare_disk
+  install_base
+  configure
+  finish
+}
+
+main "$@"

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# memora — entry point for Memora system commands.
+set -euo pipefail
+MEMORA_PATH="${MEMORA_PATH:-/usr/share/memora}"
+
+usage() {
+  cat <<USAGE
+Memora $(cat "$MEMORA_PATH/version")
+
+  memora theme [list|set NAME|next]   Change the desktop theme
+  memora ai [ask|chat|setup|...]      Built-in AI assistant
+  memora dev [list|install NAME]      Developer toolkits
+  memora update                       Snapshot, then update the system
+  memora snapshot [list|create]       Btrfs snapshots (snapper)
+  memora keys                         Show keybindings
+  memora version
+USAGE
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  theme|ai|dev|update|keys|menu|welcome) exec "memora-$cmd" "$@" ;;
+  snapshot)
+    case "${1:-list}" in
+      list) exec sudo snapper -c root list ;;
+      create) exec sudo snapper -c root create -d "${2:-manual}" ;;
+      *) echo "memora snapshot [list|create DESC]"; exit 1 ;;
+    esac ;;
+  version|-v|--version) cat "$MEMORA_PATH/version" ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

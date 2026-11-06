@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# First-run welcome. With --first-run it only shows once.
+flag="$HOME/.local/state/memora/welcomed"
+if [[ ${1:-} == --first-run ]]; then
+  [[ -f $flag ]] && exit 0
+  mkdir -p "$(dirname "$flag")"; touch "$flag"
+  exec uwsm app -- kitty --class memora-float -e memora-welcome
+fi
+
+gum style --border rounded --padding "1 3" --border-foreground 255 \
+  "Memora $(cat /usr/share/memora/version)" "" \
+  "Super+Space   apps" \
+  "Super+Return  terminal" \
+  "Super+A       Memora AI" \
+  "Super+M       menu" \
+  "Super+K       all keybindings" \
+  "Super+T       next theme"
+echo
+if gum confirm "Set up Memora AI now?"; then memora-ai setup; fi
+if gum confirm "Install developer toolkits (Node, Claude Code, Flutter, Docker...)?"; then memora-dev menu; fi

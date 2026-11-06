@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Take a snapshot, then update everything.
+set -euo pipefail
+gum style --foreground 255 --bold "Memora update"
+if command -v snapper >/dev/null; then
+  echo "Creating snapshot..."
+  sudo snapper -c root create -d "before memora-update" -c number
+fi
+sudo pacman -Syu
+command -v mise >/dev/null && mise upgrade --yes 2>/dev/null || true
+command -v claude >/dev/null && claude update 2>/dev/null || true
+gum style --foreground 114 "Done. If anything broke, pick the snapshot from the boot menu or run: memora snapshot list"
+[[ -t 0 ]] && read -rp "Press Enter to close" _ || true

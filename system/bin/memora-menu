@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Memora menu (Super+M). Plain labels, one level deep.
+pkill -x fuzzel && exit 0
+
+pick() { fuzzel --dmenu --prompt "$1  " --lines "${2:-10}"; }
+
+power() {
+  case "$(printf '%s\n' Lock Suspend Logout Restart Shutdown | pick Power 5)" in
+    Lock) loginctl lock-session ;;
+    Suspend) systemctl suspend ;;
+    Logout) uwsm stop ;;
+    Restart) systemctl reboot ;;
+    Shutdown) systemctl poweroff ;;
+  esac
+}
+
+main() {
+  local items=(
+    "Apps" "Ask AI" "AI chat" "Theme" "Screenshot" "Keybindings"
+    "Wi-Fi" "Bluetooth" "Audio" "Monitor" "Developer tools"
+    "Update system" "Snapshots" "About" "Power"
+  )
+  case "$(printf '%s\n' "${items[@]}" | pick Memora 15)" in
+    "Apps") memora-launch ;;
+    "Ask AI"|"AI chat") memora-ai window ;;
+    "Theme") memora-theme pick ;;
+    "Screenshot") memora-screenshot edit ;;
+    "Keybindings") memora-keys ;;
+    "Wi-Fi") memora-float impala ;;
+    "Bluetooth") memora-float bluetui ;;
+    "Audio") memora-float wiremix ;;
+    "Monitor") memora-float btop ;;
+    "Developer tools") memora-float memora-dev menu ;;
+    "Update system") memora-float memora-update ;;
+    "Snapshots") memora-float bash -c 'sudo snapper -c root list; read -rp "Enter to close"' ;;
+    "About") memora-float bash -c 'fastfetch; read -rp ""' ;;
+    "Power") power ;;
+  esac
+}
+
+case "${1:-}" in
+  power) power ;;
+  *) main ;;
+esac

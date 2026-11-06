@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Memora AI
+Comment=The assistant built into Memora
+Exec=memora-ai window
+Icon=memora
+Terminal=false
+Categories=Utility;

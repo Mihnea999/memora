@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# memora-theme — render a theme into ~/.config and reload the desktop.
+set -euo pipefail
+MEMORA_PATH="${MEMORA_PATH:-/usr/share/memora}"
+source "$MEMORA_PATH/lib/render.sh"
+themes="$MEMORA_PATH/themes"
+state="$HOME/.config/memora/theme"
+
+current() { cat "$state" 2>/dev/null || echo dark; }
+list() { for d in "$themes"/*/; do basename "$d"; done; }
+
+apply() {
+  local t="$1" dir="$themes/$1"
+  [[ -f $dir/colors ]] || { echo "Unknown theme: $t (try: $(list | tr '\n' ' '))" >&2; exit 1; }
+  mkdir -p "$HOME/.config/memora/current"
+  echo "$t" > "$state"
+  (cd "$MEMORA_PATH/templates" && find . -type f) | while read -r rel; do
+    memora_render "$dir/colors" "$MEMORA_PATH/templates/$rel" "$HOME/.config/${rel#./}"
+  done
+  ln -sfn "$dir/wallpaper.png" "$HOME/.config/memora/current/wallpaper.png"
+  ln -sfn "$dir/logo.png" "$HOME/.config/memora/current/logo.png"
+
+  # shellcheck disable=SC1091
+  source "$dir/colors"
+  if command -v gsettings >/dev/null; then
+    local gs="gsettings set org.gnome.desktop.interface"
+    $gs color-scheme "$scheme" 2>/dev/null || true
+    $gs gtk-theme "$gtk" 2>/dev/null || true
+    $gs icon-theme "$icons" 2>/dev/null || true
+    $gs font-name "JetBrainsMono Nerd Font 10" 2>/dev/null || true
+    $gs monospace-font-name "JetBrainsMono Nerd Font 10" 2>/dev/null || true
+    $gs cursor-theme Adwaita 2>/dev/null || true
+    gsettings set org.gnome.desktop.wm.preferences button-layout "close,minimize,maximize:" 2>/dev/null || true
+  fi
+  reload
+}
+
+reload() {
+  [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || return 0
+  hyprctl reload >/dev/null 2>&1 || true
+  pkill -SIGUSR2 -x waybar 2>/dev/null || true
+  makoctl reload 2>/dev/null || true
+  pkill -SIGUSR1 -x kitty 2>/dev/null || true
+  memora-wallpaper >/dev/null 2>&1 || true
+  memora-dock >/dev/null 2>&1 &
+}
+
+case "${1:-current}" in
+  list) list ;;
+  current) current ;;
+  set) apply "${2:?usage: memora-theme set NAME}" ;;
+  next)
+    mapfile -t all < <(list)
+    cur="$(current)"; next="${all[0]}"
+    for i in "${!all[@]}"; do [[ ${all[$i]} == "$cur" ]] && next="${all[$(((i + 1) % ${#all[@]}))]}"; done
+    apply "$next"
+    notify-send -a memora "Theme" "$next" 2>/dev/null || true ;;
+  pick)
+    t="$(list | fuzzel --dmenu --prompt "Theme  ")" && [[ -n $t ]] && apply "$t" ;;
+  *) echo "usage: memora-theme [list|current|set NAME|next|pick]"; exit 1 ;;
+esac

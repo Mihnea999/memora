@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# memora-dev — optional developer toolkits.
+set -euo pipefail
+
+declare -A DESC=(
+  [node]="Node.js LTS via mise"
+  [python]="Python (latest) via mise + uv"
+  [claude]="Claude Code CLI"
+  [docker]="Docker + Compose, user added to docker group"
+  [flutter]="Flutter SDK via mise"
+  [android]="Android SDK command-line tools, platform-tools, adb"
+  [ollama]="Ollama local models (GPU build picked automatically)"
+  [rust]="Rust via rustup"
+  [go]="Go via mise"
+)
+ORDER=(node python claude docker flutter android ollama rust go)
+
+pkgs() { [[ -n ${MEMORA_SKIP_PKGS:-} ]] && return 0; sudo pacman -S --needed --noconfirm "$@"; }
+
+gpu_ollama() {
+  if lspci | grep -qi 'vga.*nvidia\|3d.*nvidia'; then echo ollama-cuda
+  elif lspci | grep -iE 'vga|3d|display' | grep -qE 'AMD|ATI|Radeon'; then echo ollama-rocm
+  else echo ollama; fi
+}
+
+install_one() {
+  case "$1" in
+    node) mise use -g node@lts ;;
+    python) mise use -g python@latest && mise use -g uv@latest ;;
+    claude) curl -fsSL https://claude.ai/install.sh | bash ;;
+    docker)
+      pkgs docker docker-compose docker-buildx
+      sudo systemctl enable --now docker.service
+      sudo usermod -aG docker "$USER"
+      echo "Log out and back in to use docker without sudo." ;;
+    flutter)
+      pkgs jdk17-openjdk clang cmake ninja pkgconf gtk3
+      mise use -g flutter@latest ;;
+    android)
+      pkgs android-tools jdk17-openjdk
+      local sdk="$HOME/Android/Sdk" zip
+      mkdir -p "$sdk/cmdline-tools"
+      zip="$(mktemp --suffix=.zip)"
+      curl -fL -o "$zip" "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip"
+      rm -rf "$sdk/cmdline-tools/latest"
+      unzip -q "$zip" -d "$sdk/cmdline-tools" && mv "$sdk/cmdline-tools/cmdline-tools" "$sdk/cmdline-tools/latest"
+      rm -f "$zip"
+      yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+      "$sdk/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+      grep -q ANDROID_HOME "$HOME/.bashrc" || cat >> "$HOME/.bashrc" <<'RC'
+export ANDROID_HOME="$HOME/Android/Sdk"
+export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+RC
+      ;;
+    ollama)
+      pkgs "$(gpu_ollama)"
+      sudo systemctl enable --now ollama.service ;;
+    rust) pkgs rustup && rustup default stable ;;
+    go) mise use -g go@latest ;;
+    *) echo "Unknown toolkit: $1" >&2; return 1 ;;
+  esac
+}
+
+list() { for k in "${ORDER[@]}"; do printf '%-9s %s\n' "$k" "${DESC[$k]}"; done; }
+
+case "${1:-menu}" in
+  list) list ;;
+  install) shift; for t in "$@"; do gum style --bold "Installing $t"; install_one "$t"; done ;;
+  menu)
+    mapfile -t chosen < <(list | gum choose --no-limit --header "Pick toolkits to install (space to select)" | awk '{print $1}')
+    for t in "${chosen[@]}"; do gum style --bold "Installing $t"; install_one "$t" || gum style --foreground 203 "$t failed"; done
+    [[ ${#chosen[@]} -gt 0 ]] && gum style --foreground 114 "Done."
+    read -rp "Press Enter to close" _ ;;
+  *) echo "usage: memora-dev [list|install NAME...|menu]"; exit 1 ;;
+esac

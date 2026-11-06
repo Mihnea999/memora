@@ -1,0 +1,16 @@
+# Terminal tools
+starship
+fzf
+zoxide
+eza
+bat
+ripgrep
+fd
+btop
+fastfetch
+tldr
+neovim
+lazygit
+github-cli
+mise
+python

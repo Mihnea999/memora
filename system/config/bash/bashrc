@@ -1,0 +1,4 @@
+# Memora shell defaults. Personal additions go at the end of ~/.bashrc.
+[[ $- != *i* ]] && return
+
+source /usr/share/memora/default/bash/rc

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Glass dock at the bottom of the screen. Pinned apps: ~/.cache/nwg-dock-pinned
+pinned="$HOME/.cache/nwg-dock-pinned"
+if [[ ! -s $pinned ]]; then
+  mkdir -p "$(dirname "$pinned")"
+  printf '%s\n' org.gnome.Nautilus chromium kitty memora-ai org.gnome.Papers mpv > "$pinned"
+fi
+pkill -x nwg-dock-hyprland
+sleep 0.2
+exec uwsm app -- nwg-dock-hyprland -r -x -i 46 -mb 10 -hd 0 -p bottom -l top \
+  -c memora-launch -ico view-app-grid-symbolic -lp start \
+  -s "$HOME/.config/nwg-dock-hyprland/style.css"

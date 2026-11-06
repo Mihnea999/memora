@@ -1,0 +1,15 @@
+[Unit]
+Description=Memora unattended install (memora.auto)
+ConditionKernelCommandLine=memora.auto
+Wants=network-online.target
+After=network-online.target pacman-init.service choose-mirror.service
+
+[Service]
+Type=oneshot
+Environment=TERM=linux
+ExecStart=/usr/local/bin/memora-install
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

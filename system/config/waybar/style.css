@@ -1,0 +1,63 @@
+@import "colors.css";
+
+* {
+  font-family: "JetBrainsMono Nerd Font";
+  font-size: 12.5px;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+
+window#waybar {
+  background: @glass;
+  color: @fg;
+}
+
+#custom-logo {
+  font-size: 15px;
+  font-weight: 800;
+  padding: 0 12px 0 18px;
+}
+
+#window {
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+#workspaces { margin-left: 4px; }
+#workspaces button {
+  color: alpha(@fg, 0.35);
+  padding: 0 5px;
+  background: transparent;
+  font-size: 9px;
+}
+#workspaces button.active { color: @fg; }
+#workspaces button:hover { color: alpha(@fg, 0.7); background: transparent; }
+
+#custom-ai {
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+#tray, #bluetooth, #network, #pulseaudio, #battery, #custom-ai, #clock {
+  margin: 4px 1px;
+  border-radius: 7px;
+}
+#tray, #bluetooth, #network, #pulseaudio, #battery { padding: 0 9px; }
+#clock { padding: 0 18px 0 10px; font-weight: 600; }
+
+#bluetooth:hover, #network:hover, #pulseaudio:hover, #battery:hover,
+#custom-ai:hover, #custom-logo:hover, #clock:hover {
+  background: alpha(@fg, 0.10);
+}
+
+#battery.warning { color: @yellow; }
+#battery.critical { color: @red; }
+#pulseaudio.muted, #network.disconnected { color: @muted; }
+
+tooltip {
+  background: @glass;
+  border: 1px solid alpha(@fg, 0.12);
+  border-radius: 10px;
+}
+tooltip label { color: @fg; padding: 2px 4px; }

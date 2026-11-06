@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 2160" width="3840" height="2160">
+  <defs>
+    <filter id="soft" filterUnits="userSpaceOnUse" x="-1200" y="-1200" width="6240" height="4560"><feGaussianBlur stdDeviation="220"/></filter>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbfbfd"/><stop offset="1" stop-color="#eceef3"/>
+    </linearGradient>
+    <filter id="grain" filterUnits="userSpaceOnUse" x="0" y="0" width="3840" height="2160">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix values="0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 1 0"/>
+    </filter>
+  </defs>
+      <g fill="none" stroke="#ffffff" stroke-opacity=".7" stroke-width="2">
+    <path d="M-100 1500 C 800 1150, 1600 1900, 2500 1450 S 3700 900, 4000 1150"/>
+    <path d="M-100 1580 C 820 1240, 1620 1980, 2520 1530 S 3720 980, 4000 1230" stroke-opacity=".45"/>
+  </g>
+  <rect width="3840" height="2160" filter="url(#grain)" opacity=".035"/>
+</svg>

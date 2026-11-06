@@ -1,0 +1,4 @@
+-- Your Hyprland overrides. Examples:
+-- memora.terminal = "ghostty"
+-- hl.bind("SUPER + G", hl.dsp.exec_cmd("uwsm app -- gimp"), { description = "GIMP" })
+-- hl.config({ general = { gaps_out = 4 } })

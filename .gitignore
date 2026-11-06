@@ -1,0 +1,4 @@
+out/
+test/*.qcow2
+test/*.fd
+test/*.log
