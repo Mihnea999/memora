@@ -35,9 +35,9 @@ Item {
     anchors.fill: parent
     source: bg
     blurEnabled: true
-    blur: 1.0
-    blurMax: 64
-    saturation: 0.15
+    blur: 0.55
+    blurMax: 40
+    saturation: 0.1
     brightness: Theme.dark ? -0.08 : 0.04
   }
   Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, Theme.dark ? 0.18 : 0.06) }

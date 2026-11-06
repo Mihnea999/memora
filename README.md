@@ -1,7 +1,8 @@
 # Memora
 
-An Arch Linux based desktop with a glass look, a dock, and an AI assistant built in.
-Hyprland (Lua config), waybar, nwg-dock, fuzzel, mako, kitty, JetBrains Mono everywhere.
+A desktop operating system based on Arch Linux and Hyprland, with a liquid-glass look in light and dark,
+its own shell and apps, and an AI assistant that can work on the computer for you.
+JetBrains Mono everywhere.
 
 ## Build the ISO
 
@@ -18,10 +19,45 @@ on its own: keyboard, user, time zone, disk, encryption, appearance, developer t
 
 ```bash
 test/vm.sh install    # unattended install into test/disk.qcow2 (user memora / memora)
-test/vm.sh boot       # boot it headless; VNC on localhost:5905
-test/vm.sh shot a.png # screenshot of the running VM
+test/vm.sh run        # boot it in a GPU-accelerated window
 test/vm.sh live       # boot the ISO in a window and use the real installer
+VM=dev test/vm.sh install && VM=dev test/vm.sh dev   # second disk that runs system/ live from this checkout
 ```
+
+## The desktop
+
+Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one design system:
+
+| Part | What it does |
+|---|---|
+| Menu bar | System menu, the focused app's name, File / Edit / View / Go / Window / Help (they send the standard shortcuts, so they work in any app), status icons, clock |
+| Dock | Pinned and running apps with magnification, running dots, bounce on launch, minimized windows, Downloads, Trash, right-click menus |
+| Launchpad | All apps in pages, with search (tap Super, or the grid in the Dock) |
+| Spotlight | Apps, files, settings, maths, ask the AI (Super+Space); also clipboard history and keyboard shortcuts |
+| Control Center | Wi-Fi, Bluetooth, Focus, appearance, display, sound, media, power |
+| Notifications | Banners, and Notification Center with a calendar (click the clock) |
+| Lock and login | Same face: time, person, password field; login runs in greetd + cage |
+| Dialogs | Administrator password (polkit), volume and brightness |
+| Alt+Tab | Window switcher |
+
+Apps: **System Settings** (`memora-settings [pane]`), **Memora AI**, **Welcome**, all in the same style.
+GTK apps get round window buttons, and windows float with deep shadows; Super+T tiles one.
+Icons are Memora's own (`tools/icons.py`); apps without one are placed on the same squircle tile.
+
+## Memora AI
+
+`memora-ai` (Super+A, the sparkle in the menu bar, or `?? question` in the terminal).
+Set it up in System Settings > Memora AI:
+
+- **Claude** through the Anthropic API (default `claude-opus-5-5`): uses tools — runs commands, reads and
+  writes files, opens apps, changes settings, manages windows, looks at the screen and clicks or types,
+  searches and reads the web, remembers things you tell it
+- **Claude Code** with your Claude account (its own tools)
+- **Ollama** or any **OpenAI-compatible** server (chat only)
+
+Risky actions (administrator commands, deleting or replacing files, installing software, stopping
+services) wait for **Allow**. The gravest (erasing disks, deleting the system or your home folder,
+removing core packages) show a red warning first. Administrator commands go through Memora's password dialog.
 
 ## What gets installed
 
@@ -30,36 +66,9 @@ test/vm.sh live       # boot the ISO in a window and use the real installer
 | Disk | GPT, 2 GiB EFI, btrfs (`@`, `@home`, `@log`, `@pkg`, `@snapshots`), optional LUKS2 |
 | Boot | systemd-boot, Plymouth splash, zram swap |
 | Snapshots | snapper + snap-pac (one before every pacman transaction) |
-| Login | greetd; straight into the desktop after the disk password when encrypted |
-| Desktop | Hyprland via uwsm, waybar top bar, nwg-dock-hyprland dock, fuzzel launcher |
+| Login | greetd with the Memora login screen; straight to the desktop after the disk password when encrypted |
+| Session | Hyprland (Lua config) via uwsm, Memora shell |
 | Drivers | Picked from `lspci`: NVIDIA (open), AMD, Intel, VM |
-
-## Keys
-
-| Keys | Action |
-|---|---|
-| Super+Space | Launcher |
-| Super+Return | Terminal |
-| Super+A | Memora AI |
-| Super+M | Memora menu |
-| Super+K | All keybindings |
-| Super+T | Switch light / dark |
-| Super+Q | Close window |
-| Super+1…0 | Workspaces |
-| Print | Screenshot region |
-
-## Memora AI
-
-`memora-ai setup` picks where it runs:
-
-- **Claude** through the Anthropic API (default model `claude-opus-5-5`)
-- **Claude Code** with your Claude account
-- **Ollama** locally, private and offline (model sized to RAM)
-- any **OpenAI-compatible** endpoint (LM Studio, OpenRouter)
-
-It knows the system it runs on, keeps a memory file you control
-(`memora-ai remember …`, `memora-ai memory`), and can run the command block from its last
-answer after you confirm (`/run`). In the shell: `?? question`, `cmd 2>&1 | ?? explain`, `wtf`.
 
 ## Layout
 
@@ -67,17 +76,18 @@ answer after you confirm (`/run`). In the shell: `?? question`, `cmd 2>&1 | ?? e
 build.sh, builder/   ISO build (Docker + archiso releng overlay)
 iso/                 live ISO overlay: installer, boot, motd
 system/              installed to /usr/share/memora
-  bin/               memora, memora-ai, memora-theme, memora-menu, ...
+  shell/             the shell, login, Settings, AI and Welcome windows (QML)
+  ai/agent.py        Memora AI agent (Anthropic SDK)
+  bin/               memora, memora-shell, memora-ai, memora-settings, memora-theme, ...
   default/hypr/      Hyprland defaults (Lua), updated with the system
-  config/            files copied once into ~/.config
-  templates/         theme templates rendered by memora-theme
-  themes/            light, dark (colors, wallpaper, logo)
+  icons/             Memora icon theme (generated)
+  themes/            light, dark (colours, wallpaper, logo)
   install/           chroot and user setup run by the installer
 test/vm.sh           QEMU harness
-tools/gen-art.sh     renders logos and wallpapers
+tools/               gen-art.sh (logos, wallpapers, icons), silk.py, icons.py
 ```
 
-Personal changes go in `~/.config/hypr/user.lua`; it loads last.
+Personal Hyprland changes go in `~/.config/hypr/user.lua`; it loads last.
 
 ## License
 

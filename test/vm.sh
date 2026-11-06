@@ -44,7 +44,7 @@ case "${1:-}" in
     grep -q MEMORA_INSTALL_OK "${pre}install.log" && echo "INSTALL OK" || { echo "INSTALL FAILED, see test/install.log"; exit 1; }
     ;;
   boot)  # headless; with VM=dev it also runs system/ live from this checkout
-    share=(); [[ $name == dev ]] && share=("${live[@]}")
+    share=(); [[ $name == dev && ${LIVE:-1} == 1 ]] && share=("${live[@]}")
     qemu-system-x86_64 "${common[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2" -device virtio-blk-pci,drive=hd,bootindex=0 \
       ${GPU:--device virtio-vga-gl,xres=1920,yres=1080 -display egl-headless,rendernode=/dev/dri/renderD128} \
       -vnc ":${VNC:-5}" -serial "file:${pre}boot.log" &
