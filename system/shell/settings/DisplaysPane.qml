@@ -28,7 +28,10 @@ Kit.Page {
     delegate: Kit.Group {
       required property var modelData
       header: modelData.description || modelData.name
-      Kit.Row { label: "Resolution"; Kit.Value { text: modelData.width + " × " + modelData.height + (modelData.lastIpcObject ? " at " + Math.round(modelData.lastIpcObject.refreshRate || 60) + " Hz" : "") } }
+      Kit.Row { label: "Resolution"; Kit.Value {
+        readonly property var o: modelData.lastIpcObject || ({})
+        text: (o.width || modelData.width) ? (o.width || modelData.width) + " × " + (o.height || modelData.height) + " at " + Math.round(o.refreshRate || 60) + " Hz" : "…"
+      } }
       Kit.Row {
         label: "Scale"; detail: "Larger text and controls, or more space"; last: true
         Kit.Choice {

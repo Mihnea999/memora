@@ -36,6 +36,7 @@ QtObject {
     Txt { visible: grp.header !== ""; text: grp.header; font.weight: Font.Bold; color: Theme.textDim; font.pixelSize: Theme.small; x: 4 }
     Rectangle {
       id: box
+      visible: inner.implicitHeight > 0
       y: grp.header ? 24 : 0
       width: parent.width
       height: inner.implicitHeight

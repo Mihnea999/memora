@@ -18,9 +18,11 @@ Kit.Page {
     header: "Memora"
     footer: "Each one has a light and a dark version and follows the appearance."
     Grid {
+      id: setsGrid
       Layout.fillWidth: true
       Layout.margins: 12
       columns: 5; spacing: 12
+      readonly property real tw: Math.floor((width - 4 * spacing) / 5)
       Repeater {
         model: p.sets
         delegate: Column {
@@ -28,7 +30,7 @@ Kit.Page {
           readonly property bool on: Prefs.wallpaper === "" && Prefs.wallpaperSet === modelData[0]
           spacing: 6
           Rectangle {
-            width: 118; height: 76; radius: 9
+            width: setsGrid.tw; height: Math.round(setsGrid.tw * 0.64); radius: 9
             border.width: parent.on ? 3 : 1
             border.color: parent.on ? Theme.accent : Theme.separator
             clip: true
@@ -40,7 +42,7 @@ Kit.Page {
             HoverHandler { id: wh }
             TapHandler { onTapped: { Prefs.set("wallpaper", ""); Prefs.set("wallpaperSet", modelData[0]) } }
           }
-          Txt { width: 118; text: modelData[1]; horizontalAlignment: Text.AlignHCenter; font.weight: parent.on ? Font.Bold : Font.Normal; font.pixelSize: Theme.small + 0.5 }
+          Txt { width: setsGrid.tw; text: modelData[1]; horizontalAlignment: Text.AlignHCenter; font.weight: parent.on ? Font.Bold : Font.Normal; font.pixelSize: Theme.small + 0.5 }
         }
       }
     }
@@ -49,6 +51,7 @@ Kit.Page {
     header: "Your pictures"
     footer: p.pictures.length ? "" : "Put images in the Pictures folder to see them here."
     Grid {
+      visible: p.pictures.length > 0
       Layout.fillWidth: true
       Layout.margins: 12
       columns: 3; spacing: 14
