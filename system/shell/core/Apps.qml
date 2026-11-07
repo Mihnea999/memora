@@ -67,7 +67,7 @@ Singleton {
 
   // ---- dock: pinned apps, kept in ~/.config/memora/dock ---------------------
   readonly property var defaultPinned: [
-    "memora-files", "memora-launchpad", "chromium", "org.gnome.Ptyxis", "memora-ai", "memora-notes",
+    "memora-files", "memora-launchpad", "chromium", "org.gnome.Ptyxis", "memora-notes",
     "org.gnome.Calculator", "org.gnome.Loupe", "org.gnome.Papers",
     "mpv", "memora-store", "memora-settings"
   ]

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # memora-ai — the assistant built into Memora.
-#   memora-ai [window] [QUESTION]   open the Memora AI window (and ask right away)
+#   memora-ai [window] [QUESTION]   open the Memora AI notch (and ask right away)
 #   memora-ai ask QUESTION          answer in the terminal; piped input is attached
 #   memora-ai explain-clipboard     ask about what is in the clipboard
 #   memora-ai explain-last CMD      run CMD again and explain what went wrong
@@ -8,16 +8,12 @@
 #   memora-ai setup                 System Settings > Memora AI
 dir="${MEMORA_PATH:-/usr/share/memora}"
 memory="$HOME/.local/share/memora/ai/memory.md"
-win="$dir/shell/ai.qml"
 
+# Memora AI is the notch at the top of the screen, part of the desktop shell.
 window() {
-  source "$dir/lib/single.sh"
-  if pgrep -f "qs -p $win" >/dev/null && ! memora_window memora-ai; then pkill -f "qs -p $win"; sleep 0.2; fi
-  if pgrep -f "qs -p $win" >/dev/null; then
-    [[ -n $* ]] && qs -p "$win" ipc call ai ask "$*"
-    exec hyprctl dispatch 'hl.dsp.focus({ window = "class:memora-ai" })' >/dev/null
-  fi
-  MEMORA_AI_PROMPT="$*" exec uwsm app -- qs -p "$win"
+  local sh="$dir/shell"
+  if [[ -n $* ]]; then exec qs -p "$sh" ipc call ai ask "$*"; fi
+  exec qs -p "$sh" ipc call ai toggle
 }
 
 case "${1:-window}" in
