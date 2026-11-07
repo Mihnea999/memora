@@ -509,7 +509,7 @@ class Agent:
         self.messages = []
         self.tools = Tools(ui)
 
-    def tools(self):
+    def tool_specs(self):
         """Screen tools only when the person allows it (System Settings > Privacy & Security)."""
         try:
             self.cfg.update(json.loads((CONF / "ai.json").read_text()))
@@ -553,7 +553,7 @@ class Agent:
                     max_tokens=32000,
                     system=system_prompt(),
                     thinking={"type": "adaptive"},
-                    tools=self.tools() + SERVER_TOOLS,
+                    tools=self.tool_specs() + SERVER_TOOLS,
                     messages=self.messages,
                 ) as stream:
                     for event in stream:
@@ -597,7 +597,10 @@ class Agent:
                     continue
                 tid = self.ui.tool_start(b.name, describe(b.name, b.input))
                 try:
-                    content, err = self.tools.run(b.name, b.input)
+                    if b.name in SCREEN_TOOLS and not self.cfg.get("screenControl", True):
+                        content, err = "The person turned off screen control (System Settings > Privacy & Security).", True
+                    else:
+                        content, err = self.tools.run(b.name, b.input)
                 except Exception as e:
                     content, err = f"{type(e).__name__}: {e}", True
                 self.ui.tool_end(tid, not err)
