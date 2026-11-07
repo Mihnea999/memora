@@ -15,6 +15,7 @@ case "${1:-}" in
   lock) exec qs -p "$dir" ipc call lock lock ;;
   snap) exec qs -p "$dir" ipc call snap "${2:-end}" ;;
   minimize) exec qs -p "$dir" ipc call shell minimize ;;
+  project) exec qs -p "$dir" ipc call display project ;;
   show-desktop) exec qs -p "$dir" ipc call shell showDesktop ;;
   *) exec qs -p "$dir" ipc call shell "$@" ;;
 esac

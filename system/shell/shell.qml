@@ -19,6 +19,7 @@ import qs.lock
 import qs.snap
 import qs.alert
 import qs.notch
+import qs.display
 
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
@@ -39,6 +40,7 @@ ShellRoot {
   Genie {}
   Alert {}
   Notch {}
+  Project {}
 
   IpcHandler {
     target: "osd"

@@ -7,41 +7,113 @@ import qs.core
 import qs.ui
 import qs.settings
 
+// Displays: how screens work together, and each screen's resolution, refresh
+// rate and scale. Everything goes through memora-display, which writes
+// ~/.config/hypr/monitors.lua and applies it at once.
 Kit.Page {
   id: p
   title: "Displays"
-  readonly property var mons: Hyprland.monitors.values
+  property var cfg: ({ mode: "extend", main: "", arrange: "right", scale: {}, res: {} })
+  property var mons: []           // hyprctl monitors all
   property bool nightShift: false
   Kit.Cmd { id: ns; onDone: out => p.nightShift = out.trim() !== "" }
-  Component.onCompleted: { Hyprland.refreshMonitors(); ns.exec(["pgrep", "-x", "hyprsunset"]) }
+  Kit.Cmd {
+    id: st
+    onDone: out => { try { const j = JSON.parse(out); p.cfg = j.config; p.mons = j.monitors } catch (e) {} }
+  }
+  Kit.Cmd { id: setter; onDone: refreshLater.restart() }
+  Timer { id: refreshLater; interval: 600; onTriggered: p.refresh() }
+  function refresh() { st.exec(["memora-display", "state"]) }
+  function set(k, v) { setter.exec(["memora-display", "set", k, String(v)]) }
+  function mode(m) { setter.exec(["memora-display", "mode", m]) }
+  Component.onCompleted: { refresh(); ns.exec(["pgrep", "-x", "hyprsunset"]) }
+  Connections { target: Hyprland; function onRawEvent(ev) { if (ev.name.indexOf("monitor") === 0) refreshLater.restart() } }
 
-  // Scales are kept in ~/.config/hypr/monitors.lua, which the session loads.
-  FileView { id: monFile; path: Quickshell.env("HOME") + "/.config/hypr/monitors.lua"; printErrors: false }
-  function setScale(m, s) {
-    const lines = p.mons.map(x => 'hl.monitor({ output = "' + x.name + '", mode = "preferred", position = "auto", scale = ' + (x === m ? s : x.scale) + ' })')
-    monFile.setText("-- Written by System Settings > Displays.\n" + lines.join("\n") + "\n")
-    Quickshell.execDetached(["hyprctl", "eval", lines.find(l => l.indexOf('"' + m.name + '"') > 0)])
+  readonly property string mainName: p.cfg.main && p.mons.some(m => m.name === p.cfg.main) ? p.cfg.main : (p.mons[0] ? p.mons[0].name : "")
+  function label(m) { return (m.make && m.model ? m.make + " " + m.model : (m.description || m.name)).replace(/\s+\(.*\)$/, "") }
+  // A few sensible modes: unique resolutions, each with its best refresh rate.
+  function modesOf(m) {
+    const seen = {}, out = []
+    ;(m.availableModes || []).forEach(s => {
+      const r = s.match(/^(\d+)x(\d+)@([\d.]+)Hz$/); if (!r) return
+      const k = r[1] + "x" + r[2]
+      if (!seen[k]) { seen[k] = []; out.push(k) }
+      seen[k].push(Math.round(parseFloat(r[3])))
+    })
+    return out.slice(0, 6).map(k => ({ res: k, rates: Array.from(new Set(seen[k])).sort((a, b) => b - a).slice(0, 4) }))
   }
 
+  // ---- several screens --------------------------------------------------------
+  Kit.Group {
+    visible: p.mons.length > 1
+    header: "Arrangement"
+    footer: "Super+P chooses quickly, and the choice appears by itself when you plug in a screen."
+    Kit.Row {
+      label: "Use screens"
+      Kit.Choice {
+        value: p.cfg.mode
+        options: [{ text: "Extend", value: "extend" }, { text: "Mirror", value: "mirror" }, { text: "Main Only", value: "main" }, { text: "Other Only", value: "second" }]
+        onPicked: v => p.mode(v)
+      }
+    }
+    Kit.Row {
+      label: "Main screen"; detail: "Where the menu bar and the Dock start"
+      Kit.Choice {
+        value: p.mainName
+        options: p.mons.map(m => ({ text: m.model || m.name, value: m.name }))
+        onPicked: v => p.set("main", v)
+      }
+    }
+    Kit.Row {
+      label: "Other screens are"; last: true
+      enabled: p.cfg.mode === "extend"; opacity: enabled ? 1 : 0.4
+      Kit.Choice {
+        value: p.cfg.arrange
+        options: [{ text: "Left", value: "left" }, { text: "Right", value: "right" }, { text: "Above", value: "above" }, { text: "Below", value: "below" }]
+        onPicked: v => p.set("arrange", v)
+      }
+    }
+  }
+
+  // ---- each screen ------------------------------------------------------------------
   Repeater {
     model: p.mons
     delegate: Kit.Group {
+      id: g
       required property var modelData
-      header: modelData.description || modelData.name
-      Kit.Row { label: "Resolution"; Kit.Value {
-        readonly property var o: modelData.lastIpcObject || ({})
-        text: (o.width || modelData.width) ? (o.width || modelData.width) + " × " + (o.height || modelData.height) + " at " + Math.round(o.refreshRate || 60) + " Hz" : "…"
-      } }
+      readonly property var modes: p.modesOf(modelData)
+      readonly property string curRes: modelData.width + "x" + modelData.height
+      readonly property int curRate: Math.round(modelData.refreshRate || 60)
+      header: p.label(modelData) + (modelData.name === p.mainName && p.mons.length > 1 ? " · Main" : "") + (modelData.disabled ? " · Off" : "")
+      Kit.Row {
+        label: "Resolution"
+        Kit.Choice {
+          value: g.curRes
+          options: g.modes.slice(0, 4).map(x => ({ text: x.res.replace("x", "×"), value: x.res }))
+          onPicked: v => { const mm = g.modes.find(x => x.res === v); p.set("res." + g.modelData.name, v + "@" + (mm ? mm.rates[0] : 60)) }
+        }
+      }
+      Kit.Row {
+        id: rateRow
+        label: "Refresh rate"
+        readonly property var rates: (g.modes.find(x => x.res === g.curRes) || { rates: [g.curRate] }).rates
+        Kit.Choice {
+          value: g.curRate
+          options: rateRow.rates.map(r => ({ text: r + " Hz", value: r }))
+          onPicked: v => p.set("res." + g.modelData.name, g.curRes + "@" + v)
+        }
+      }
       Kit.Row {
         label: "Scale"; detail: "Larger text and controls, or more space"; last: true
         Kit.Choice {
-          value: Math.round(modelData.scale * 100) / 100
+          value: Math.round((p.cfg.scale[g.modelData.name] || g.modelData.scale || 1) * 100) / 100
           options: [{ text: "100%", value: 1 }, { text: "125%", value: 1.25 }, { text: "150%", value: 1.5 }, { text: "175%", value: 1.75 }, { text: "200%", value: 2 }]
-          onPicked: v => p.setScale(modelData, v)
+          onPicked: v => p.set("scale." + g.modelData.name, v)
         }
       }
     }
   }
+
   Kit.Group {
     footer: "Warmer colours after dark are easier on the eyes."
     Kit.Row {
