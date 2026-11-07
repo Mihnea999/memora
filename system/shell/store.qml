@@ -33,7 +33,7 @@ ShellRoot {
   Process {
     id: setup
     running: true
-    command: ["bash", "-c", "flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak update --user --appstream flathub >/dev/null 2>&1; echo $?; d=$(ls -dt ~/.local/share/flatpak/appstream/flathub/x86_64/*/icons/128x128 2>/dev/null | head -1); echo \"$d\""]
+    command: ["bash", "-c", "flatpak remote-add --user --if-not-exists artcraft-oci https://getartcraft.com/artcraft-oci.flatpakrepo >/dev/null 2>&1; flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak update --user --appstream flathub >/dev/null 2>&1; echo $?; d=$(ls -dt ~/.local/share/flatpak/appstream/flathub/x86_64/*/icons/128x128 2>/dev/null | head -1); echo \"$d\""]
     stdout: StdioCollector { onStreamFinished: { const f = text.trim().split("\n"); app.iconDir = f[1] ? f[1] + "/" : ""; app.ready = f[0] === "0"; app.status = app.ready ? "" : "Flathub can't be reached. Check the internet connection." ; app.refresh() } }
   }
   Process {
@@ -48,7 +48,7 @@ ShellRoot {
     property string kind
     command: appId.startsWith("cli.") ? ["memora-store-cli", kind, appId]
       : kind === "install"
-      ? ["flatpak", "install", "--user", "-y", "--noninteractive", "flathub", appId]
+      ? ["flatpak", "install", "--user", "-y", "--noninteractive", (app.entry(appId) || {}).remote || "flathub", appId]
       : ["flatpak", "uninstall", "--user", "-y", "--noninteractive", appId]
     running: true
     stdout: SplitParser {
@@ -77,7 +77,7 @@ ShellRoot {
   function open(id) { Quickshell.execDetached(id.startsWith("cli.") ? ["memora-store-cli", "open", id] : ["flatpak", "run", id]) }
   function entry(id) { return catalog.apps.find(x => x.id === id) || null }
   function nameOf(id) { const a = catalog.apps.find(x => x.id === id); return a ? a.name : id }
-  function iconOf(id) { return iconDir && id && !id.startsWith("cli.") ? "file://" + iconDir + id + ".png" : "" }
+  function iconOf(id) { const e = entry(id); return iconDir && id && !id.startsWith("cli.") && !(e && e.remote) ? "file://" + iconDir + id + ".png" : "" }
 
   readonly property var shown: {
     const q = query.toLowerCase()
@@ -143,7 +143,7 @@ ShellRoot {
               color: parent.here ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.35 : 0.18) : (nh.hovered ? Theme.hover : "transparent")
               Behavior on color { ColorAnimation { duration: Theme.fast } }
               Sym { id: ns; x: 10; anchors.verticalCenter: parent.verticalCenter; width: 14; height: 14; color: parent.parent.here ? Theme.accent : Theme.textDim
-                    name: ({ Discover: "sparkle", AI: "ai", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow" })[modelData] || "plus" }
+                    name: ({ Discover: "sparkle", AI: "ai", Electronics: "gear", "Virtual Machines": "display", ArtCraft: "palette", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow" })[modelData] || "plus" }
               Txt { anchors { left: ns.right; leftMargin: 10; verticalCenter: parent.verticalCenter } text: modelData; font.weight: parent.parent.here ? Font.Bold : Font.Normal }
             }
             HoverHandler { id: nh }
@@ -207,7 +207,7 @@ ShellRoot {
                 }
                 scale: fh.hovered ? 1.02 : 1
                 Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
-                Txt { x: 20; y: 18; text: ["Editors' choice", "Make something", "For developers"][index % 3]; color: Qt.rgba(1, 1, 1, 0.8); font.pixelSize: Theme.small; font.weight: Font.Bold }
+                Txt { x: 20; y: 18; text: ["New: Claude for Memora", "ArtCraft", "For engineers"][index % 3]; color: Qt.rgba(1, 1, 1, 0.8); font.pixelSize: Theme.small; font.weight: Font.Bold }
                 Txt { x: 20; y: 40; width: parent.width - 130; height: 28; text: parent.a.name; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Bold; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 13; verticalAlignment: Text.AlignVCenter }
                 Txt { x: 20; y: 72; width: parent.width - 130; text: parent.a.summary; color: Qt.rgba(1, 1, 1, 0.85); wrapMode: Text.Wrap; maximumLineCount: 3 }
                 StoreIcon { appId: parent.modelData; width: 86; height: 86; anchors { right: parent.right; rightMargin: 20; verticalCenter: parent.verticalCenter } }
@@ -299,7 +299,7 @@ ShellRoot {
               id: inf
               x: 16; y: 12; width: parent.width - 32
               columns: 2; columnSpacing: 20; rowSpacing: 6
-              Txt { text: "Source"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "Its makers' official installer" : "Flathub"; font.pixelSize: Theme.small }
+              Txt { text: "Source"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "Its makers' official installer" : ((app.entry(app.detail) || {}).remote === "artcraft-oci" ? "ArtCraft (getartcraft.com)" : "Flathub"); font.pixelSize: Theme.small }
               Txt { text: "Identifier"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail; font.pixelSize: Theme.small }
               Txt { text: "Installs for"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "You; opens in Terminal" : "You (no password needed), in its own sandbox"; font.pixelSize: Theme.small }
             }
@@ -327,7 +327,7 @@ ShellRoot {
       readonly property var e: app.entry(si.appId)
       Rectangle {
         anchors.fill: parent
-        visible: !!si.e && si.e.source === "cli"
+        visible: !!si.e && !!si.e.color && ii.status !== Image.Ready
         radius: width * 0.22
         gradient: Gradient {
           GradientStop { position: 0; color: si.e && si.e.color ? Qt.lighter(si.e.color, 1.25) : "#555" }
@@ -339,7 +339,7 @@ ShellRoot {
       // Until Flathub's icon is here: the app's initial on a tile.
       Rectangle {
         anchors.fill: parent
-        visible: ii.status !== Image.Ready && !(si.e && si.e.source === "cli")
+        visible: ii.status !== Image.Ready && !(si.e && si.e.color)
         radius: width * 0.22
         color: Theme.tile
         border.color: Theme.separator

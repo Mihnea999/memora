@@ -15,7 +15,8 @@ if not data:find("flatpak/exports", 1, true) then
 end
 hl.env("XDG_DATA_DIRS", data)
 -- Memora commands, including ones added by an update.
-hl.env("PATH", (os.getenv("MEMORA_PATH") or "/usr/share/memora") .. "/bin:" .. (os.getenv("PATH") or "/usr/bin"))
+-- And tools installed for you (Claude Code, npm/uv/mise tools from the App Store).
+hl.env("PATH", (os.getenv("MEMORA_PATH") or "/usr/share/memora") .. "/bin:" .. home .. "/.local/bin:" .. home .. "/.local/share/mise/shims:" .. (os.getenv("PATH") or "/usr/bin"))
 hl.env("MEMORA_PATH", os.getenv("MEMORA_PATH") or "/usr/share/memora")
 
 -- NVIDIA. On a desktop with only an NVIDIA card everything uses it. On a

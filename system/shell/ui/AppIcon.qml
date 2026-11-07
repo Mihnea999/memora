@@ -28,9 +28,17 @@ Item {
       smooth: true; mipmap: true
     }
     Image {
+      id: inner
       anchors.centerIn: parent
       width: parent.width * 0.56; height: width
-      source: a.own ? "" : Quickshell.iconPath(a.name, "application-x-executable")
+      // Apps installed after the desktop started (App Store) aren't in the
+      // icon theme's cache yet: look in their export folder directly.
+      readonly property string themed: a.name ? Quickshell.iconPath(a.name, true) : ""
+      Connections { target: a; function onNameChanged() { inner.tryN = 0 } }
+      readonly property string exported: Quickshell.env("HOME") + "/.local/share/flatpak/exports/share/icons/hicolor/"
+      property int tryN: 0
+      source: a.own || a.name === "" ? "" : (themed !== "" ? themed : (["scalable/apps/" + a.name + ".svg", "256x256/apps/" + a.name + ".png", "128x128/apps/" + a.name + ".png"].map(x => "file://" + exported + x)[tryN] || Quickshell.iconPath("application-x-executable")))
+      onStatusChanged: if (status === Image.Error && tryN < 3) tryN++
       sourceSize: Qt.size(192, 192)
       smooth: true; mipmap: true
     }

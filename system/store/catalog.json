@@ -1,15 +1,18 @@
 {
  "featured": [
-  "cli.claude-code",
-  "dev.zed.Zed",
-  "org.blender.Blender"
+  "cli.claude-desktop",
+  "ai.storyteller.photocraft",
+  "org.kicad.KiCad"
  ],
  "categories": [
   "AI",
+  "Development",
+  "Electronics",
+  "Virtual Machines",
+  "ArtCraft",
   "Productivity",
   "Internet",
   "Creativity",
-  "Development",
   "Media",
   "Games",
   "Utilities"
@@ -216,7 +219,7 @@
    "name": "Podman Desktop",
    "summary": "Containers",
    "description": "Manage containers, images and pods from a friendly window.",
-   "category": "Development"
+   "category": "Virtual Machines"
   },
   {
    "id": "io.github.shiftey.Desktop",
@@ -614,7 +617,7 @@
    "name": "Pods",
    "summary": "Manage containers",
    "description": "A clean app for Podman containers and images.",
-   "category": "Development"
+   "category": "Virtual Machines"
   },
   {
    "id": "me.iepure.devtoolbox",
@@ -628,7 +631,7 @@
    "name": "Boxes",
    "summary": "Virtual machines, simply",
    "description": "Run other operating systems in a window.",
-   "category": "Development"
+   "category": "Virtual Machines"
   },
   {
    "id": "cli.node",
@@ -705,7 +708,7 @@
    "name": "Docker",
    "summary": "Containers",
    "description": "The Docker engine with Compose and Buildx (asks for your password).",
-   "category": "Development",
+   "category": "Virtual Machines",
    "source": "cli",
    "color": "#2496ed",
    "mark": "🐳"
@@ -744,6 +747,390 @@
    "summary": "Manage AppImages",
    "description": "Integrate AppImage apps (like Cursor) into Memora.",
    "category": "Utilities"
+  },
+  {
+   "id": "cli.claude-desktop",
+   "name": "Claude",
+   "summary": "Anthropic's Claude, as an app",
+   "description": "The official Claude Desktop app: chat, projects, Claude Code sessions and connectors, in its own window. Sign in with your Claude account. Installed from Anthropic's own repository.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#d97757",
+   "mark": "✳"
+  },
+  {
+   "id": "ai.storyteller.photocraft",
+   "name": "PhotoCraft",
+   "summary": "Image editor",
+   "description": "Layers, masks, adjustments and PSD files, in a fast open-source editor. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#2f7bff",
+   "mark": "Ph"
+  },
+  {
+   "id": "ai.storyteller.vectorcraft",
+   "name": "VectorCraft",
+   "summary": "Vector illustration",
+   "description": "Draw logos, icons and illustrations with paths and shapes. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#ff8a3d",
+   "mark": "Ve"
+  },
+  {
+   "id": "ai.storyteller.filmcraft",
+   "name": "FilmCraft",
+   "summary": "Video editor",
+   "description": "Cut, arrange and colour your films on a GPU-accelerated timeline. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#a565f5",
+   "mark": "Fi"
+  },
+  {
+   "id": "ai.storyteller.lightcraft",
+   "name": "LightCraft",
+   "summary": "Photo library and RAW developer",
+   "description": "Organise your photos and develop RAW files, with presets. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#30b0c7",
+   "mark": "Lr"
+  },
+  {
+   "id": "ai.storyteller.pdfcraft",
+   "name": "PdfCraft",
+   "summary": "PDF workbench",
+   "description": "Read, organise, combine, split and secure PDF files. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#e8433c",
+   "mark": "Pd"
+  },
+  {
+   "id": "ai.storyteller.effectcraft",
+   "name": "EffectCraft",
+   "summary": "Motion graphics and effects",
+   "description": "Animated titles, compositing and visual effects. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#7a5cff",
+   "mark": "Ef"
+  },
+  {
+   "id": "ai.storyteller.designcraft",
+   "name": "DesignCraft",
+   "summary": "Page layout and publishing",
+   "description": "Lay out magazines, books and posters. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#ff5f8f",
+   "mark": "De"
+  },
+  {
+   "id": "ai.storyteller.figcraft",
+   "name": "FigCraft",
+   "summary": "Interface design",
+   "description": "Design and prototype app and web interfaces. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#22a447",
+   "mark": "Fg"
+  },
+  {
+   "id": "ai.storyteller.texturecraft",
+   "name": "TextureCraft",
+   "summary": "3D texture painting",
+   "description": "Paint textures straight onto 3D models. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#c77c02",
+   "mark": "Tx"
+  },
+  {
+   "id": "ai.storyteller.materialcraft",
+   "name": "MaterialCraft",
+   "summary": "Procedural materials",
+   "description": "Build materials with a node graph. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#8a8d96",
+   "mark": "Ma"
+  },
+  {
+   "id": "ai.storyteller.wordcraft",
+   "name": "WordCraft",
+   "summary": "Word processor",
+   "description": "Write and format documents. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#2b74f0",
+   "mark": "Wo"
+  },
+  {
+   "id": "ai.storyteller.soundcraft",
+   "name": "SoundCraft",
+   "summary": "Audio workstation",
+   "description": "Record, arrange and mix music. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#ff453a",
+   "mark": "So"
+  },
+  {
+   "id": "ai.storyteller.deckcraft",
+   "name": "DeckCraft",
+   "summary": "Presentations",
+   "description": "Make slide shows. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#ff9f0a",
+   "mark": "Dk"
+  },
+  {
+   "id": "ai.storyteller.cadcraft",
+   "name": "CADCraft",
+   "summary": "CAD and drafting",
+   "description": "Draw precise 2D and 3D designs. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#5e8ee6",
+   "mark": "Cd"
+  },
+  {
+   "id": "ai.storyteller.gridcraft",
+   "name": "GridCraft",
+   "summary": "Spreadsheets",
+   "description": "Work with numbers, tables and charts. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#34c759",
+   "mark": "Gr"
+  },
+  {
+   "id": "ai.storyteller.craft-anything",
+   "name": "Craft Anything",
+   "summary": "Make your own software",
+   "description": "Explore and create small apps with AI. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#1c1c1e",
+   "mark": "✦"
+  },
+  {
+   "id": "ai.storyteller.artcraft-launcher",
+   "name": "ArtCraft Launcher",
+   "summary": "Install and update every ArtCraft app",
+   "description": "One place to get all the ArtCraft apps and keep them up to date. Part of ArtCraft, an open-source creative suite (early versions).",
+   "category": "ArtCraft",
+   "remote": "artcraft-oci",
+   "color": "#3a3d45",
+   "mark": "AC"
+  },
+  {
+   "id": "org.kicad.KiCad",
+   "name": "KiCad",
+   "summary": "Schematics and PCB design",
+   "description": "Design circuits and printed circuit boards, from schematic to Gerber files, with 3D view.",
+   "category": "Electronics"
+  },
+  {
+   "id": "org.librepcb.LibrePCB",
+   "name": "LibrePCB",
+   "summary": "Easy PCB design",
+   "description": "A modern, beginner-friendly schematic and board editor.",
+   "category": "Electronics"
+  },
+  {
+   "id": "org.horizon_eda.HorizonEDA",
+   "name": "Horizon EDA",
+   "summary": "PCB design with a strong parts pool",
+   "description": "Schematic and board design built around a well-organised parts library.",
+   "category": "Electronics"
+  },
+  {
+   "id": "io.github.ra3xdh.qucs_s",
+   "name": "Qucs-S",
+   "summary": "Circuit simulation",
+   "description": "Draw circuits and simulate them with ngspice or Xyce.",
+   "category": "Electronics"
+  },
+  {
+   "id": "org.qelectrotech.QElectroTech",
+   "name": "QElectroTech",
+   "summary": "Electrical diagrams",
+   "description": "Wiring, control and installation diagrams with a large symbol library.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.github.reds.LogisimEvolution",
+   "name": "Logisim Evolution",
+   "summary": "Digital logic",
+   "description": "Design and simulate logic circuits, up to whole CPUs.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.scoutshonour.Digital",
+   "name": "Digital",
+   "summary": "Logic simulator",
+   "description": "Build and test digital circuits; export to Verilog and VHDL.",
+   "category": "Electronics"
+  },
+  {
+   "id": "io.github.gtkwave.GTKWave",
+   "name": "GTKWave",
+   "summary": "Waveform viewer",
+   "description": "Look at VCD and FST traces from HDL simulations.",
+   "category": "Electronics"
+  },
+  {
+   "id": "cc.arduino.IDE2",
+   "name": "Arduino IDE",
+   "summary": "Program microcontrollers",
+   "description": "Write, upload and debug Arduino sketches, with a serial monitor.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.serial_studio.Serial-Studio",
+   "name": "Serial Studio",
+   "summary": "Live serial dashboards",
+   "description": "Plot and visualise data from serial ports, Bluetooth and MQTT.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.gitlab.cutecom.cutecom",
+   "name": "CuteCom",
+   "summary": "Serial terminal",
+   "description": "A simple terminal for serial ports.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.st.STM32CubeMX",
+   "name": "STM32CubeMX",
+   "summary": "Configure STM32 chips",
+   "description": "Pin, clock and peripheral setup with generated code.",
+   "category": "Electronics"
+  },
+  {
+   "id": "org.raspberrypi.rpi-imager",
+   "name": "Raspberry Pi Imager",
+   "summary": "Write OS images",
+   "description": "Put an operating system on an SD card for a Raspberry Pi.",
+   "category": "Electronics"
+  },
+  {
+   "id": "org.freecad.FreeCAD",
+   "name": "FreeCAD",
+   "summary": "Parametric 3D CAD",
+   "description": "Model enclosures, parts and assemblies.",
+   "category": "Electronics"
+  },
+  {
+   "id": "org.openscad.OpenSCAD",
+   "name": "OpenSCAD",
+   "summary": "CAD with code",
+   "description": "Describe 3D parts in a script.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.solvespace.SolveSpace",
+   "name": "SolveSpace",
+   "summary": "Constraint-based CAD",
+   "description": "Quick, precise 2D and 3D parts.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.prusa3d.PrusaSlicer",
+   "name": "PrusaSlicer",
+   "summary": "3D printing",
+   "description": "Prepare models for your 3D printer.",
+   "category": "Electronics"
+  },
+  {
+   "id": "com.bambulab.BambuStudio",
+   "name": "Bambu Studio",
+   "summary": "3D printing for Bambu Lab",
+   "description": "Slice and send prints to Bambu Lab printers.",
+   "category": "Electronics"
+  },
+  {
+   "id": "cli.platformio",
+   "name": "PlatformIO",
+   "summary": "Embedded development",
+   "description": "Build and upload firmware for 1,500+ boards (ESP32, STM32, AVR…) from the terminal.",
+   "category": "Electronics",
+   "source": "cli",
+   "color": "#f5822a",
+   "mark": "pio"
+  },
+  {
+   "id": "cli.arduino-cli",
+   "name": "Arduino CLI",
+   "summary": "Arduino from the terminal",
+   "description": "Compile and upload sketches without the IDE.",
+   "category": "Electronics",
+   "source": "cli",
+   "color": "#00979d",
+   "mark": "ino"
+  },
+  {
+   "id": "cli.ngspice",
+   "name": "ngspice",
+   "summary": "SPICE circuit simulator",
+   "description": "The circuit simulator behind KiCad and Qucs-S simulations.",
+   "category": "Electronics",
+   "source": "cli",
+   "color": "#3a3d45",
+   "mark": "~"
+  },
+  {
+   "id": "cli.virt-manager",
+   "name": "Virtual Machine Manager",
+   "summary": "Full control over virtual machines",
+   "description": "QEMU/KVM with libvirt: networks, disks, snapshots, GPU passthrough. Asks for your password to set up.",
+   "category": "Virtual Machines",
+   "source": "cli",
+   "color": "#c4473a",
+   "mark": "VM"
+  },
+  {
+   "id": "cli.distrobox",
+   "name": "Distrobox",
+   "summary": "Any Linux inside a container",
+   "description": "Run Ubuntu, Fedora or Debian tools as if they were installed here.",
+   "category": "Virtual Machines",
+   "source": "cli",
+   "color": "#a2399e",
+   "mark": "db"
+  },
+  {
+   "id": "io.github.dvlv.boxbuddyrs",
+   "name": "BoxBuddy",
+   "summary": "Manage Distrobox containers",
+   "description": "A friendly window for your Distrobox containers.",
+   "category": "Virtual Machines"
+  },
+  {
+   "id": "com.ranfdev.DistroShelf",
+   "name": "DistroShelf",
+   "summary": "Distrobox, beautifully",
+   "description": "Create and open containers of other distributions.",
+   "category": "Virtual Machines"
+  },
+  {
+   "id": "org.gnome.Connections",
+   "name": "Connections",
+   "summary": "Remote desktops",
+   "description": "Connect to other computers over RDP and VNC.",
+   "category": "Virtual Machines"
+  },
+  {
+   "id": "org.wireshark.Wireshark",
+   "name": "Wireshark",
+   "summary": "See network traffic",
+   "description": "Capture and inspect packets.",
+   "category": "Development"
   }
  ]
 }

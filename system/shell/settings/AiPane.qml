@@ -49,6 +49,16 @@ Kit.Page {
   }
 
   Kit.Group {
+    header: "Claude Code"
+    visible: p.cfg.provider === "claude-code"
+    footer: "Uses your Claude subscription. Not installed yet? Get Claude Code from the App Store (AI)."
+    Kit.Row {
+      label: "Account"; detail: "Sign in once with your Claude account"; last: true
+      Kit.Button { text: "Sign In…"; primary: true; onClicked: Quickshell.execDetached(["memora-float", "bash", "-lc", "claude /login; echo; read -rsn1 -p 'Done. Press a key to close.'"]) }
+    }
+  }
+
+  Kit.Group {
     header: "Account"
     visible: p.cfg.provider === "anthropic" || p.cfg.provider === "deepseek" || p.cfg.provider === "openai"
     Kit.Row {

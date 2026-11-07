@@ -34,6 +34,13 @@ DEFAULT_MODEL = "claude-opus-5-5"
 OUT_LIMIT = 20000
 
 
+# Tools installed per user (Claude Code, npm/uv tools) live outside the
+# session's PATH when the desktop was started before they were installed.
+for _d in (HOME / ".local/share/mise/shims", HOME / ".local/bin"):
+    if str(_d) not in os.environ.get("PATH", "").split(":"):
+        os.environ["PATH"] = f"{_d}:{os.environ.get('PATH', '/usr/bin')}"
+
+
 # ---------------------------------------------------------------- config ----
 def load_config():
     cfg = {"provider": "anthropic", "model": "", "baseUrl": ""}
@@ -626,7 +633,7 @@ class Agent:
     # Claude Code answers with its own tools, in its own session.
     def claude_code_turn(self, text):
         if not shutil.which("claude"):
-            raise RuntimeError("Claude Code is not installed. Install it with: memora-dev install claude")
+            raise RuntimeError("Claude Code is not installed. Get it from the App Store (AI section).")
         p = subprocess.Popen(["claude", "-p", "--output-format", "stream-json", "--verbose",
                               "--append-system-prompt", system_prompt(), text],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=HOME)
@@ -642,12 +649,21 @@ class Agent:
             if ev.get("type") == "assistant":
                 for c in ev.get("message", {}).get("content", []):
                     if c.get("type") == "text":
+                        if c["text"].strip().lower().startswith("not logged in"):
+                            p.terminate()
+                            raise RuntimeError("Claude Code isn't signed in yet. Open System Settings > Memora AI and click Sign In.")
                         self.ui.text(c["text"])
                         answer += c["text"]
                     elif c.get("type") == "tool_use":
                         tid = self.ui.tool_start(c.get("name", ""), describe(c.get("name", ""), c.get("input", {})))
                         self.ui.tool_end(tid, True)
         p.wait()
+        if p.returncode != 0 and not answer:
+            err = (p.stderr.read() or "").strip().splitlines()
+            msg = err[-1] if err else f"Claude Code stopped (code {p.returncode})."
+            if "login" in msg.lower() or "auth" in msg.lower() or "api key" in msg.lower():
+                msg = "Claude Code isn't signed in yet. Open Terminal, type claude and sign in once."
+            raise RuntimeError(msg)
         self.messages.append({"role": "assistant", "content": answer or "(no answer)"})
         self.save()
 

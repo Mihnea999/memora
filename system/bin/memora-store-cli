@@ -26,9 +26,33 @@ ollama_pkg() {
   else echo ollama; fi
 }
 
+# Claude Desktop: Anthropic ships it as a .deb (Debian/Ubuntu). Memora unpacks
+# the newest one from Anthropic's own repository into your home folder.
+CD_BASE=https://downloads.claude.ai/claude-desktop/apt/stable
+CD_DIR="$HOME/.local/share/memora-apps/claude-desktop"
+claude_desktop_install() {
+  local f tmp
+  f="$(curl -fsS "$CD_BASE/dists/stable/main/binary-amd64/Packages" | grep '^Filename: pool/main/c/claude-desktop/claude-desktop_' | sort -V | tail -n 1 | cut -d' ' -f2)"
+  [[ -n $f ]] || { echo "Couldn't find Claude Desktop."; return 1; }
+  tmp="$(mktemp -d)"
+  curl -fSL --progress-bar -o "$tmp/pkg.deb" "$CD_BASE/$f" 2>&1 | tr '\r' '\n' || { rm -rf "$tmp"; return 1; }
+  ( cd "$tmp" && bsdtar -xf pkg.deb && mkdir root && bsdtar -xf data.tar.* -C root ) || { rm -rf "$tmp"; return 1; }
+  rm -rf "$CD_DIR"; mkdir -p "$CD_DIR" "$HOME/.local/bin" "$HOME/.local/share/applications"
+  cp -a "$tmp/root/usr/lib/claude-desktop/." "$CD_DIR/"
+  cp -a "$tmp/root/usr/share/icons/." "$HOME/.local/share/icons/" 2>/dev/null || true
+  printf '#!/bin/sh\nexec "%s/claude-desktop" --ozone-platform-hint=auto "$@"\n' "$CD_DIR" > "$HOME/.local/bin/claude-desktop"
+  chmod +x "$HOME/.local/bin/claude-desktop"
+  sed "s|^Exec=claude-desktop|Exec=$HOME/.local/bin/claude-desktop|" "$tmp/root/usr/share/applications/com.anthropic.Claude.desktop" \
+    > "$HOME/.local/share/applications/com.anthropic.Claude.desktop"
+  basename "$f" | sed 's/^claude-desktop_\(.*\)_amd64.deb$/\1/' > "$CD_DIR/.memora-version"
+  rm -rf "$tmp"
+}
+claude_desktop_remove() { rm -rf "$CD_DIR" "$HOME/.local/bin/claude-desktop" "$HOME/.local/share/applications/com.anthropic.Claude.desktop"; }
+
 # id | command it provides | how to install | how to remove
 recipe() {
   case "$1" in
+    claude-desktop) cmd=claude-desktop; inst() { claude_desktop_install; }; rem() { claude_desktop_remove; } ;;
     claude-code) cmd=claude; inst() { curl -fsSL https://claude.ai/install.sh | bash; }; rem() { rm -f "$HOME/.local/bin/claude"; rm -rf "$HOME/.local/share/claude"; } ;;
     codex) cmd=codex; inst() { npm_tool install @openai/codex; }; rem() { npm_tool remove @openai/codex; } ;;
     gemini-cli) cmd=gemini; inst() { npm_tool install @google/gemini-cli; }; rem() { npm_tool remove @google/gemini-cli; } ;;
@@ -46,10 +70,15 @@ recipe() {
     deno) cmd=deno; inst() { mise use -g deno@latest && mise reshim; }; rem() { mise unuse -g deno; } ;;
     flutter) cmd=flutter; inst() { memora-dev install flutter; }; rem() { mise unuse -g flutter; } ;;
     docker) cmd=docker; inst() { pkexec bash -c "pacman -S --needed --noconfirm docker docker-compose docker-buildx && systemctl enable --now docker && usermod -aG docker $USER"; }; rem() { pkexec bash -c "systemctl disable --now docker; pacman -Rns --noconfirm docker-buildx docker-compose docker"; } ;;
+    virt-manager) cmd=virt-manager; inst() { pkexec bash -c "pacman -S --needed --noconfirm qemu-desktop libvirt virt-manager dnsmasq swtpm edk2-ovmf && systemctl enable --now libvirtd.socket && usermod -aG libvirt $USER"; }; rem() { pkexec bash -c "systemctl disable --now libvirtd.socket; pacman -Rns --noconfirm virt-manager"; } ;;
+    distrobox) cmd=distrobox; inst() { pkexec pacman -S --needed --noconfirm distrobox podman; }; rem() { pkexec pacman -Rns --noconfirm distrobox; } ;;
+    platformio) cmd=pio; inst() { uv_ready && uv tool install platformio; }; rem() { uv tool uninstall platformio; } ;;
+    arduino-cli) cmd=arduino-cli; inst() { pkexec pacman -S --needed --noconfirm arduino-cli; }; rem() { pkexec pacman -Rns --noconfirm arduino-cli; } ;;
+    ngspice) cmd=ngspice; inst() { pkexec pacman -S --needed --noconfirm ngspice; }; rem() { pkexec pacman -Rns --noconfirm ngspice; } ;;
     *) return 1 ;;
   esac
 }
-IDS=(claude-code codex gemini-cli copilot-cli opencode qwen-code crush aider ollama node python go rust bun deno flutter docker)
+IDS=(claude-desktop virt-manager distrobox platformio arduino-cli ngspice claude-code codex gemini-cli copilot-cli opencode qwen-code crush aider ollama node python go rust bun deno flutter docker)
 
 case "${1:-}" in
   list)
@@ -59,6 +88,8 @@ case "${1:-}" in
     if [[ $1 == install ]]; then inst; else rem; fi ;;
   open)
     id="${2#cli.}"; recipe "$id" || exit 2
+    [[ $id == claude-desktop ]] && exec gtk-launch com.anthropic.Claude
+    [[ $id == virt-manager ]] && exec virt-manager
     exec memora-float bash -lc "$cmd; exec bash" ;;
   *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
