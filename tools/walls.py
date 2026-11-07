@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Memora wallpapers, drawn as SVG (render with rsvg-convert at 8K).
 
-usage: walls.py NAME MODE > out.svg      NAME: ribbon | dune | prism   MODE: light | dark
-Crisp shapes: every edge is sharp, depth comes from gradients and thin light
-lines, not from blur, so the pictures stay clear at any resolution.
+usage: walls.py NAME MODE > out.svg
+  NAME: horizon | aurora | glass | dunes     MODE: light | dark
+
+Each picture is one calm idea: few shapes, a restrained palette, smooth light.
+Dark versions are deep, never pure black; light versions are airy, never pure
+white, so the menu bar and Dock read well over them.
 """
 import math
-import random
 import sys
 
 W, H = 3840, 2400
@@ -22,108 +24,109 @@ def lin(id_, stops, x1=0, y1=0, x2=0, y2=1):
     return f'<linearGradient id="{id_}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}">{s}</linearGradient>'
 
 
-def rad(id_, stops, cx=0.5, cy=0.5, r=0.7):
+def rad(id_, stops, cx=0.5, cy=0.5, r=0.5):
     s = "".join(f'<stop offset="{o}" stop-color="{c}" stop-opacity="{a}"/>' for o, c, a in stops)
     return f'<radialGradient id="{id_}" cx="{cx}" cy="{cy}" r="{r}">{s}</radialGradient>'
 
 
-# ------------------------------------------------------------------ ribbon --
-# Wide glass ribbons sweeping across the screen, each lit along its top edge.
-def ribbon(mode):
-    dark = mode == "dark"
-    bg = [(0, "#070912", 1), (1, "#141026", 1)] if dark else [(0, "#f3f5fb", 1), (1, "#dfe3f2", 1)]
-    defs = lin("bg", bg, 0, 0, 1, 1)
-    defs += '<filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feGaussianBlur stdDeviation="26"/></filter>'
-    body = f'<rect width="{W}" height="{H}" fill="url(#bg)"/>'
-    defs += rad("glow", [(0, "#8fa8ff" if dark else "#ffffff", 0.22 if dark else 0.7), (1, "#ffffff", 0)], 0.62, 0.28, 0.55)
-    body += f'<rect width="{W}" height="{H}" fill="url(#glow)"/>'
-    # Each ribbon: its top edge as two cubic curves (7 points), a thickness, colours along it.
-    ribbons = [
-        ([(-400, 1900), (700, 1500), (1100, 300), (2100, 420), (3100, 540), (3500, 1400), (4300, 600)], 520,
-         ["#2b4bd6", "#6b8cff", "#a8bcff"] if not dark else ["#13206e", "#2f4fd6", "#6f8dff"]),
-        ([(-400, 2350), (900, 2100), (1500, 1000), (2500, 1150), (3500, 1300), (3600, 1900), (4300, 1300)], 460,
-         ["#7a4fe0", "#b08cff", "#e0d0ff"] if not dark else ["#2a1566", "#6a3fd6", "#a98cff"]),
-        ([(-400, 1250), (500, 1150), (1300, 1700), (2200, 1800), (3100, 1900), (3500, 1500), (4300, 2300)], 300,
-         ["#25a8c8", "#7fd6ea", "#d4f4fb"] if not dark else ["#0d3a52", "#1f86a8", "#68cde6"]),
-    ]
-    def curve(p, start=True):
-        head = f"M {p[0][0]} {p[0][1]} " if start else f"L {p[0][0]} {p[0][1]} "
-        return head + f"C {p[1][0]} {p[1][1]}, {p[2][0]} {p[2][1]}, {p[3][0]} {p[3][1]} C {p[4][0]} {p[4][1]}, {p[5][0]} {p[5][1]}, {p[6][0]} {p[6][1]}"
-    for i, (pts, t, cols) in enumerate(ribbons):
-        top = curve(pts)
-        low = [(x, y + t) for x, y in pts][::-1]
-        d = top + " " + curve(low, start=False) + " Z"
-        defs += lin(f"r{i}", [(0, cols[0], 0.96), (0.5, cols[1], 0.94), (1, cols[2], 0.96)], 0, 1, 1, 0)
-        defs += lin(f"h{i}", [(0, "#ffffff", 0), (0.5, "#ffffff", 0.85 if not dark else 0.55), (1, "#ffffff", 0.1)], 0, 0, 1, 0)
-        defs += lin(f"in{i}", [(0, "#ffffff", 0.28 if not dark else 0.12), (0.35, "#ffffff", 0), (1, "#000000", 0.18 if not dark else 0.35)], 0, 0, 0, 1)
-        body += f'<path d="{d}" fill="#000" opacity="{0.22 if not dark else 0.55}" filter="url(#sh)" transform="translate(0 40)"/>'
-        body += f'<path d="{d}" fill="url(#r{i})"/>'
-        body += f'<path d="{d}" fill="url(#in{i})"/>'
-        body += f'<path d="{top}" fill="none" stroke="url(#h{i})" stroke-width="6"/>'
-    return svg(defs, body)
+def blur(id_, sd):
+    return f'<filter id="{id_}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="{sd}"/></filter>'
 
 
-# -------------------------------------------------------------------- dune --
-# Layered hills of fine sand at dusk (dark) or morning (light).
-def dune(mode):
+def wave(y0, amp, phase, freq=1.0, steps=48):
+    """A smooth wave across the full width, as a path of cubic segments."""
+    pts = [(-200 + i * (W + 400) / steps, y0 + amp * math.sin(phase + freq * 2 * math.pi * i / steps)) for i in range(steps + 1)]
+    d = f"M {pts[0][0]:.1f} {pts[0][1]:.1f}"
+    for a, b in zip(pts, pts[1:]):
+        mx = (a[0] + b[0]) / 2
+        d += f" C {mx:.1f} {a[1]:.1f}, {mx:.1f} {b[1]:.1f}, {b[0]:.1f} {b[1]:.1f}"
+    return d
+
+
+# ----------------------------------------------------------------- horizon --
+# A glowing horizon: the sky above, the curve of a planet below, one line of light.
+def horizon(mode):
     dark = mode == "dark"
-    sky = [(0, "#0b0e1c", 1), (0.6, "#2a2240", 1), (1, "#5a3a4a", 1)] if dark else [(0, "#f6efe6", 1), (0.6, "#f0dcc8", 1), (1, "#e9c4a6", 1)]
-    layers = (["#3b2a3c", "#2c2033", "#1f1829", "#151120", "#0c0a14"] if dark else
-              ["#e6b993", "#d9a27c", "#c98a68", "#b37458", "#99604a"])
+    sky = ([(0, "#05060c", 1), (0.55, "#0d1230", 1), (1, "#23306b", 1)] if dark else
+           [(0, "#e9edf6", 1), (0.55, "#dbe3f3", 1), (1, "#c3d2f0", 1)])
     defs = lin("sky", sky)
+    defs += rad("glow", [(0, "#7da2ff" if dark else "#ffffff", 0.75 if dark else 0.95), (0.35, "#4d6fe0" if dark else "#e8eeff", 0.35), (1, "#000000" if dark else "#ffffff", 0)], 0.5, 0.68, 0.5)
+    defs += lin("ground", [(0, "#0b1022" if dark else "#f4f6fb", 1), (1, "#04050a" if dark else "#e3e8f2", 1)])
+    defs += lin("rim", [(0, "#ffffff", 0), (0.5, "#ffffff", 0.95), (1, "#ffffff", 0)], 0, 0, 1, 0)
+    defs += blur("b40", 40) + blur("b8", 8)
     body = f'<rect width="{W}" height="{H}" fill="url(#sky)"/>'
-    sun = (2700, 760, 300)
-    defs += rad("sun", [(0, "#ffe9c7" if not dark else "#f3c9a8", 1), (0.6, "#ffd7a8" if not dark else "#c98a8a", 0.5), (1, "#ffffff", 0)], 0.5, 0.5, 0.5)
-    body += f'<circle cx="{sun[0]}" cy="{sun[1]}" r="{sun[2] * 2.2}" fill="url(#sun)" opacity="{0.55 if dark else 0.9}"/>'
-    body += f'<circle cx="{sun[0]}" cy="{sun[1]}" r="{sun[2] * 0.55}" fill="{"#f6d2b4" if dark else "#fff3e2"}" opacity="0.95"/>'
-    rnd = random.Random(7)
-    for i, c in enumerate(layers):
-        base = 1150 + i * 260
-        pts = []
-        for k in range(9):
-            x = -300 + k * (W + 600) / 8
-            pts.append((x, base + rnd.uniform(-170, 170) - (i == 0) * 120))
-        d = f"M {pts[0][0]:.0f} {pts[0][1]:.0f}"
-        for a, b in zip(pts, pts[1:]):
-            mx = (a[0] + b[0]) / 2
-            d += f" C {mx:.0f} {a[1]:.0f}, {mx:.0f} {b[1]:.0f}, {b[0]:.0f} {b[1]:.0f}"
-        d += f" L {W + 300} {H + 50} L -300 {H + 50} Z"
-        defs += lin(f"d{i}", [(0, c, 1), (1, layers[min(i + 1, len(layers) - 1)], 1)])
-        body += f'<path d="{d}" fill="url(#d{i})"/>'
-        ridge = d.split(" L ")[0]
-        body += f'<path d="{ridge}" fill="none" stroke="#ffffff" stroke-opacity="{0.10 if dark else 0.32}" stroke-width="4"/>'
+    body += f'<rect width="{W}" height="{H}" fill="url(#glow)"/>'
+    cx, cy, r = W / 2, 1620 + 7600, 7600   # top of the planet at 2/3 of the height
+    body += f'<circle cx="{cx}" cy="{cy}" r="{r + 60}" fill="none" stroke="{"#9fb8ff" if dark else "#a9c0ff"}" stroke-width="160" opacity="{0.35 if dark else 0.45}" filter="url(#b40)"/>'
+    body += f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="url(#ground)"/>'
+    body += f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="url(#rim)" stroke-width="6" filter="url(#b8)"/>'
+    body += f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="url(#rim)" stroke-width="2.5"/>'
     return svg(defs, body)
 
 
-# ------------------------------------------------------------------- prism --
-# Rounded panes of coloured glass, overlapping; their edges catch the light.
-def prism(mode):
+# ------------------------------------------------------------------ aurora --
+# Ribbons of light drifting across a deep field: silk, not stripes.
+def aurora(mode):
     dark = mode == "dark"
-    bg = [(0, "#0a0b10", 1), (1, "#16141f", 1)] if dark else [(0, "#f7f7fa", 1), (1, "#e7e8f0", 1)]
+    bg = [(0, "#070611", 1), (1, "#120d24", 1)] if dark else [(0, "#f3f1f8", 1), (1, "#e6e8f5", 1)]
     defs = lin("bg", bg, 0, 0, 1, 1)
+    defs += blur("soft", 70) + blur("veil", 160)
     body = f'<rect width="{W}" height="{H}" fill="url(#bg)"/>'
-    panes = [
-        (420, 380, 1500, 1500, -14, "#ff7a6b", "#ffb36b"),
-        (1350, 650, 1600, 1350, 9, "#6b8cff", "#a56bff"),
-        (2350, 260, 1350, 1250, -6, "#3fd1c2", "#4f9dff"),
-        (900, 1350, 1250, 1000, 18, "#ffd36b", "#ff7ab8"),
-        (2500, 1350, 1250, 950, -20, "#8f6bff", "#ff6bd6"),
-    ]
-    for i, (x, y, w, h, rot, c1, c2) in enumerate(panes):
-        a = 0.55 if dark else 0.62
-        defs += lin(f"p{i}", [(0, c1, a), (1, c2, a * 0.9)], 0, 0, 1, 1)
-        defs += lin(f"e{i}", [(0, "#ffffff", 0.75 if dark else 0.9), (0.5, "#ffffff", 0.1), (1, "#ffffff", 0.45)], 0, 0, 1, 1)
-        cx, cy = x + w / 2, y + h / 2
-        body += (f'<g transform="rotate({rot} {cx} {cy})">'
-                 f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="160" fill="url(#p{i})"/>'
-                 f'<rect x="{x + 3}" y="{y + 3}" width="{w - 6}" height="{h - 6}" rx="157" fill="none" stroke="url(#e{i})" stroke-width="6"/>'
-                 f'</g>')
-    defs += rad("v", [(0, "#000000", 0), (1, "#000000", 0.35 if dark else 0.06)], 0.5, 0.5, 0.75)
-    body += f'<rect width="{W}" height="{H}" fill="url(#v)"/>'
+    bands = ["#3b6cff", "#8a4dff", "#1fc8c8"] if dark else ["#7aa0ff", "#b48cff", "#6fd8d0"]
+    for i, c in enumerate(bands):
+        y0 = 900 + i * 360
+        top = wave(y0, 260 - i * 50, 0.8 + i * 1.3, 0.9 + i * 0.15)
+        defs += lin(f"a{i}", [(0, c, 0), (0.25, c, 0.85 if dark else 0.75), (0.7, c, 0.6), (1, c, 0)], 0, 0, 1, 0)
+        body += f'<path d="{top} L {W + 200} {H} L -200 {H} Z" fill="url(#a{i})" opacity="{0.22 if dark else 0.18}" filter="url(#veil)"/>'
+        body += f'<path d="{top}" fill="none" stroke="url(#a{i})" stroke-width="{220 - i * 40}" filter="url(#soft)"/>'
+    return svg(defs, body)
+
+
+# ------------------------------------------------------------------- glass --
+# Three discs of tinted glass overlapping in the light.
+def glass(mode):
+    dark = mode == "dark"
+    bg = [(0, "#0a0b11", 1), (1, "#16141e", 1)] if dark else [(0, "#f5f5f8", 1), (1, "#e4e6ee", 1)]
+    defs = lin("bg", bg, 0, 0, 1, 1)
+    defs += blur("sh", 90)
+    body = f'<rect width="{W}" height="{H}" fill="url(#bg)"/>'
+    discs = [(1380, 1260, 900, "#ff8a5c", "#ff4f8b"), (2460, 1080, 1000, "#4f7dff", "#7a5cff"), (2050, 1880, 620, "#2fd0c0", "#3a9cff")]
+    for i, (x, y, r, c1, c2) in enumerate(discs):
+        a = 0.62 if dark else 0.58
+        defs += lin(f"g{i}", [(0, c1, a), (1, c2, a * 0.9)], 0, 0, 1, 1)
+        defs += lin(f"e{i}", [(0, "#ffffff", 0.9 if not dark else 0.7), (0.45, "#ffffff", 0.05), (1, "#ffffff", 0.35)], 0, 0, 1, 1)
+        defs += rad(f"h{i}", [(0, "#ffffff", 0.35 if not dark else 0.22), (1, "#ffffff", 0)], 0.32, 0.28, 0.5)
+        body += f'<circle cx="{x + 30}" cy="{y + 60}" r="{r}" fill="#000" opacity="{0.25 if not dark else 0.5}" filter="url(#sh)"/>'
+        body += f'<circle cx="{x}" cy="{y}" r="{r}" fill="url(#g{i})"/>'
+        body += f'<circle cx="{x}" cy="{y}" r="{r}" fill="url(#h{i})"/>'
+        body += f'<circle cx="{x}" cy="{y}" r="{r - 3}" fill="none" stroke="url(#e{i})" stroke-width="6"/>'
+    return svg(defs, body)
+
+
+# ------------------------------------------------------------------- dunes --
+# Sand at first light (or under the moon): long soft ridges, one warm sun.
+def dunes(mode):
+    dark = mode == "dark"
+    sky = ([(0, "#080a14", 1), (0.6, "#1b1a30", 1), (1, "#3a2a3a", 1)] if dark else
+           [(0, "#f7f2ec", 1), (0.6, "#f2e2d2", 1), (1, "#ecc9ad", 1)])
+    layers = ["#2e2333", "#241b2a", "#1a1420", "#110d16"] if dark else ["#e7bf9b", "#d9a783", "#c88d6b", "#b07558"]
+    defs = lin("sky", sky)
+    defs += rad("sun", [(0, "#fff4e2" if not dark else "#f5dcc4", 1), (0.12, "#ffe6c4" if not dark else "#d9b3a3", 0.8), (1, "#ffffff", 0)], 0.5, 0.5, 0.5)
+    defs += blur("b", 3)
+    body = f'<rect width="{W}" height="{H}" fill="url(#sky)"/>'
+    body += f'<circle cx="2650" cy="1180" r="900" fill="url(#sun)" opacity="{0.6 if dark else 1}"/>'
+    body += f'<circle cx="2650" cy="1180" r="120" fill="{"#f3d9c2" if dark else "#fff6ea"}" opacity="0.95"/>'
+    for i, c in enumerate(layers):
+        y0 = 1380 + i * 260
+        ridge = wave(y0, 120 + i * 40, 0.6 + i * 1.7, 0.55 + i * 0.12, 24)
+        defs += lin(f"d{i}", [(0, c, 1), (1, layers[min(i + 1, 3)], 1)])
+        defs += lin(f"l{i}", [(0, "#ffffff", 0), (0.6, "#ffffff", 0.5 if not dark else 0.18), (1, "#ffffff", 0)], 0, 0, 1, 0)
+        body += f'<path d="{ridge} L {W + 200} {H + 10} L -200 {H + 10} Z" fill="url(#d{i})"/>'
+        body += f'<path d="{ridge}" fill="none" stroke="url(#l{i})" stroke-width="4" filter="url(#b)"/>'
     return svg(defs, body)
 
 
 if __name__ == "__main__":
-    name = sys.argv[1] if len(sys.argv) > 1 else "ribbon"
-    mode = sys.argv[2] if len(sys.argv) > 2 else "light"
-    print({"ribbon": ribbon, "dune": dune, "prism": prism}[name](mode))
+    name = sys.argv[1] if len(sys.argv) > 1 else "horizon"
+    mode = sys.argv[2] if len(sys.argv) > 2 else "dark"
+    print({"horizon": horizon, "aurora": aurora, "glass": glass, "dunes": dunes}[name](mode))

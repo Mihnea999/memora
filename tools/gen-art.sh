@@ -18,8 +18,8 @@ render_wall() { # name mode script...
 wallpaper() { # theme-dir mode
   local m=$2
   render_wall silk "$m" "$root/tools/silk.py" "$m"
-  for n in ribbon dune prism; do render_wall "$n" "$m" "$root/tools/walls.py" "$n" "$m"; done
-  ln -sf "../../wallpapers/ribbon-$m.jpg" "$1/wallpaper.jpg"
+  for n in horizon aurora glass dunes; do render_wall "$n" "$m" "$root/tools/walls.py" "$n" "$m"; done
+  ln -sf "../../wallpapers/horizon-$m.jpg" "$1/wallpaper.jpg"
 }
 
 for theme in "$root"/system/themes/*/; do

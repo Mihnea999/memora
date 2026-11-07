@@ -12,7 +12,7 @@ Kit.Page {
   Kit.Cmd { id: find; onDone: out => p.pictures = out.split("\n").filter(l => l) }
   Component.onCompleted: find.exec(["bash", "-c", "find \"$HOME/Pictures\" -maxdepth 2 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) 2>/dev/null | head -40"])
 
-  readonly property var sets: [["ribbon", "Ribbon"], ["dune", "Dune"], ["prism", "Prism"], ["silk", "Silk"]]
+  readonly property var sets: [["horizon", "Horizon"], ["aurora", "Aurora"], ["glass", "Glass"], ["dunes", "Dunes"], ["silk", "Silk"]]
 
   Kit.Group {
     header: "Memora"
@@ -20,7 +20,7 @@ Kit.Page {
     Grid {
       Layout.fillWidth: true
       Layout.margins: 12
-      columns: 4; spacing: 12
+      columns: 5; spacing: 12
       Repeater {
         model: p.sets
         delegate: Column {
@@ -28,7 +28,7 @@ Kit.Page {
           readonly property bool on: Prefs.wallpaper === "" && Prefs.wallpaperSet === modelData[0]
           spacing: 6
           Rectangle {
-            width: 132; height: 84; radius: 9
+            width: 118; height: 76; radius: 9
             border.width: parent.on ? 3 : 1
             border.color: parent.on ? Theme.accent : Theme.separator
             clip: true
@@ -40,7 +40,7 @@ Kit.Page {
             HoverHandler { id: wh }
             TapHandler { onTapped: { Prefs.set("wallpaper", ""); Prefs.set("wallpaperSet", modelData[0]) } }
           }
-          Txt { width: 132; text: modelData[1]; horizontalAlignment: Text.AlignHCenter; font.weight: parent.on ? Font.Bold : Font.Normal; font.pixelSize: Theme.small + 0.5 }
+          Txt { width: 118; text: modelData[1]; horizontalAlignment: Text.AlignHCenter; font.weight: parent.on ? Font.Bold : Font.Normal; font.pixelSize: Theme.small + 0.5 }
         }
       }
     }

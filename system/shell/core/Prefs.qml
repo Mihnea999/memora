@@ -13,7 +13,7 @@ Singleton {
   property bool clock24: true
   property bool showDate: true
   property string wallpaper: ""        // a picture of yours; empty: the set below
-  property string wallpaperSet: "ribbon" // ribbon | dune | prism | silk, follows light/dark
+  property string wallpaperSet: "horizon" // horizon | aurora | glass | dunes | silk, follows light/dark
   // Motion
   property bool animations: true
   property real animationSpeed: 1.0    // 0.5 slow … 2 fast
