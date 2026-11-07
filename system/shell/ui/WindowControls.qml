@@ -46,6 +46,7 @@ Item {
             else Quickshell.execDetached(["memora-window", "fill"])
           }
         }
+        Tip { text: ({ close: "Close", min: "Minimize to the Dock", zoom: "Fill the screen · rest here for layouts" })[modelData[0]] }
         HoverHandler { onHoveredChanged: if (modelData[0] === "zoom") { if (hovered) showLater.restart(); else { showLater.stop(); hideLater.restart() } } }
       }
     }

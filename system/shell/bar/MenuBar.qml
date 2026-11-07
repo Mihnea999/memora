@@ -112,7 +112,7 @@ PanelWindow {
     }
 
     BarButton {
-      tip: "Memora AI"
+      tip: "Memora AI (Super+A)"
       Sym { anchors.centerIn: parent; name: "ai"; width: 15; height: 15 }
       onClicked: Apps.run("memora-ai window")
     }
@@ -136,7 +136,7 @@ PanelWindow {
     }
 
     BarButton {
-      tip: "Spotlight"
+      tip: "Search (Super+Space)"
       Sym { anchors.centerIn: parent; name: "search"; width: 14; height: 14 }
       onClicked: Shell.toggle("spotlight")
     }
@@ -151,6 +151,7 @@ PanelWindow {
 
     BarButton {
       id: clock
+      tip: "Calendar and notifications"
       implicitWidth: clockText.implicitWidth + 16
       highlighted: Shell.open === "calendar" && Shell.menuScreen === bar.modelData.name
       Txt {
@@ -240,8 +241,29 @@ PanelWindow {
       color: btn.highlighted ? Theme.pressed : (hh.hovered ? Theme.hover : "transparent")
       Behavior on color { ColorAnimation { duration: Theme.fast } }
     }
-    HoverHandler { id: hh }
-    TapHandler { acceptedButtons: Qt.LeftButton; onTapped: btn.clicked() }
+    HoverHandler { id: hh; onHoveredChanged: if (hovered && btn.tip) tipWait.restart(); else { tipWait.stop(); if (bar.tipFor === btn) bar.tipFor = null } }
+    Timer { id: tipWait; interval: 550; onTriggered: if (Shell.open === "") bar.tipFor = btn }
+    TapHandler { acceptedButtons: Qt.LeftButton; onTapped: { tipWait.stop(); bar.tipFor = null; btn.clicked() } }
     TapHandler { acceptedButtons: Qt.RightButton; onTapped: btn.rightClicked() }
+  }
+
+  // The tooltip under a menu-bar button (its own little window, below the bar).
+  property var tipFor: null
+  PopupWindow {
+    id: tipWin
+    visible: !!bar.tipFor && Shell.open === ""
+    anchor.window: bar
+    anchor.rect.x: bar.tipFor ? Math.min(bar.width - implicitWidth - 6, Math.max(6, bar.tipFor.mapToItem(null, bar.tipFor.width / 2, 0).x - implicitWidth / 2)) : 0
+    anchor.rect.y: bar.height + 4
+    implicitWidth: tipText.implicitWidth + 20
+    implicitHeight: tipText.implicitHeight + 12
+    color: "transparent"
+    Rectangle {
+      anchors.fill: parent
+      radius: 8
+      color: Theme.dark ? Qt.rgba(0.17, 0.17, 0.19, 0.97) : Qt.rgba(0.99, 0.99, 1, 0.98)
+      border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
+      Txt { id: tipText; anchors.centerIn: parent; text: bar.tipFor ? bar.tipFor.tip : ""; font.pixelSize: Theme.small }
+    }
   }
 }

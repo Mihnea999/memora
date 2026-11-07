@@ -248,8 +248,8 @@ FloatingWindow {
     Row {
       x: 14; anchors.verticalCenter: parent.verticalCenter
       spacing: 2
-      ToolBtn { sym: "chevron"; flip: true; enabled: win.back.length > 0; onClicked: win.goBack() }
-      ToolBtn { sym: "chevron"; enabled: win.fwd.length > 0; onClicked: win.goForward() }
+      ToolBtn { sym: "chevron"; flip: true; tip: "Back"; enabled: win.back.length > 0; onClicked: win.goBack() }
+      ToolBtn { sym: "chevron"; tip: "Forward"; enabled: win.fwd.length > 0; onClicked: win.goForward() }
       Item { width: 10; height: 1 }
       Txt { anchors.verticalCenter: parent.verticalCenter; text: win.query ? "Searching “" + win.query + "”" : win.title2; font.weight: Font.Bold; font.pixelSize: Theme.fontSize + 1 }
     }
@@ -271,8 +271,8 @@ FloatingWindow {
         }
         Row {
           anchors.fill: parent; anchors.margins: 2
-          Item { width: 30; height: 24; GridGlyph { anchors.centerIn: parent } TapHandler { onTapped: win.view = "icons" } }
-          Item { width: 30; height: 24; ListGlyph { anchors.centerIn: parent } TapHandler { onTapped: win.view = "list" } }
+          Item { width: 30; height: 24; GridGlyph { anchors.centerIn: parent } TapHandler { onTapped: win.view = "icons" } Tip { text: "Icons" } }
+          Item { width: 30; height: 24; ListGlyph { anchors.centerIn: parent } TapHandler { onTapped: win.view = "list" } Tip { text: "List" } }
         }
       }
       Rectangle {
@@ -884,6 +884,7 @@ FloatingWindow {
     id: tb
     property string sym
     property bool flip: false
+    property string tip
     signal clicked()
     width: 30; height: 28; radius: 7
     color: tbh.hovered && enabled ? Theme.hover : "transparent"
@@ -891,6 +892,7 @@ FloatingWindow {
     Sym { anchors.centerIn: parent; name: tb.sym; rotation: tb.flip ? 180 : 0; width: 13; height: 13 }
     HoverHandler { id: tbh }
     TapHandler { onTapped: if (tb.enabled) tb.clicked() }
+    Tip { text: tb.tip }
   }
   component Kbd: Rectangle {
     id: kb

@@ -292,5 +292,6 @@ ShellRoot {
     Sym { anchors.centerIn: parent; name: tl.sym; width: 15; height: 15; color: app.file && Theme.dark ? "#ffffff" : Theme.text }
     HoverHandler { id: th2 }
     TapHandler { onTapped: tl.clicked() }
+    Tip { text: tl.tip }
   }
 }

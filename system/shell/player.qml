@@ -226,14 +226,14 @@ ShellRoot {
         Row {
           anchors.centerIn: parent
           spacing: 26
-          Btn { sym: "next"; flip: true; size: 18; onClicked: app.step(-1) }
-          Btn { sym: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"; size: 26; onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play() }
-          Btn { sym: "next"; size: 18; onClicked: app.step(1) }
+          Btn { sym: "next"; flip: true; size: 18; tip: "Previous (P)"; onClicked: app.step(-1) }
+          Btn { sym: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play"; size: 26; tip: player.playbackState === MediaPlayer.PlayingState ? "Pause (Space)" : "Play (Space)"; onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play() }
+          Btn { sym: "next"; size: 18; tip: "Next (N)"; onClicked: app.step(1) }
         }
         Row {
           anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
           spacing: 8
-          Btn { sym: audio.muted || audio.volume === 0 ? "sound-off" : "sound"; size: 16; onClicked: audio.muted = !audio.muted }
+          Btn { sym: audio.muted || audio.volume === 0 ? "sound-off" : "sound"; size: 16; tip: audio.muted ? "Unmute (M)" : "Mute (M)"; onClicked: audio.muted = !audio.muted }
           Item {
             id: vol
             width: 84; height: 14; anchors.verticalCenter: parent.verticalCenter
@@ -252,7 +252,7 @@ ShellRoot {
             Txt { id: rt; anchors.centerIn: parent; text: player.playbackRate + "×"; color: bar.ink; font.pixelSize: Theme.small - 0.5 }
             TapHandler { onTapped: { const r = [1, 1.25, 1.5, 2, 0.75]; player.playbackRate = r[(r.indexOf(player.playbackRate) + 1) % r.length] } }
           }
-          Btn { visible: app.isVideo; sym: "display"; size: 16; onClicked: win.visibility === Window.FullScreen ? win.showNormal() : win.showFullScreen() }
+          Btn { visible: app.isVideo; sym: "display"; size: 16; tip: "Full screen (F)"; onClicked: win.visibility === Window.FullScreen ? win.showNormal() : win.showFullScreen() }
         }
       }
     }
@@ -263,6 +263,7 @@ ShellRoot {
     property string sym
     property real size: 18
     property bool flip: false
+    property string tip
     signal clicked()
     width: size + 14; height: size + 14
     Sym { anchors.centerIn: parent; name: b.sym; width: b.size; height: b.size; color: bar.ink; rotation: b.flip ? 180 : 0 }
@@ -270,5 +271,6 @@ ShellRoot {
     Behavior on scale { NumberAnimation { duration: Theme.fast; easing.type: Easing.OutBack } }
     HoverHandler { id: bh; cursorShape: Qt.PointingHandCursor }
     TapHandler { id: bt; onTapped: b.clicked() }
+    Tip { text: b.tip }
   }
 }

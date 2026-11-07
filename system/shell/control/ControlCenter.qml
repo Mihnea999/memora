@@ -168,6 +168,7 @@ PanelWindow {
               Sym { anchors.centerIn: parent; name: modelData[0]; width: 16; height: 16 }
               HoverHandler { id: bh }
               TapHandler { onTapped: { Shell.close(); Apps.run(modelData[2]) } }
+              Tip { text: ({ Settings: "System Settings", Sleep: "Sleep: pause and save power", Restart: "Restart the computer", "Shut Down": "Shut down the computer" })[modelData[1]] }
             }
           }
         }

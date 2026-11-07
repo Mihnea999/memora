@@ -588,6 +588,7 @@ ShellRoot {
       Txt { id: lt; visible: tl.label !== ""; anchors.centerIn: parent; text: tl.label; color: Theme.textDim; font.weight: tl.bold ? Font.Bold : Font.Medium; font.italic: tl.italic; font.strikeout: tl.strike }
       HoverHandler { id: th }
       TapHandler { id: tt; onTapped: tl.clicked() }
+      Tip { text: tl.tip }
     }
   }
 }
