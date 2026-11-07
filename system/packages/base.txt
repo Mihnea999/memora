@@ -28,6 +28,8 @@ pipewire-jack
 wireplumber
 openssh
 ufw
+pacman-contrib
+fwupd
 reflector
 git
 curl

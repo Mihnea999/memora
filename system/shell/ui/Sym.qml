@@ -280,6 +280,35 @@ Canvas {
       ctx.quadraticCurveTo(13.4, 9.4, 13.8, 14.4); ctx.closePath(); ctx.fill()
       break
     }
+    case "sparkle": {
+      ctx.beginPath(); ctx.moveTo(8, 1.2)
+      ctx.quadraticCurveTo(8.9, 7.1, 14.8, 8); ctx.quadraticCurveTo(8.9, 8.9, 8, 14.8)
+      ctx.quadraticCurveTo(7.1, 8.9, 1.2, 8); ctx.quadraticCurveTo(7.1, 7.1, 8, 1.2); ctx.closePath(); ctx.fill()
+      break
+    }
+    case "drop": {
+      ctx.beginPath(); ctx.moveTo(8, 1.6)
+      ctx.bezierCurveTo(11, 5.4, 13, 7.8, 13, 10); ctx.arc(8, 10, 5, 0, Math.PI); ctx.bezierCurveTo(3, 7.8, 5, 5.4, 8, 1.6)
+      ctx.closePath(); ctx.fill()
+      break
+    }
+    case "palette": {
+      ctx.lineWidth = 1.4
+      ctx.beginPath(); ctx.arc(8, 8, 6.2, 0, Math.PI * 2); ctx.stroke()
+      ;[[5.2, 6.2], [8, 4.4], [10.8, 6.2], [10.6, 9.6]].forEach(p => { ctx.beginPath(); ctx.arc(p[0], p[1], 1.15, 0, Math.PI * 2); ctx.fill() })
+      break
+    }
+    case "shield": {
+      ctx.beginPath(); ctx.moveTo(8, 1.4); ctx.lineTo(13.6, 3.4); ctx.lineTo(13.6, 7.6)
+      ctx.quadraticCurveTo(13.4, 12.4, 8, 14.8); ctx.quadraticCurveTo(2.6, 12.4, 2.4, 7.6); ctx.lineTo(2.4, 3.4); ctx.closePath(); ctx.fill()
+      break
+    }
+    case "download": {
+      ctx.lineWidth = 1.6; ctx.lineCap = "round"; ctx.lineJoin = "round"
+      ctx.beginPath(); ctx.moveTo(8, 2); ctx.lineTo(8, 10.4); ctx.moveTo(4.6, 7.2); ctx.lineTo(8, 10.6); ctx.lineTo(11.4, 7.2); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(2.6, 11.6); ctx.lineTo(2.6, 13.8); ctx.lineTo(13.4, 13.8); ctx.lineTo(13.4, 11.6); ctx.stroke()
+      break
+    }
     }
     ctx.restore()
   }

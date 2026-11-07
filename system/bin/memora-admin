@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# memora-admin — the few system changes System Settings makes, run as root
+# through pkexec. Each has its own polkit action (polkit/org.memora.admin.policy),
+# so the password dialog says in plain words what is about to happen.
+#   memora-admin firewall on|off
+#   memora-admin update URL VERSION
+set -euo pipefail
+[[ $EUID -eq 0 ]] || exec pkexec "$(readlink -f "$0")" "$@"
+case "${1:-}" in
+  firewall)
+    case "${2:-}" in
+      on) sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf; systemctl enable --now ufw >/dev/null 2>&1; ufw --force enable ;;
+      off) ufw disable; sed -i 's/^ENABLED=.*/ENABLED=no/' /etc/ufw/ufw.conf ;;
+      *) exit 2 ;;
+    esac ;;
+  update) shift; exec /usr/share/memora/bin/memora-update --root-part "$@" ;;
+  *) echo "usage: memora-admin firewall on|off | update [URL VERSION]"; exit 2 ;;
+esac

@@ -1,0 +1,8 @@
+[Unit]
+Description=Look for Memora updates
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/memora/bin/memora-update notify
+Nice=10

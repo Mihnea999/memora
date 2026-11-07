@@ -17,6 +17,7 @@ import qs.polkit
 import qs.switcher
 import qs.lock
 import qs.snap
+import qs.alert
 
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
@@ -35,6 +36,7 @@ ShellRoot {
   Lock {}
   Snap {}
   Genie {}
+  Alert {}
 
   IpcHandler {
     target: "osd"
@@ -48,6 +50,7 @@ ShellRoot {
     function toggle(name: string): void { Shell.toggle(name) }
     function show(name: string): void { Shell.show(name) }
     function close(): void { Shell.close() }
+    function power(what: string): void { Shell.power(what) }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {
       const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)

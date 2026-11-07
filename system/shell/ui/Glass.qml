@@ -43,7 +43,7 @@ Item {
     height: Math.min(parent.height / 2, 40)
     radius: g.radius - 1
     gradient: Gradient {
-      GradientStop { position: 0; color: Qt.rgba(1, 1, 1, Theme.dark ? 0.06 : 0.22) }
+      GradientStop { position: 0; color: Qt.rgba(1, 1, 1, (Theme.dark ? 0.09 : 0.3) * Theme.shine) }
       GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0) }
     }
   }

@@ -13,7 +13,7 @@ Singleton {
   property bool clock24: true
   property bool showDate: true
   property string wallpaper: ""        // a picture of yours; empty: the set below
-  property string wallpaperSet: "horizon" // horizon | aurora | glass | dunes | silk, follows light/dark
+  property string wallpaperSet: "ember"   // ember | tide | horizon | dunes | silk, follows light/dark
   // Motion
   property bool animations: true
   property real animationSpeed: 1.0    // 0.5 slow … 2 fast
@@ -23,9 +23,22 @@ Singleton {
   // Look
   property real transparency: 1.0      // 0 solid … 1 full glass
   property bool menuBarTransparent: true
+  // Liquid glass (System Settings > Appearance)
+  property string glassStyle: "clear"  // clear | tinted
+  property real blur: 0.6              // how much the glass frosts what is behind (0 … 1)
+  property real shine: 0.7             // light on the glass edges (0 … 1)
+  property real vibrancy: 0.5          // colour carried through the glass (0 … 1)
+  property bool reduceTransparency: false
+  property string accent: "blue"       // blue | purple | pink | red | orange | green | graphite
+  // Privacy & Security
+  property int lockAfter: 5            // minutes of inactivity before the screen locks; 0 never
+  property int sleepAfter: 30          // minutes before the computer sleeps; 0 never
+  property bool updateCheck: true      // look for updates in the background and say when there are some
 
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet",
-    "animations", "animationSpeed", "windowStyle", "dockBounce", "snapping", "transparency", "menuBarTransparent"]
+    "animations", "animationSpeed", "windowStyle", "dockBounce", "snapping", "transparency", "menuBarTransparent",
+    "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
+    "lockAfter", "sleepAfter", "updateCheck"]
 
   // A duration, scaled by the speed setting; 0 when animations are off.
   function motion(ms) { return animations ? Math.round(ms / Math.max(0.25, animationSpeed)) : 0 }
@@ -46,6 +59,8 @@ Singleton {
   function set(key, value) {
     p[key] = value
     if (["animations", "animationSpeed", "windowStyle"].indexOf(key) >= 0) writeMotion()
+    if (["blur", "vibrancy", "reduceTransparency"].indexOf(key) >= 0) writeGlass()
+    if (["lockAfter", "sleepAfter"].indexOf(key) >= 0) writeIdle()
     const j = {}
     keys.forEach(k => j[k] = p[k])
     file.setText(JSON.stringify(j, null, 2) + "\n")
@@ -58,4 +73,26 @@ Singleton {
     motionFile.setText("-- Written by System Settings > Animations.\nreturn { enabled = " + animations + ", speed = " + animationSpeed.toFixed(2) + ", style = \"" + windowStyle + "\" }\n")
     reloadLater.restart()
   }
+
+  // Hyprland's blur follows the glass settings (default/hypr/look.lua reads this).
+  property FileView glassFile: FileView { path: Quickshell.env("HOME") + "/.config/memora/glass.lua"; printErrors: false }
+  function writeGlass() {
+    glassFile.setText("-- Written by System Settings > Appearance.\nreturn { blur = " + blur.toFixed(2) + ", vibrancy = " + vibrancy.toFixed(2) + ", reduce = " + reduceTransparency + " }\n")
+    reloadLater.restart()
+  }
+
+  // Locking and sleeping when idle (hypridle).
+  property FileView idleFile: FileView { path: Quickshell.env("HOME") + "/.config/hypr/hypridle.conf"; printErrors: false }
+  function writeIdle() {
+    let t = "# Written by System Settings > Privacy & Security.\n"
+    t += "general {\n  lock_cmd = memora-lock\n  before_sleep_cmd = memora-lock\n  after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'\n}\n"
+    if (lockAfter > 0) {
+      t += "\nlistener {\n  timeout = " + lockAfter * 60 + "\n  on-timeout = memora-lock\n}\n"
+      t += "\nlistener {\n  timeout = " + (lockAfter * 60 + 30) + "\n  on-timeout = hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'\n  on-resume = hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'\n}\n"
+    }
+    if (sleepAfter > 0) t += "\nlistener {\n  timeout = " + sleepAfter * 60 + "\n  on-timeout = systemctl suspend\n}\n"
+    idleFile.setText(t)
+    restartIdle.restart()
+  }
+  property Timer restartIdle: Timer { interval: 300; onTriggered: Quickshell.execDetached(["bash", "-c", "pkill -x hypridle; sleep 0.3; setsid uwsm app -- hypridle >/dev/null 2>&1 &"]) }
 }

@@ -15,11 +15,20 @@ render_wall() { # name mode script...
   rsvg-convert -w 7680 -h 4800 "$tmp/w.svg" -o "$tmp/w.png"
   magick "$tmp/w.png" -depth 16 -attenuate 0.10 +noise Gaussian -depth 8 -sampling-factor 4:4:4 -quality 94 "$out"
 }
+# Ember and Tide are lit per pixel (tools/flow.py needs numpy and pillow; set PYTHON
+# to an interpreter that has them).
+render_flow() { # name mode
+  local name=$1 mode=$2 out="$root/system/wallpapers/$1-$2.jpg"
+  [[ -f $out && $out -nt $root/tools/flow.py ]] && return 0
+  "${PYTHON:-python3}" "$root/tools/flow.py" "$name" "$mode" 7680 4800 "$tmp/f.png"
+  magick "$tmp/f.png" -sampling-factor 4:4:4 -quality 94 "$out"
+}
 wallpaper() { # theme-dir mode
   local m=$2
+  render_flow ember "$m"; render_flow tide "$m"
   render_wall silk "$m" "$root/tools/silk.py" "$m"
-  for n in horizon aurora glass dunes; do render_wall "$n" "$m" "$root/tools/walls.py" "$n" "$m"; done
-  ln -sf "../../wallpapers/horizon-$m.jpg" "$1/wallpaper.jpg"
+  for n in horizon dunes; do render_wall "$n" "$m" "$root/tools/walls.py" "$n" "$m"; done
+  ln -sf "../../wallpapers/ember-$m.jpg" "$1/wallpaper.jpg"
 }
 
 for theme in "$root"/system/themes/*/; do

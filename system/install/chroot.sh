@@ -60,7 +60,9 @@ Memora \r (\l)
 EOF
 
 step "User $MEMORA_USER"
-useradd -m -G wheel,video,input,audio -s /bin/bash -c "$MEMORA_FULLNAME" "$MEMORA_USER"
+# Not in "input": that group can read every key typed, in any app.
+groupadd -f -r memora-input
+useradd -m -G wheel,video,audio,memora-input -s /bin/bash -c "$MEMORA_FULLNAME" "$MEMORA_USER"
 printf '%s:%s\n' "$MEMORA_USER" "$MEMORA_PASSWORD" | chpasswd
 printf 'root:%s\n' "$MEMORA_PASSWORD" | chpasswd
 passwd -l root >/dev/null
@@ -109,20 +111,66 @@ systemctl enable NetworkManager.service bluetooth.service power-profiles-daemon.
 mkdir -p /etc/NetworkManager/conf.d
 printf '[device]\nwifi.backend=iwd\n' > /etc/NetworkManager/conf.d/wifi-backend.conf
 printf '[zram0]\nzram-size = min(ram / 2, 8192)\ncompression-algorithm = zstd\n' > /etc/systemd/zram-generator.conf
+# Firewall on from the first boot: nothing may connect in, everything may go out.
 sed -i 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' /etc/default/ufw 2>/dev/null || true
-# Virtual pointer and keyboard for Memora AI's screen tools; usable by the input group.
+sed -i 's/^DEFAULT_OUTPUT_POLICY=.*/DEFAULT_OUTPUT_POLICY="ACCEPT"/' /etc/default/ufw 2>/dev/null || true
+sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true
+
+step "Security"
+# Kernel: hide kernel pointers and logs from programs, ignore spoofed and
+# redirected packets, protect links in shared folders.
+cat > /etc/sysctl.d/90-memora.conf <<'SYSCTL'
+kernel.kptr_restrict = 2
+kernel.dmesg_restrict = 1
+kernel.unprivileged_bpf_disabled = 1
+net.core.bpf_jit_harden = 2
+kernel.yama.ptrace_scope = 1
+kernel.kexec_load_disabled = 1
+fs.protected_symlinks = 1
+fs.protected_hardlinks = 1
+fs.protected_fifos = 2
+fs.protected_regular = 2
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv4.tcp_syncookies = 1
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+SYSCTL
+# Remote login stays off; if someone turns it on, never as root and only with keys.
+mkdir -p /etc/ssh/sshd_config.d
+printf 'PermitRootLogin no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n' > /etc/ssh/sshd_config.d/10-memora.conf
+# Wrong passwords: a short pause after 5 tries, so guessing is slow but you are never locked out for long.
+sed -i -e 's/^#\? *deny *=.*/deny = 5/' -e 's/^#\? *unlock_time *=.*/unlock_time = 120/' /etc/security/faillock.conf 2>/dev/null || true
+# Private home folders.
+sed -i 's/^#\?HOME_MODE.*/HOME_MODE 0700/' /etc/login.defs
+# Firmware updates for laptops and peripherals (System Settings > Software Update).
+systemctl enable fwupd-refresh.timer 2>/dev/null || true
+# Virtual pointer and keyboard for Memora AI's screen tools; only its socket is
+# shared (group memora-input), not the keyboards themselves.
 cat > /etc/systemd/system/memora-ydotoold.service <<UNIT
 [Unit]
 Description=Virtual input for Memora AI
 
 [Service]
-ExecStart=/usr/bin/ydotoold --socket-path=/run/memora-ydotool.sock --socket-own=0:$(getent group input | cut -d: -f3) --socket-perm=0660
+ExecStart=/usr/bin/ydotoold --socket-path=/run/memora-ydotool.sock --socket-own=0:$(getent group memora-input | cut -d: -f3) --socket-perm=0660
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 UNIT
 systemctl enable memora-ydotoold.service
+# Plain-words password prompts for the changes System Settings makes.
+install -Dm644 $MEMORA_PATH/polkit/org.memora.admin.policy /usr/share/polkit-1/actions/org.memora.admin.policy
+# Look for updates in the background and say when there are some.
+install -Dm644 -t /usr/lib/systemd/user $MEMORA_PATH/units/memora-update-check.service $MEMORA_PATH/units/memora-update-check.timer
+systemctl --global enable memora-update-check.timer
 
 step "Login"
 # One session only, named Memora (the stock Hyprland entries stay out of the list).

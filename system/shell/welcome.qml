@@ -19,12 +19,12 @@ ShellRoot {
     implicitWidth: 680
     implicitHeight: 500
     color: "transparent"
-    Rectangle { anchors.fill: parent; color: Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.96) : Qt.rgba(0.98, 0.98, 0.99, 0.97) }
+    Rectangle { anchors.fill: parent; color: Theme.window }
     Item {
       anchors { left: parent.left; right: parent.right; top: parent.top }
       height: 40
       DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
-      Rectangle { x: 16; y: 14; width: 13; height: 13; radius: 6.5; color: Theme.red; TapHandler { onTapped: Qt.quit() } }
+      WindowControls { x: 16; y: 14; window: win; onCloseRequested: Qt.quit() }
     }
 
     Item {

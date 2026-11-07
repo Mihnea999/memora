@@ -1,0 +1,11 @@
+[Unit]
+Description=Look for Memora updates a few times a day
+
+[Timer]
+OnStartupSec=15min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

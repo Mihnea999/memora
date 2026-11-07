@@ -73,7 +73,7 @@ ShellRoot {
     minimumSize: Qt.size(520, 420)
     color: "transparent"
 
-    Rectangle { anchors.fill: parent; color: Theme.dark ? Qt.rgba(0.10, 0.10, 0.12, 0.93) : Qt.rgba(0.98, 0.98, 0.99, 0.94) }
+    Rectangle { anchors.fill: parent; color: Theme.window }
 
     // ---- title bar
     Item {
@@ -81,18 +81,7 @@ ShellRoot {
       anchors { left: parent.left; right: parent.right; top: parent.top }
       height: 52
       DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
-      Row {
-        x: 16; anchors.verticalCenter: parent.verticalCenter
-        spacing: 8
-        Repeater {
-          model: [["close", Theme.red], ["min", Theme.yellow], ["zoom", Theme.green]]
-          delegate: Rectangle {
-            required property var modelData
-            width: 13; height: 13; radius: 6.5; color: modelData[1]; border.color: Qt.rgba(0, 0, 0, 0.15)
-            TapHandler { onTapped: modelData[0] === "close" ? Qt.quit() : (modelData[0] === "min" ? Quickshell.execDetached(["memora-shell", "minimize"]) : Hyprland.dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')) }
-          }
-        }
-      }
+      WindowControls { x: 16; anchors.verticalCenter: parent.verticalCenter; window: win; onCloseRequested: Qt.quit() }
       Column {
         anchors.centerIn: parent
         Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Memora AI"; font.weight: Font.Bold }

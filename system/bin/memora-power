@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# memora-power shutdown|restart|logout|sleep — asks first (on screen), then does it.
+# Without an argument (Ctrl+Alt+Delete) it asks about shutting down.
+case "${1:-shutdown}" in
+  sleep) exec systemctl suspend ;;
+  shutdown|restart|logout) exec qs -p "${MEMORA_PATH:-/usr/share/memora}/shell" ipc call shell power "${1:-shutdown}" ;;
+  *) echo "usage: memora-power shutdown|restart|logout|sleep"; exit 2 ;;
+esac

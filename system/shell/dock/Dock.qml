@@ -258,7 +258,7 @@ PanelWindow {
     if (e.kind === "trash") return [
       { text: "Open", action: () => Apps.run("nautilus --new-window trash:///") },
       { separator: true },
-      { text: "Empty Trash", enabled: dock.trashFull, action: () => Apps.run("gio trash --empty") }
+      { text: "Empty Trash", enabled: dock.trashFull, action: () => Shell.power("trash") }
     ]
     if (e.kind === "folder") return [
       { text: "Open Downloads", action: () => Apps.run("nautilus --new-window ~/Downloads") }

@@ -1,14 +1,132 @@
 #!/usr/bin/env bash
-# Take a snapshot, then update everything.
-set -euo pipefail
-source "${MEMORA_PATH:-/usr/share/memora}/lib/gum.sh"
-gum style --foreground 255 --bold "Memora update"
-if command -v snapper >/dev/null; then
-  echo "Creating snapshot..."
-  sudo snapper -c root create -d "before memora-update" -c number
-fi
-sudo pacman -Syu
-command -v mise >/dev/null && mise upgrade --yes 2>/dev/null || true
-command -v claude >/dev/null && claude update 2>/dev/null || true
-gum style --foreground 114 "Done. If anything broke, pick the snapshot from the boot menu or run: memora snapshot list"
-[[ -t 0 ]] && read -rp "Press Enter to close" _ || true
+# memora-update — keep Memora up to date.
+#   memora-update              update everything, in a terminal (asks for your password)
+#   memora-update check        list what can be updated (one line per item: source<TAB>name<TAB>old<TAB>new)
+#   memora-update notify       check, and show a notification when there is something new
+#   memora-update apply        update everything without questions (used by System Settings);
+#                              prints "@step N TOTAL text" lines for the progress bar
+#
+# System packages come from the Arch repositories (pacman); a snapshot is taken
+# before every pacman transaction (snap-pac), so an update can be undone from
+# the boot menu. Apps from the App Store come from Flathub (per user).
+# Memora itself updates from the address in /etc/memora/update.conf (URL=...),
+# only when the download is signed by the key in /usr/share/memora/keys.
+set -uo pipefail
+MEMORA_PATH="${MEMORA_PATH:-/usr/share/memora}"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/memora"
+mkdir -p "$cache"
+
+pacman_updates() {
+  # checkupdates syncs into a private database, so it never half-updates the system.
+  command -v checkupdates >/dev/null || { echo "@error Can't look for system updates (pacman-contrib is missing)."; return; }
+  local out rc
+  out="$(checkupdates 2>/dev/null)"; rc=$?
+  # 0: updates, 2: none, anything else: no network or the mirrors failed.
+  if [[ $rc -ne 0 && $rc -ne 2 ]]; then echo "@error Couldn't reach the update servers. Check the internet connection."; return; fi
+  [[ -n $out ]] && awk '{ printf "system\t%s\t%s\t%s\n", $1, $2, $4 }' <<<"$out"
+}
+flatpak_updates() {
+  command -v flatpak >/dev/null || return 0
+  flatpak remote-ls --user --updates --columns=application,version 2>/dev/null |
+    awk -F'\t' 'NF { printf "app\t%s\t\t%s\n", $1, $2 }'
+}
+memora_update() {
+  local url="" cur latest
+  [[ -f /etc/memora/update.conf ]] && url="$(sed -n 's/^URL=//p' /etc/memora/update.conf | head -1)"
+  [[ -n $url && -d $MEMORA_PATH/keys ]] || return 0
+  cur="$(cat "$MEMORA_PATH/version" 2>/dev/null)"
+  latest="$(curl -fsSL --max-time 15 "$url/latest" 2>/dev/null | head -1 | tr -cd '0-9.')"
+  [[ -n $latest && $latest != "$cur" ]] && [[ "$(printf '%s\n%s\n' "$cur" "$latest" | sort -V | tail -1)" == "$latest" ]] &&
+    printf 'memora\tMemora\t%s\t%s\n' "$cur" "$latest"
+}
+
+check() {
+  { pacman_updates; flatpak_updates; memora_update; } | tee "$cache/updates.tsv"
+  grep -q '^@error' "$cache/updates.tsv" && return 1
+  date +%s > "$cache/updates.checked"
+}
+
+notify() {
+  # Respect System Settings > Privacy & Security > Check for updates automatically.
+  if [[ -f $HOME/.config/memora/shell.json ]] && jq -e '.updateCheck == false' "$HOME/.config/memora/shell.json" >/dev/null 2>&1; then
+    exit 0
+  fi
+  local n
+  n="$(check | grep -vc '^@error')"
+  [[ $n -gt 0 ]] || exit 0
+  local word="updates"; [[ $n -eq 1 ]] && word="update"
+  local act
+  act="$(timeout 900 notify-send -a "Software Update" -i system-software-update -A "open=Update…" \
+    "$n $word available" "Updates keep Memora secure and working well." 2>/dev/null)"
+  [[ $act == open ]] && memora-settings update
+  exit 0
+}
+
+# Memora's own files: download, check the signature, swap in atomically.
+apply_memora() { # url version (as root)
+  local url=$1 ver=$2 tmp
+  tmp="$(mktemp -d)"
+  curl -fsSL --max-time 300 -o "$tmp/memora.tar.zst" "$url/memora-$ver.tar.zst" &&
+    curl -fsSL --max-time 30 -o "$tmp/memora.tar.zst.sig" "$url/memora-$ver.tar.zst.sig" || { echo "Download failed"; return 1; }
+  export GNUPGHOME="$tmp/gnupg"; mkdir -m700 "$GNUPGHOME"
+  gpg --batch --quiet --import "$MEMORA_PATH"/keys/*.asc 2>/dev/null
+  gpg --batch --verify "$tmp/memora.tar.zst.sig" "$tmp/memora.tar.zst" 2>/dev/null || { echo "Signature check failed: not installing"; rm -rf "$tmp"; return 1; }
+  mkdir "$tmp/new" && tar --zstd -xf "$tmp/memora.tar.zst" -C "$tmp/new" || { echo "Archive is damaged"; return 1; }
+  [[ -f $tmp/new/version && -d $tmp/new/shell ]] || { echo "Archive is not Memora"; return 1; }
+  command -v snapper >/dev/null && snapper -c root create -d "before Memora $ver" -c number 2>/dev/null
+  rm -rf "$MEMORA_PATH.new" && cp -a "$tmp/new" "$MEMORA_PATH.new" &&
+    mv "$MEMORA_PATH" "$MEMORA_PATH.old" && mv "$MEMORA_PATH.new" "$MEMORA_PATH" && rm -rf "$MEMORA_PATH.old"
+  [[ -x $MEMORA_PATH/plugin/build.sh ]] && bash "$MEMORA_PATH/plugin/build.sh" >/dev/null 2>&1
+  rm -rf "$tmp"
+}
+
+# Everything that needs the administrator, in one password prompt.
+root_part() { # memora-url memora-version
+  set -o pipefail
+  echo "@step 1 3 Updating the system"
+  pacman -Syu --noconfirm --noprogressbar 2>&1 || { echo "@error The system update did not finish. Open Terminal and run memora-update to see why."; exit 1; }
+  if [[ -n ${1:-} && -n ${2:-} ]]; then
+    echo "@step 2 3 Updating Memora"
+    apply_memora "$1" "$2" || echo "@warn Memora itself could not be updated this time."
+  fi
+}
+
+apply() {
+  local url="" ver=""
+  if line="$(memora_update)" && [[ -n $line ]]; then
+    url="$(sed -n 's/^URL=//p' /etc/memora/update.conf | head -1)"; ver="$(cut -f4 <<<"$line")"
+  fi
+  echo "@step 0 3 Preparing"
+  # The root part runs this same script, so it is the installed copy that runs as root.
+  pkexec /usr/share/memora/bin/memora-admin update "$url" "$ver" || { echo "@error Update cancelled or failed."; exit 1; }
+  if command -v flatpak >/dev/null; then
+    echo "@step 2 3 Updating apps"
+    flatpak update --user -y --noninteractive 2>&1 | grep -v '^\s*$' || true
+  fi
+  echo "@step 3 3 Finishing"
+  rm -f "$cache/updates.tsv"
+  # A new kernel only takes over after a restart.
+  if [[ ! -d /usr/lib/modules/$(uname -r) ]]; then echo "@restart"; fi
+  echo "@done"
+}
+
+interactive() {
+  source "$MEMORA_PATH/lib/gum.sh" 2>/dev/null
+  printf '\e[1mMemora update\e[0m\n\n'
+  sudo pacman -Syu
+  command -v flatpak >/dev/null && flatpak update --user -y
+  command -v mise >/dev/null && mise upgrade --yes 2>/dev/null || true
+  rm -f "$cache/updates.tsv"
+  printf '\nDone. Every update is preceded by a snapshot: if something broke, pick it from the boot menu.\n'
+  [[ ! -d /usr/lib/modules/$(uname -r) ]] && printf 'Restart to finish updating the kernel.\n'
+  [[ -t 0 ]] && read -rp "Press Enter to close" _ || true
+}
+
+case "${1:-}" in
+  check) check ;;
+  notify) notify ;;
+  apply) apply ;;
+  --root-part) [[ $EUID -eq 0 ]] || exit 1; shift; root_part "$@" ;;
+  "") interactive ;;
+  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

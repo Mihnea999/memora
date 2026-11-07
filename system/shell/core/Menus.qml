@@ -100,16 +100,18 @@ Singleton {
       { text: "About This Memora", action: () => Apps.run("memora-settings about") },
       sep(),
       { text: "System Settings…", action: () => Apps.run("memora-settings") },
+      { text: "App Store…", action: () => Apps.run("gtk-launch memora-store") },
+      { text: "Software Update…", action: () => Apps.run("memora-settings update") },
       { text: "Launchpad", action: () => Shell.show("launchpad") },
       sep(),
       { text: "Force Quit " + (hasWin ? appName : "…"), enabled: hasWin, action: () => Apps.run("kill -9 " + win.lastIpcObject.pid) },
       sep(),
       { text: "Sleep", action: () => Apps.run("systemctl suspend") },
-      { text: "Restart…", action: () => Apps.run("memora-power restart") },
-      { text: "Shut Down…", action: () => Apps.run("memora-power shutdown") },
+      { text: "Restart…", action: () => Shell.power("restart") },
+      { text: "Shut Down…", action: () => Shell.power("shutdown") },
       sep(),
       { text: "Lock Screen", keys: "Super L", action: () => Apps.run("memora-lock") },
-      { text: "Log Out " + Quickshell.env("USER") + "…", action: () => Apps.run("memora-power logout") }
+      { text: "Log Out " + Quickshell.env("USER") + "…", action: () => Shell.power("logout") }
     ]
     case "app": return hasWin ? [
       { text: "About " + appName, action: () => Apps.run("memora-ai ask 'What is the app " + appName.replace(/'/g, "") + " on Memora and what can it do?'") },

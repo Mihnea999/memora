@@ -78,7 +78,7 @@ def system_prompt():
 
 The computer: user {f['user']} (home {f['home']}), host {f['hostname']}, Memora {f['memora']}, kernel {f['kernel']}, CPU {f['cpu']}, memory {f['memory']}, graphics {f['gpu']}, disk (free/size) {f['disk']}, appearance {f['theme']}. Now: {f['time']}.
 
-How Memora works: packages come from pacman (official Arch repositories); there is no AUR helper unless the person installed one. Settings live in System Settings (memora-settings PANE, panes: wifi, bluetooth, network, notifications, sound, appearance, wallpaper, dock, displays, keyboard, mouse, battery, datetime, users, ai, update, about). Light/dark: memora-theme set light|dark. Updates: memora-update. Snapshots: snapper (one is taken before every pacman transaction). Hyprland is configured in Lua (~/.config/hypr/user.lua for personal changes). The shell (menu bar, Dock, Launchpad) is memora-shell. Developer toolkits: memora-dev.
+How Memora works: packages come from pacman (official Arch repositories); there is no AUR helper unless the person installed one. Settings live in System Settings (memora-settings PANE, panes: wifi, bluetooth, network, notifications, sound, appearance, wallpaper, dock, animations, displays, keyboard, mouse, battery, datetime, users, privacy, ai, update, about). Light/dark: memora-theme set light|dark. Updates: memora-update. Snapshots: snapper (one is taken before every pacman transaction). Hyprland is configured in Lua (~/.config/hypr/user.lua for personal changes). The shell (menu bar, Dock, Launchpad) is memora-shell. Developer toolkits: memora-dev.
 
 Working style:
 - Do what is asked with your tools rather than telling the person how to do it, unless they asked for instructions.
@@ -190,6 +190,7 @@ TOOLS = [
     tool("notify", "Show a desktop notification.", {"title": S, "body": S}, ["title"]),
     tool("remember", "Save a fact about the person or their preferences to the memory file, for later conversations.", {"fact": S}, ["fact"]),
 ]
+SCREEN_TOOLS = {"screenshot", "click", "type_text", "press_keys", "scroll"}
 SERVER_TOOLS = [
     {"type": "web_search_20260209", "name": "web_search"},
     {"type": "web_fetch_20260209", "name": "web_fetch"},
@@ -508,6 +509,16 @@ class Agent:
         self.messages = []
         self.tools = Tools(ui)
 
+    def tools(self):
+        """Screen tools only when the person allows it (System Settings > Privacy & Security)."""
+        try:
+            self.cfg.update(json.loads((CONF / "ai.json").read_text()))
+        except Exception:
+            pass
+        if self.cfg.get("screenControl", True):
+            return TOOLS
+        return [t for t in TOOLS if t["name"] not in SCREEN_TOOLS]
+
     def reset(self):
         self.messages = []
 
@@ -542,7 +553,7 @@ class Agent:
                     max_tokens=32000,
                     system=system_prompt(),
                     thinking={"type": "adaptive"},
-                    tools=TOOLS + SERVER_TOOLS,
+                    tools=self.tools() + SERVER_TOOLS,
                     messages=self.messages,
                 ) as stream:
                     for event in stream:

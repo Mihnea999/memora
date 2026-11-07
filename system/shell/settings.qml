@@ -32,8 +32,9 @@ ShellRoot {
     { id: "battery", title: "Battery", sym: "battery", color: "#34c759", group: 4 },
     { id: "datetime", title: "Date & Time", sym: "clock", color: "#8a8d96", group: 5 },
     { id: "users", title: "Users", sym: "user", color: "#2f7bff", group: 5 },
+    { id: "privacy", title: "Privacy & Security", sym: "shield", color: "#34c759", group: 5 },
     { id: "ai", title: "Memora AI", sym: "ai", color: "#8a5cff", group: 6 },
-    { id: "update", title: "Software Update", sym: "gear", color: "#8a8d96", group: 6 },
+    { id: "update", title: "Software Update", sym: "download", color: "#2f7bff", group: 6 },
     { id: "about", title: "About", sym: "info", color: "#8a8d96", group: 6 }
   ]
   readonly property var visiblePanes: search ? panes.filter(p => p.title.toLowerCase().indexOf(search.toLowerCase()) >= 0) : panes
@@ -42,7 +43,7 @@ ShellRoot {
     wifi: "Wifi", bluetooth: "BluetoothPane", network: "NetworkPane", notifications: "NotificationsPane",
     sound: "SoundPane", appearance: "AppearancePane", animations: "AnimationsPane", wallpaper: "WallpaperPane", dock: "DockPane",
     displays: "DisplaysPane", keyboard: "KeyboardPane", mouse: "MousePane", battery: "BatteryPane",
-    datetime: "DateTimePane", users: "UsersPane", ai: "AiPane", update: "UpdatePane", about: "AboutPane"
+    datetime: "DateTimePane", users: "UsersPane", privacy: "PrivacyPane", ai: "AiPane", update: "UpdatePane", about: "AboutPane"
   })
 
   // A second `memora-settings pane` call switches the open window to that pane.
@@ -61,7 +62,7 @@ ShellRoot {
 
     Rectangle {
       anchors.fill: parent
-      color: Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.96) : Qt.rgba(0.97, 0.97, 0.98, 0.97)
+      color: Theme.window
     }
 
     // ---- sidebar ------------------------------------------------------------
@@ -70,31 +71,11 @@ ShellRoot {
       width: 250
       anchors { top: parent.top; bottom: parent.bottom; left: parent.left; margins: 8 }
       radius: 14
-      color: Theme.dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
+      color: Theme.sidebar
       border.color: Theme.separator
 
       // Window buttons
-      Row {
-        id: lights
-        x: 14; y: 14
-        spacing: 8
-        Repeater {
-          model: [["close", Theme.red], ["min", Theme.yellow], ["zoom", Theme.green]]
-          delegate: Rectangle {
-            required property var modelData
-            width: 13; height: 13; radius: 6.5
-            color: modelData[1]
-            border.color: Qt.rgba(0, 0, 0, 0.15)
-            TapHandler {
-              onTapped: {
-                if (modelData[0] === "close") Qt.quit()
-                else if (modelData[0] === "min") Quickshell.execDetached(["memora-shell", "minimize"])
-                else Hyprland.dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
-              }
-            }
-          }
-        }
-      }
+      WindowControls { id: lights; x: 14; y: 14; window: win; onCloseRequested: Qt.quit() }
       // Drag the window by its top strip.
       Item {
         anchors { left: lights.right; right: parent.right; top: parent.top }

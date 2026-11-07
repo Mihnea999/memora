@@ -21,7 +21,8 @@ Singleton {
 
   readonly property string share: Quickshell.env("MEMORA_PATH") || "/usr/share/memora"
   // The desktop picture for a mode (yours if you picked one, else the chosen set).
-  function wallpaperFor(m) { return Prefs.wallpaper !== "" ? Prefs.wallpaper : share + "/wallpapers/" + (Prefs.wallpaperSet || "horizon") + "-" + m + ".jpg" }
+  readonly property var wallpaperSets: ["ember", "tide", "horizon", "dunes", "silk"]
+  function wallpaperFor(m) { return Prefs.wallpaper !== "" ? Prefs.wallpaper : share + "/wallpapers/" + (wallpaperSets.indexOf(Prefs.wallpaperSet) >= 0 ? Prefs.wallpaperSet : "ember") + "-" + m + ".jpg" }
   readonly property string wallpaper: wallpaperFor(mode)
 
   // Type
@@ -34,20 +35,35 @@ Singleton {
   readonly property color text: dark ? "#f5f5f7" : "#1c1c1e"
   readonly property color textDim: dark ? Qt.rgba(0.96, 0.96, 0.97, 0.58) : Qt.rgba(0.11, 0.11, 0.12, 0.55)
   readonly property color textFaint: dark ? Qt.rgba(0.96, 0.96, 0.97, 0.32) : Qt.rgba(0.11, 0.11, 0.12, 0.3)
-  readonly property color accent: dark ? "#3d8bff" : "#2b74f0"
+  // Accent (System Settings > Appearance): [dark, light]
+  readonly property var accents: ({
+    blue: ["#3d8bff", "#2b74f0"], purple: ["#a565f5", "#8a4ee0"], pink: ["#f2609e", "#e0457f"],
+    red: ["#ff5e57", "#e8433c"], orange: ["#ff8a3d", "#f07322"], green: ["#34c759", "#22a447"],
+    graphite: ["#9a9aa2", "#7c7c84"] })
+  readonly property color accent: (accents[Prefs.accent] || accents.blue)[dark ? 0 : 1]
   readonly property color accentText: "#ffffff"
   readonly property color red: "#ff5f57"
   readonly property color yellow: "#febc2e"
   readonly property color green: "#28c840"
 
-  // Glass: translucent fill (Hyprland blurs what is behind), a bright inner edge and a dark outer edge.
-  // Glass opacity: lower with more transparency (System Settings > Appearance).
-  function see(a) { return a + (0.94 - a) * (1 - Prefs.transparency) }
-  readonly property color glass: dark ? Qt.rgba(0.10, 0.10, 0.12, see(0.34)) : Qt.rgba(0.98, 0.98, 0.99, see(0.34))
-  readonly property color glassStrong: dark ? Qt.rgba(0.12, 0.12, 0.14, see(0.46)) : Qt.rgba(0.99, 0.99, 1.0, see(0.50))
+  // Glass: a translucent fill (Hyprland frosts what is behind it), light on the
+  // inner edge, a dark hairline outside. Clear lets more of the desktop through,
+  // Tinted is calmer; Transparency scales both; Reduce Transparency makes it solid.
+  readonly property bool tinted: Prefs.glassStyle === "tinted"
+  function see(a) {
+    if (Prefs.reduceTransparency) return 0.97
+    const base = tinted ? a + (0.9 - a) * 0.45 : a
+    return base + (0.96 - base) * (1 - Prefs.transparency)
+  }
+  readonly property color glass: dark ? Qt.rgba(0.09, 0.09, 0.11, see(0.22)) : Qt.rgba(0.98, 0.98, 0.99, see(0.26))
+  readonly property color glassStrong: dark ? Qt.rgba(0.11, 0.11, 0.13, see(0.34)) : Qt.rgba(0.99, 0.99, 1.0, see(0.40))
   readonly property color glassSolid: dark ? "#232326" : "#f5f5f7"
-  readonly property color bar: Prefs.menuBarTransparent ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.06, 0.06, 0.08, see(0.30)) : Qt.rgba(1, 1, 1, see(0.34)))
-  readonly property color edge: dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.75)
+  // App windows: the window itself is glass, its content sits on a calmer sheet.
+  readonly property color window: dark ? Qt.rgba(0.10, 0.10, 0.12, see(0.74)) : Qt.rgba(0.975, 0.975, 0.985, see(0.78))
+  readonly property color sidebar: dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
+  readonly property color bar: Prefs.menuBarTransparent && !Prefs.reduceTransparency ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.06, 0.06, 0.08, see(0.30)) : Qt.rgba(1, 1, 1, see(0.34)))
+  readonly property real shine: Prefs.reduceTransparency ? 0.3 : Prefs.shine
+  readonly property color edge: dark ? Qt.rgba(1, 1, 1, 0.05 + 0.16 * shine) : Qt.rgba(1, 1, 1, 0.3 + 0.6 * shine)
   readonly property color outline: dark ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(0, 0, 0, 0.10)
   readonly property color hover: dark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.06)
   readonly property color pressed: dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.11)

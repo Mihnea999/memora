@@ -71,8 +71,23 @@ FloatingWindow {
   }
   function trash() {
     if (!selection.length) return
-    sh(inTrash ? "rm -rf -- " + selection.map(q).join(" ") : "gio trash -- " + selection.map(q).join(" "))
+    const items = selection.slice()
+    if (inTrash) {
+      confirm.ask({
+        title: items.length === 1 ? "Delete “" + items[0].split("/").pop() + "” immediately?" : "Delete " + items.length + " items immediately?",
+        message: "You can't undo this action.", action: "Delete",
+        onAccept: () => { sh("rm -rf -- " + items.map(q).join(" ")); selected = ({}) }
+      })
+      return
+    }
+    sh("gio trash -- " + items.map(q).join(" "))
     selected = ({})
+  }
+  function emptyTrash() {
+    confirm.ask({
+      title: "Empty the Trash?", message: "Everything in the Trash will be deleted. You can't undo this action.", action: "Empty Trash",
+      onAccept: () => sh("gio trash --empty")
+    })
   }
   function copy(cut) { app.clip = selection.slice(); app.clipCut = cut }
   function paste() {
@@ -165,7 +180,7 @@ FloatingWindow {
   }
 
   // ================================================================ layout
-  Rectangle { anchors.fill: parent; color: Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.97) : Qt.rgba(0.99, 0.99, 1, 0.98) }
+  Rectangle { anchors.fill: parent; color: Theme.window }
 
   // ---- sidebar
   Rectangle {
@@ -173,7 +188,7 @@ FloatingWindow {
     width: 210
     anchors { top: parent.top; bottom: parent.bottom; left: parent.left; margins: 8 }
     radius: 12
-    color: Theme.dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
+    color: Theme.sidebar
     border.color: Theme.separator
     WindowControls { x: 14; y: 14; window: win; onCloseRequested: win.closeMe() }
     Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }
@@ -243,7 +258,7 @@ FloatingWindow {
       Kbd {
         visible: win.inTrash
         text: "Empty Trash"
-        onClicked: win.sh("gio trash --empty")
+        onClicked: win.emptyTrash()
       }
       // View choice
       Rectangle {
@@ -908,4 +923,5 @@ FloatingWindow {
       onActiveFocusChanged: if (!activeFocus && win.renaming === rf.target) win.rename(rf.target, text)
     }
   }
+  ConfirmSheet { id: confirm }
 }

@@ -223,7 +223,7 @@ ShellRoot {
     implicitHeight: 680
     minimumSize: Qt.size(720, 420)
     color: "transparent"
-    Rectangle { anchors.fill: parent; color: Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.97) : Qt.rgba(0.99, 0.99, 1, 0.98) }
+    Rectangle { anchors.fill: parent; color: Theme.window }
 
     readonly property color tint: "#f5b72e"     // Notes' own highlight
     // ---- shortcuts (the menu bar sends the same keys)
@@ -255,7 +255,7 @@ ShellRoot {
       Behavior on width { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutQuint } }
       anchors { top: parent.top; bottom: parent.bottom; left: parent.left; margins: 8 }
       radius: 12
-      color: Theme.dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
+      color: Theme.sidebar
       border.color: Theme.separator
       WindowControls { x: 14; y: 14; window: win; onCloseRequested: { app.saveNow(); Qt.quit() } }
       Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }

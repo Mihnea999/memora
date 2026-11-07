@@ -46,6 +46,19 @@ hl.config({
   ecosystem = { no_update_news = true, no_donation_nag = true },
 })
 
+-- Glass, from System Settings > Appearance (~/.config/memora/glass.lua).
+local okg, gl = pcall(dofile, os.getenv("HOME") .. "/.config/memora/glass.lua")
+if not okg or type(gl) ~= "table" then gl = {} end
+local gb = math.max(0, math.min(1, tonumber(gl.blur) or 0.6))
+local gv = math.max(0, math.min(1, tonumber(gl.vibrancy) or 0.5))
+hl.config({ decoration = { blur = {
+  enabled = gl.reduce ~= true and gb > 0.02,
+  size = math.floor(3 + gb * 15 + 0.5),
+  passes = gb < 0.35 and 2 or (gb < 0.7 and 3 or 4),
+  vibrancy = 0.05 + gv * 0.45,
+  vibrancy_darkness = 0.1 + gv * 0.2,
+} } })
+
 -- Motion, from System Settings > Animations (~/.config/memora/motion.lua).
 local ok, mo = pcall(dofile, os.getenv("HOME") .. "/.config/memora/motion.lua")
 if not ok or type(mo) ~= "table" then mo = {} end

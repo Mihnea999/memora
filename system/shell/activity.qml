@@ -97,7 +97,7 @@ ShellRoot {
     implicitHeight: 620
     minimumSize: Qt.size(640, 420)
     color: "transparent"
-    Rectangle { anchors.fill: parent; color: Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.96) : Qt.rgba(0.98, 0.98, 0.99, 0.97) }
+    Rectangle { anchors.fill: parent; color: Theme.window }
 
     // ---- toolbar
     Item {
@@ -105,18 +105,7 @@ ShellRoot {
       anchors { left: parent.left; right: parent.right; top: parent.top }
       height: 54
       DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
-      Row {
-        x: 16; anchors.verticalCenter: parent.verticalCenter
-        spacing: 8
-        Repeater {
-          model: [["close", Theme.red], ["min", Theme.yellow], ["zoom", Theme.green]]
-          delegate: Rectangle {
-            required property var modelData
-            width: 13; height: 13; radius: 6.5; color: modelData[1]; border.color: Qt.rgba(0, 0, 0, 0.15)
-            TapHandler { onTapped: modelData[0] === "close" ? Qt.quit() : (modelData[0] === "min" ? Quickshell.execDetached(["memora-shell", "minimize"]) : Quickshell.execDetached(["memora-window", "fill"])) }
-          }
-        }
-      }
+      WindowControls { x: 16; anchors.verticalCenter: parent.verticalCenter; window: win; onCloseRequested: Qt.quit() }
       Column {
         x: 90; anchors.verticalCenter: parent.verticalCenter
         Txt { text: "Activity Monitor"; font.weight: Font.Bold }

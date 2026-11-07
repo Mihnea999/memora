@@ -12,7 +12,7 @@ Kit.Page {
   Kit.Cmd { id: find; onDone: out => p.pictures = out.split("\n").filter(l => l) }
   Component.onCompleted: find.exec(["bash", "-c", "find \"$HOME/Pictures\" -maxdepth 2 -type f \\( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \\) 2>/dev/null | head -40"])
 
-  readonly property var sets: [["horizon", "Horizon"], ["aurora", "Aurora"], ["glass", "Glass"], ["dunes", "Dunes"], ["silk", "Silk"]]
+  readonly property var sets: [["ember", "Ember"], ["tide", "Tide"], ["horizon", "Horizon"], ["dunes", "Dunes"], ["silk", "Silk"]]
 
   Kit.Group {
     header: "Memora"
