@@ -393,6 +393,11 @@ ShellRoot {
                 anchors { fill: parent; margins: 6 }
                 model: app.zones.filter(z => !tzq.text || z.toLowerCase().replace(/_/g, " ").indexOf(tzq.text.toLowerCase()) >= 0)
                 boundsBehavior: Flickable.StopAtBounds
+                // Open on the zone already chosen (guessed from the network).
+                Connections {
+                  target: app
+                  function onPageChanged() { if (app.page === 4 && !tzq.text) tzl.positionViewAtIndex(Math.max(0, app.zones.indexOf(app.timezone)), ListView.Center) }
+                }
                 delegate: Rectangle {
                   required property string modelData
                   width: tzl.width; height: 30; radius: 7

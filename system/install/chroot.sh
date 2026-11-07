@@ -67,7 +67,7 @@ printf '%s:%s\n' "$MEMORA_USER" "$MEMORA_PASSWORD" | chpasswd
 printf 'root:%s\n' "$MEMORA_PASSWORD" | chpasswd
 passwd -l root >/dev/null
 echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/10-wheel
-echo 'Defaults passwd_timeout=0, timestamp_type=global' > /etc/sudoers.d/20-memora
+echo 'Defaults passwd_timeout=0, timestamp_type=global, lecture=never' > /etc/sudoers.d/20-memora
 chmod 440 /etc/sudoers.d/*
 
 step "Graphics"
@@ -252,6 +252,9 @@ sed -e 's/^Name=.*/Name=Memora/' \
     -e 's/^BackgroundStartColor=.*/BackgroundStartColor=0x0a0a0c/' \
     -e 's/^BackgroundEndColor=.*/BackgroundEndColor=0x0a0a0c/' \
     /usr/share/plymouth/themes/spinner/spinner.plymouth > "$theme/memora.plymouth"
+# The disk password field sits below the logo, not on top of it.
+sed -i '/^DialogVerticalAlignment=/d' "$theme/memora.plymouth"
+sed -i '0,/^\[two-step\]/s//[two-step]\nDialogVerticalAlignment=.72/' "$theme/memora.plymouth"
 plymouth-set-default-theme memora
 
 step "Initramfs"
