@@ -2,5 +2,8 @@
 # memora-session — start the Memora desktop (run by the login screen).
 # uwsm reports every step on the console; keep that off the screen (and clear
 # what the login screen left there) so the login goes straight to the desktop.
+# "GNOME" after Hyprland makes Electron and Chromium apps (Claude, VS Code,
+# Discord…) keep passwords in the system keyring; portals still come from
+# Hyprland, which is listed first.
 printf '\033[2J\033[H\033[?25l'
-exec uwsm start -e -D Hyprland -N Memora -- start-hyprland >/dev/null 2>&1
+exec uwsm start -e -D Hyprland:GNOME -N Memora -- start-hyprland >/dev/null 2>&1

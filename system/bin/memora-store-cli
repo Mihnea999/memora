@@ -40,7 +40,7 @@ claude_desktop_install() {
   rm -rf "$CD_DIR"; mkdir -p "$CD_DIR" "$HOME/.local/bin" "$HOME/.local/share/applications"
   cp -a "$tmp/root/usr/lib/claude-desktop/." "$CD_DIR/"
   cp -a "$tmp/root/usr/share/icons/." "$HOME/.local/share/icons/" 2>/dev/null || true
-  printf '#!/bin/sh\nexec "%s/claude-desktop" --ozone-platform-hint=auto "$@"\n' "$CD_DIR" > "$HOME/.local/bin/claude-desktop"
+  printf '#!/bin/sh\nexec "%s/claude-desktop" --ozone-platform-hint=auto --password-store=gnome-libsecret "$@"\n' "$CD_DIR" > "$HOME/.local/bin/claude-desktop"
   chmod +x "$HOME/.local/bin/claude-desktop"
   sed "s|^Exec=claude-desktop|Exec=$HOME/.local/bin/claude-desktop|" "$tmp/root/usr/share/applications/com.anthropic.Claude.desktop" \
     > "$HOME/.local/share/applications/com.anthropic.Claude.desktop"

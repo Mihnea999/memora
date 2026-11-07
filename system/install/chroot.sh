@@ -207,7 +207,7 @@ cat > /usr/share/wayland-sessions/memora.desktop <<'DESKTOP'
 [Desktop Entry]
 Name=Memora
 Comment=Memora desktop
-Exec=uwsm start -e -D Hyprland -N Memora -- start-hyprland
+Exec=uwsm start -e -D Hyprland:GNOME -N Memora -- start-hyprland
 Type=Application
 DesktopNames=Hyprland
 DESKTOP
