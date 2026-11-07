@@ -40,25 +40,67 @@ Item {
     printErrors: false
     watchChanges: true
     onFileChanged: reload()
-    onLoaded: { try { root.layout = JSON.parse(text()) } catch (e) { root.layout = root.defaults } }
+    onLoaded: { try { root.layout = JSON.parse(text()); Qt.callLater(root.snapAll) } catch (e) { root.layout = root.defaults } }
     onLoadFailed: root.layout = root.defaults
   }
   function save(l) { layout = l; store.setText(JSON.stringify(l, null, 1) + "\n") }
+  // The grid: cells of one small widget; medium ones take two side by side.
+  readonly property real ox: 24
+  readonly property real oy: 48
+  readonly property real step: unit + gap
+  readonly property int cols: Math.max(2, Math.floor((width - ox) / step))
+  readonly property int rows: Math.max(2, Math.floor((height - oy - 110) / step))
+  function spanOf(o) { return o.size === "medium" ? 2 : 1 }
+  function cellOf(o) { return { c: Math.round((o.x - ox) / step), r: Math.round((o.y - oy) / step) } }
+  function free(c, r, span, skip) {
+    if (c < 0 || r < 0 || c + span > cols || r >= rows) return false
+    return !layout.some((o, j) => {
+      if (j === skip) return false
+      const k = cellOf(o), sp = spanOf(o)
+      return k.r === r && c < k.c + sp && c + span > k.c
+    })
+  }
+  // The nearest free spot to where a widget was dropped.
+  function nearest(c, r, span, skip) {
+    let best = null, bd = 1e9
+    for (let rr = 0; rr < rows; rr++) for (let cc = 0; cc + span <= cols; cc++) {
+      if (!free(cc, rr, span, skip)) continue
+      const d = (cc - c) * (cc - c) + (rr - r) * (rr - r)
+      if (d < bd) { bd = d; best = { c: cc, r: rr } }
+    }
+    return best
+  }
+  // Layouts saved before the grid: put each widget in its nearest cell.
+  function snapAll() {
+    if (width <= 0) return
+    const l = layout.slice(); let changed = false
+    for (let i = 0; i < l.length; i++) {
+      const o = l[i], c = Math.round((o.x - ox) / step), r = Math.round((o.y - oy) / step)
+      if (o.x === ox + c * step && o.y === oy + r * step) continue
+      layout = l
+      const k = nearest(c, r, spanOf(o), i)
+      if (k) { l[i] = Object.assign({}, o, { x: ox + k.c * step, y: oy + k.r * step }); changed = true }
+    }
+    if (changed) save(l)
+  }
+  property var ghost: null       // { c, r, span } while dragging
+  function dropCell(i, x, y) {
+    const span = spanOf(layout[i])
+    return nearest(Math.round((x - ox) / step), Math.round((y - oy) / step), span, i)
+  }
   function move(i, x, y) {
-    const l = layout.slice(); const g = 8
-    l[i] = Object.assign({}, l[i], { x: Math.max(8, Math.round(x / g) * g), y: Math.max(40, Math.round(y / g) * g) })
+    const k = dropCell(i, x, y)
+    const l = layout.slice()
+    if (k) l[i] = Object.assign({}, l[i], { x: ox + k.c * step, y: oy + k.r * step })
+    ghost = null
     save(l)
   }
   function remove(i) { const l = layout.slice(); l.splice(i, 1); save(l) }
   function add(type, size) {
-    // Find a free spot, column by column from the top left.
-    const w = size === "medium" ? 2 * unit + gap : unit
-    for (let cx = 24; cx < root.width - w; cx += unit + gap)
-      for (let cy = 48; cy < root.height - unit - 120; cy += unit + gap) {
-        const hit = layout.some(o => { const ow = o.size === "medium" ? 2 * unit + gap : unit; return cx < o.x + ow && cx + w > o.x && cy < o.y + unit && cy + unit > o.y })
-        if (!hit) { save(layout.concat([{ type: type, size: size, x: cx, y: cy }])); return }
-      }
-    save(layout.concat([{ type: type, size: size, x: 24, y: 48 }]))
+    const span = size === "medium" ? 2 : 1
+    const k = nearest(0, 0, span, -1)
+    if (!k) return
+    save(layout.concat([{ type: type, size: size, x: ox + k.c * step, y: oy + k.r * step }]))
   }
 
   // ---- shared data ------------------------------------------------------------
@@ -122,6 +164,32 @@ Item {
 
   readonly property var player: Sys.player
 
+  // ---- the grid, while editing -------------------------------------------------
+  Repeater {
+    model: root.editing ? root.cols * root.rows : 0
+    delegate: Rectangle {
+      required property int index
+      x: root.ox + (index % root.cols) * root.step; y: root.oy + Math.floor(index / root.cols) * root.step
+      width: root.unit; height: root.unit; radius: 24
+      color: "transparent"
+      border.width: 1.5; border.color: Qt.rgba(1, 1, 1, 0.16)
+      opacity: 0
+      Component.onCompleted: opacity = 1
+      Behavior on opacity { NumberAnimation { duration: Theme.normal } }
+    }
+  }
+  Rectangle {
+    visible: !!root.ghost
+    x: root.ghost ? root.ox + root.ghost.c * root.step : 0
+    y: root.ghost ? root.oy + root.ghost.r * root.step : 0
+    width: root.ghost ? root.ghost.span * root.unit + (root.ghost.span - 1) * root.gap : 0
+    height: root.unit; radius: 24
+    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+    border.width: 2; border.color: Theme.accent
+    Behavior on x { NumberAnimation { duration: Theme.fast; easing.type: Theme.easing } }
+    Behavior on y { NumberAnimation { duration: Theme.fast; easing.type: Theme.easing } }
+  }
+
   // ---- the widgets -------------------------------------------------------------
   Repeater {
     model: root.layout
@@ -180,7 +248,9 @@ Item {
         id: drag
         enabled: root.editing
         onActiveChanged: if (!active) root.move(w.index, w.x, w.y)
+        onTranslationChanged: if (active) { const k = root.dropCell(w.index, w.x, w.y); root.ghost = k ? { c: k.c, r: k.r, span: root.spanOf(w.modelData) } : null }
       }
+      z: drag.active ? 10 : 0
       TapHandler {
         enabled: !root.editing
         onTapped: {
