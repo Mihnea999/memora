@@ -12,7 +12,7 @@ gnome-keyring
 qt5-wayland
 qt6-wayland
 quickshell
-ptyxis
+ghostty
 nautilus
 gnome-text-editor
 gnome-calculator

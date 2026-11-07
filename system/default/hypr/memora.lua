@@ -4,7 +4,7 @@
 local base = (os.getenv("MEMORA_PATH") or "/usr/share/memora") .. "/default/hypr/"
 
 memora = memora or {}
-memora.terminal = "ptyxis --new-window"
+memora.terminal = "ghostty"
 memora.browser = "chromium"
 memora.files = "nautilus --new-window"
 

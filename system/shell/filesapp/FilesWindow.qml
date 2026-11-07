@@ -740,7 +740,7 @@ FloatingWindow {
         { text: win.view === "icons" ? "View as List" : "View as Icons", action: () => win.view = win.view === "icons" ? "list" : "icons" },
         { text: win.hidden ? "Hide Hidden Files" : "Show Hidden Files", keys: "Ctrl H", action: () => win.hidden = !win.hidden },
         { separator: true },
-        { text: "Open in Terminal", action: () => Quickshell.execDetached(["ptyxis", "--new-window", "-d", win.path]) }
+        { text: "Open in Terminal", action: () => Quickshell.execDetached(["ghostty", "--working-directory=" + win.path]) }
       ]
     }
     function itemMenu(f) {

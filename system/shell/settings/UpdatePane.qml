@@ -190,7 +190,7 @@ Kit.Page {
     }
     Kit.Row {
       label: "Firmware"; detail: "Updates for the computer's own hardware, when the maker offers them"; last: true
-      Kit.Button { text: "Check…"; onClicked: Quickshell.execDetached(["ptyxis", "--new-window", "--", "bash", "-c", "fwupdmgr refresh >/dev/null 2>&1; fwupdmgr get-updates && fwupdmgr update; read -rsn1 -p 'Press a key to close'"]) }
+      Kit.Button { text: "Check…"; onClicked: Quickshell.execDetached(["ghostty", "-e", "bash", "-c", "fwupdmgr refresh >/dev/null 2>&1; fwupdmgr get-updates && fwupdmgr update; read -rsn1 -p 'Press a key to close'"]) }
     }
   }
 }

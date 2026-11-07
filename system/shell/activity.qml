@@ -27,7 +27,7 @@ ShellRoot {
   property var prevCpu: null
   property string asking: ""
   readonly property var friendly: ({
-    "chromium": "Browser", "nautilus": "Files", "ptyxis": "Terminal", "ptyxis-agent": "Terminal helper",
+    "chromium": "Browser", "nautilus": "Files", "ghostty": "Terminal",
     "gnome-text-editor": "Text Editor", "gnome-calculator": "Calculator", "loupe": "Photos", "papers": "Documents",
     "qs": "Memora", "quickshell": "Memora", "Hyprland": "Hyprland (window server)", "mpv": "Media Player"
   })          // "quit" | "force" while the confirmation shows

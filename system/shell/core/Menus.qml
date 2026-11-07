@@ -25,7 +25,7 @@ Singleton {
       ["Bookmarks", [k("Bookmark This Page…", "ctrl+d"), k("Bookmark Manager", "ctrl+shift+o"), k("Show Bookmarks Bar", "ctrl+shift+b")]],
       ["Tab", [k("Next Tab", "ctrl+Tab"), k("Previous Tab", "ctrl+shift+Tab"), S, k("Downloads", "ctrl+j")]],
       ["Window", "std"], ["Help", "std"]]
-    case "org.gnome.Ptyxis": case "kitty": return [
+    case "com.mitchellh.ghostty": case "org.gnome.Ptyxis": case "kitty": return [
       ["Shell", [k("New Window", "ctrl+shift+n"), k("New Tab", "ctrl+shift+t"), S, k("Close Tab", "ctrl+shift+w"), S,
                  { text: "Ask Memora AI About Terminal…", action: () => Apps.run("memora-ai window") }]],
       ["Edit", [k("Copy", "ctrl+shift+c"), k("Paste", "ctrl+shift+v"), k("Select All", "ctrl+shift+a"), S, k("Find…", "ctrl+shift+f"), S,
@@ -141,7 +141,7 @@ Singleton {
       { text: "Close Window", action: () => Apps.close(win) }
     ] : [
       { text: "New Files Window", keys: "Super E", action: () => m.open(m.home) },
-      { text: "New Terminal", keys: "Super Return", action: () => Apps.launch("org.gnome.Ptyxis") },
+      { text: "New Terminal", keys: "Super Return", action: () => Apps.launch("com.mitchellh.ghostty") },
       sep(),
       { text: "Open Downloads", action: () => m.open(m.home + "/Downloads") }
     ]
