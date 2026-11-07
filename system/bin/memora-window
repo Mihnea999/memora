@@ -187,7 +187,7 @@ def main():
             restore(w, st)
     elif cmd == "unsnap":
         w = window(args[1])
-        if w and st.get(w["address"], {}).get("orig"):
+        if w and st.get(w["address"], {}).get("orig") and current_zone(w, area(w), st):
             restore(w, st, at=(int(float(args[2])), int(float(args[3]))))
     elif cmd == "zone":
         w = window(args[1] if len(args) > 1 else None)

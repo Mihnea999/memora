@@ -24,4 +24,7 @@ hl.config({
   },
 })
 
+-- Three fingers: sideways between desktops, up for Mission Control, down to leave it.
 hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
+hl.gesture({ fingers = 3, direction = "up", action = function() hl.exec_cmd("memora-shell show overview") end })
+hl.gesture({ fingers = 3, direction = "down", action = function() hl.exec_cmd("memora-shell close") end })

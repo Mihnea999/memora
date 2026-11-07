@@ -139,6 +139,8 @@ Singleton {
   function focus(w) {
     if (isMinimized(w)) return restore(w)
     dispatch('hl.dsp.focus({ window = "' + sel(w.address) + '" })')
+    // Floating windows: also bring it in front of the others.
+    dispatch('hl.dsp.window.alter_zorder({ mode = "top", window = "' + sel(w.address) + '" })')
   }
   // Minimizing plays the Genie animation (dock/Genie.qml), which then calls finishMinimize.
   signal minimizing(string addr, var win, rect from)
