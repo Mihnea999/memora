@@ -34,7 +34,8 @@ Scope {
   function carry(n) {
     n = Math.max(1, Math.min(count, n))
     const w = Hyprland.activeToplevel
-    if (!w || n === current) return
+    // Only a window on this desktop (an empty desktop has none in front).
+    if (!w || n === current || !w.workspace || w.workspace.id !== current) return
     Hyprland.dispatch('hl.dsp.window.move({ workspace = "' + n + '", window = "address:0x' + String(w.address).replace(/^0x/, "") + '" })')
     go(n)
   }
@@ -292,14 +293,18 @@ Scope {
               AppIcon { appId: Apps.classOf(card.modelData); width: 20; height: 20 }
               Txt { text: card.o.title || Apps.nameFor(Apps.classOf(card.modelData)); color: "#ffffff"; font.pixelSize: Theme.small; width: Math.min(implicitWidth, card.width - 30); elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
             }
-            scale: ch2.hovered && !dragging ? 1.03 : 1
-            Behavior on scale { NumberAnimation { duration: Theme.fast } }
+            scale: dragging ? Math.min(0.9, 180 / Math.max(width, height)) : (ch2.hovered ? 1.03 : 1)
+            Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Theme.easing } }
             HoverHandler { id: ch2; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: { Apps.focus(card.modelData); Shell.close() } }
             DragHandler {
               id: dragger
               target: null
-              onTranslationChanged: if (active) { card.dx = translation.x; card.dy = translation.y }
+              // While dragged the window shrinks and its middle follows the pointer.
+              onTranslationChanged: if (active) {
+                card.dx = centroid.pressPosition.x + translation.x - card.width / 2
+                card.dy = centroid.pressPosition.y + translation.y - card.height / 2
+              }
               onActiveChanged: {
                 card.dragging = active
                 if (!active) { card.dx = 0; card.dy = 0 }
@@ -315,7 +320,7 @@ Scope {
                 let hit = 0
                 for (let i = 0; i < dk.count; i++) {
                   const x0 = i * (strip.tw + strip.spacing)
-                  if (p.x >= x0 && p.x <= x0 + strip.tw && p.y >= 0 && p.y <= strip.th) hit = i + 1
+                  if (p.x >= x0 - 8 && p.x <= x0 + strip.tw + 8 && p.y >= -60 && p.y <= strip.th + 40) hit = i + 1
                 }
                 ov.dropOn = hit
               }
