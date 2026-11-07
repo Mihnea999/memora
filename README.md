@@ -12,8 +12,10 @@ Requires Docker. The build runs `mkarchiso` in a privileged Arch container.
 ./build.sh            # → out/memora-<version>-<date>-x86_64.iso
 ```
 
-Write it to a USB stick (`dd` or Ventoy) and boot it in **UEFI** mode. The installer starts
-on its own: keyboard, user, time zone, disk, encryption, appearance, developer tools.
+Write it to a USB stick (`dd` or Ventoy) and boot it in **UEFI** mode. The graphical installer
+starts on its own (`system/shell/installer.qml` in cage): keyboard and language, Wi-Fi, disk and
+encryption, account, time zone (guessed from the network), appearance, developer tools, a review
+page, then progress. If the screen can't show it, the text installer runs instead.
 
 ## Test in a VM
 
@@ -40,7 +42,14 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 | Dialogs | Administrator password (polkit), volume and brightness |
 | Alt+Tab | Window switcher |
 
-Apps: **System Settings** (`memora-settings [pane]`), **Memora AI**, **Welcome**, all in the same style.
+Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **App Store** (curated Flathub
+apps, per user), **Activity Monitor**, **Memora AI**, **Welcome**, all in the same style. Anything that
+can't be undone (shut down, restart, log out, emptying the Trash, deleting forever) asks first.
+
+Liquid glass is configurable in System Settings > Appearance: Clear or Tinted, transparency, frost
+(Hyprland blur), colour through glass, edge light, Reduce Transparency, and the accent colour.
+Wallpapers: **Ember** (default, warm) and **Tide** are lit per pixel by `tools/flow.py`; Horizon,
+Dunes and Silk are drawn as SVG. All are 8K, in light and dark.
 GTK apps get round window buttons, and windows float with deep shadows; Super+T tiles one.
 Icons are Memora's own (`tools/icons.py`); apps without one are placed on the same squircle tile.
 
@@ -58,6 +67,22 @@ Set it up in System Settings > Memora AI:
 Risky actions (administrator commands, deleting or replacing files, installing software, stopping
 services) wait for **Allow**. The gravest (erasing disks, deleting the system or your home folder,
 removing core packages) show a red warning first. Administrator commands go through Memora's password dialog.
+
+## Updates and security
+
+- **Software Update** (System Settings, or the Memora menu) lists what's new and installs it with one
+  password prompt: system packages (pacman), App Store apps (Flathub) and, when an update address is
+  configured, Memora itself. A snapshot is taken before every system update.
+- A background check (`memora-update-check.timer`, user) posts a notification when updates are waiting.
+- Memora's own updates come from `URL=` in `/etc/memora/update.conf` and are installed only when signed
+  by a key in `system/keys/*.asc` (build one with `tools/release.sh`). Without both, it is off.
+- Firewall (ufw) on from the first boot: nothing may connect in. Kernel and network hardening
+  (`/etc/sysctl.d/90-memora.conf`), remote login off (and keys-only if turned on), private home folders,
+  a short lock-out after 5 wrong passwords.
+- System Settings > Privacy & Security: firewall, disk encryption status, lock and sleep timing,
+  whether Memora AI may see and use the screen, clearing clipboard history.
+- Administrator actions from Settings go through `memora-admin` with their own polkit actions, so the
+  password dialog says in plain words what will happen.
 
 ## What gets installed
 
