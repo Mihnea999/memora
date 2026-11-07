@@ -1,50 +1,209 @@
-#!/usr/bin/env bash
-# memora-window ZONE [ADDRESS] — place a window (the focused one by default) in
-# the free area of its screen, below the menu bar and above the Dock.
-# ZONES: left right top bottom fill center top-left top-right bottom-left bottom-right
-#        left-third center-third right-third left-two-thirds right-two-thirds
-set -euo pipefail
-zone="${1:-}"; addr="${2:-}"
-gap="${MEMORA_GAP:-10}"
-sel=""; [[ -n $addr ]] && sel=", window = \"address:$addr\""
-read -r mx my mw mh l t r b < <(hyprctl -j monitors | python3 -c '
-import json, sys
-m = next(x for x in json.load(sys.stdin) if x["focused"])
-s = m["scale"]; rl, rt, rr, rb = m["reserved"]
-print(m["x"], m["y"], int(m["width"] / s), int(m["height"] / s), rl, rt, rr, rb)')
-ax=$((mx + l + gap)); ay=$((my + t + gap)); aw=$((mw - l - r - 2 * gap)); ah=$((mh - t - b - 2 * gap))
-hw=$(((aw - gap) / 2)); hh=$(((ah - gap) / 2)); tw=$(((aw - 2 * gap) / 3))
-d() { hyprctl dispatch "$1" >/dev/null; }
-place() {
-  d "hl.dsp.window.float({ action = \"enable\"$sel })"
-  d "hl.dsp.window.resize({ x = $3, y = $4$sel })"
-  d "hl.dsp.window.move({ x = $1, y = $2$sel })"
+#!/usr/bin/env python3
+"""memora-window — place windows in the free area of their screen (below the
+menu bar, above the Dock), remembering how big they were before.
+
+  memora-window ZONE [ADDRESS]    left right top bottom fill center
+                                  top-left top-right bottom-left bottom-right
+                                  left-third center-third right-third
+                                  left-two-thirds right-two-thirds
+  memora-window key DIR [ADDRESS] Super+arrow: halves, then two-thirds and
+                                  thirds on repeat; combine for quarters
+                                  (left then up = top-left); down restores
+  memora-window restore [ADDRESS] back to the size it had before docking
+  memora-window unsnap ADDRESS X Y  being dragged away: back to its own size,
+                                  under the pointer at X Y
+  memora-window zone [ADDRESS]    print the zone it is docked in, if any
+  memora-window rect ZONE         print the zone's rectangle (x y w h)
+"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+GAP = int(os.environ.get("MEMORA_GAP", "10"))
+STATE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "memora" / "windows.json"
+
+
+def hypr(*args):
+    out = subprocess.run(["hyprctl", "-j", *args], capture_output=True, text=True).stdout
+    return json.loads(out or "null")
+
+
+def dispatch(expr):
+    subprocess.run(["hyprctl", "dispatch", expr], capture_output=True)
+
+
+def load():
+    try:
+        return json.loads(STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save(s):
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    # Forget windows that are gone.
+    alive = {c["address"] for c in hypr("clients") or []}
+    STATE.write_text(json.dumps({k: v for k, v in s.items() if k in alive}))
+
+
+def window(addr=None):
+    if addr:
+        a = addr if addr.startswith("0x") else "0x" + addr
+        return next((c for c in hypr("clients") or [] if c["address"] == a), None)
+    w = hypr("activewindow")
+    return w if w and w.get("address") else None
+
+
+def area(w):
+    ms = hypr("monitors")
+    m = next((m for m in ms if m["id"] == w["monitor"]), None) or next(m for m in ms if m["focused"])
+    s = m["scale"]
+    l, t, r, b = m["reserved"]
+    mw, mh = int(m["width"] / s), int(m["height"] / s)
+    if m["transform"] in (1, 3, 5, 7):
+        mw, mh = mh, mw
+    return (m["x"] + l + GAP, m["y"] + t + GAP, mw - l - r - 2 * GAP, mh - t - b - 2 * GAP)
+
+
+def rect(zone, a, w=None):
+    ax, ay, aw, ah = a
+    hw, hh = (aw - GAP) // 2, (ah - GAP) // 2
+    tw = (aw - 2 * GAP) // 3
+    z = {
+        "left": (ax, ay, hw, ah), "right": (ax + hw + GAP, ay, hw, ah),
+        "top": (ax, ay, aw, hh), "bottom": (ax, ay + hh + GAP, aw, hh),
+        "fill": (ax, ay, aw, ah),
+        "top-left": (ax, ay, hw, hh), "top-right": (ax + hw + GAP, ay, hw, hh),
+        "bottom-left": (ax, ay + hh + GAP, hw, hh), "bottom-right": (ax + hw + GAP, ay + hh + GAP, hw, hh),
+        "left-third": (ax, ay, tw, ah), "center-third": (ax + tw + GAP, ay, tw, ah),
+        "right-third": (ax + 2 * (tw + GAP), ay, tw, ah),
+        "left-two-thirds": (ax, ay, 2 * tw + GAP, ah), "right-two-thirds": (ax + tw + GAP, ay, 2 * tw + GAP, ah),
+    }
+    if zone in z:
+        return z[zone]
+    if zone == "center" and w:
+        ww, wh = min(w["size"][0], aw), min(w["size"][1], ah)
+        return (ax + (aw - ww) // 2, ay + (ah - wh) // 2, ww, wh)
+    return None
+
+
+def current_zone(w, a, st):
+    """The zone the window sits in now (it may have been moved by hand since)."""
+    z = st.get(w["address"], {}).get("zone")
+    if not z:
+        return None
+    r = rect(z, a, w)
+    x, y = w["at"]
+    ww, wh = w["size"]
+    if r and abs(r[0] - x) <= 6 and abs(r[1] - y) <= 6 and abs(r[2] - ww) <= 6 and abs(r[3] - wh) <= 6:
+        return z
+    return None
+
+
+def place(w, zone, st, a=None):
+    a = a or area(w)
+    r = rect(zone, a, w)
+    if not r:
+        return
+    sel = f'window = "address:{w["address"]}"'
+    rec = st.setdefault(w["address"], {})
+    # Remember its own size the first time it docks.
+    if not current_zone(w, a, st) and zone != "center":
+        rec["orig"] = [*w["at"], *w["size"]]
+    if not w["floating"]:
+        dispatch(f'hl.dsp.window.float({{ action = "enable", {sel} }})')
+    dispatch(f'hl.dsp.window.resize({{ x = {r[2]}, y = {r[3]}, {sel} }})')
+    dispatch(f'hl.dsp.window.move({{ x = {r[0]}, y = {r[1]}, {sel} }})')
+    rec["zone"] = zone if zone != "center" else None
+
+
+def restore(w, st, at=None):
+    rec = st.get(w["address"], {})
+    o = rec.get("orig")
+    a = area(w)
+    sel = f'window = "address:{w["address"]}"'
+    if o:
+        ww, wh = min(o[2], a[2]), min(o[3], a[3])
+        if at:   # under the pointer, keeping it at the same spot across the title bar
+            fx = (at[0] - w["at"][0]) / max(1, w["size"][0])
+            x, y = int(at[0] - fx * ww), int(at[1] - min(24, at[1] - w["at"][1]))
+        else:
+            x, y = o[0], o[1]
+        dispatch(f'hl.dsp.window.resize({{ x = {ww}, y = {wh}, {sel} }})')
+        dispatch(f'hl.dsp.window.move({{ x = {x}, y = {y}, {sel} }})')
+    elif not at:
+        place(w, "center", st, a)
+    rec.pop("zone", None)
+    rec.pop("orig", None)
+
+
+# Super+arrows: what each key does from where the window is now.
+KEYS = {
+    "left": {None: "left", "left": "left-two-thirds", "left-two-thirds": "left-third", "left-third": "left",
+             "right": "left", "top-right": "top-left", "bottom-right": "bottom-left", "top-left": "left",
+             "bottom-left": "left", "right-two-thirds": "left", "right-third": "left-third", "center-third": "left-third",
+             "fill": "left", "top": "top-left", "bottom": "bottom-left"},
+    "right": {None: "right", "right": "right-two-thirds", "right-two-thirds": "right-third", "right-third": "right",
+              "left": "right", "top-left": "top-right", "bottom-left": "bottom-right", "top-right": "right",
+              "bottom-right": "right", "left-two-thirds": "right", "left-third": "right-third", "center-third": "right-third",
+              "fill": "right", "top": "top-right", "bottom": "bottom-right"},
+    "up": {None: "fill", "left": "top-left", "right": "top-right", "bottom-left": "left", "bottom-right": "right",
+           "bottom": "fill", "top-left": "top-left", "top-right": "top-right", "fill": "fill", "top": "fill",
+           "left-third": "fill", "center-third": "fill", "right-third": "fill", "left-two-thirds": "fill", "right-two-thirds": "fill"},
+    "down": {"left": "bottom-left", "right": "bottom-right", "top-left": "left", "top-right": "right",
+             "top": "fill", "bottom-left": "bottom-left", "bottom-right": "bottom-right"},
 }
-case "$zone" in
-  left) place "$ax" "$ay" "$hw" "$ah" ;;
-  right) place "$((ax + hw + gap))" "$ay" "$hw" "$ah" ;;
-  top) place "$ax" "$ay" "$aw" "$hh" ;;
-  bottom) place "$ax" "$((ay + hh + gap))" "$aw" "$hh" ;;
-  fill) place "$ax" "$ay" "$aw" "$ah" ;;
-  top-left) place "$ax" "$ay" "$hw" "$hh" ;;
-  top-right) place "$((ax + hw + gap))" "$ay" "$hw" "$hh" ;;
-  bottom-left) place "$ax" "$((ay + hh + gap))" "$hw" "$hh" ;;
-  bottom-right) place "$((ax + hw + gap))" "$((ay + hh + gap))" "$hw" "$hh" ;;
-  left-third) place "$ax" "$ay" "$tw" "$ah" ;;
-  center-third) place "$((ax + tw + gap))" "$ay" "$tw" "$ah" ;;
-  right-third) place "$((ax + 2 * (tw + gap)))" "$ay" "$tw" "$ah" ;;
-  left-two-thirds) place "$ax" "$ay" "$((2 * tw + gap))" "$ah" ;;
-  right-two-thirds) place "$((ax + tw + gap))" "$ay" "$((2 * tw + gap))" "$ah" ;;
-  center)
-    read -r w h < <(hyprctl -j clients | python3 -c '
-import json, sys
-a = sys.argv[1]
-cs = json.load(sys.stdin)
-c = next((c for c in cs if c["address"] == a), None) if a else None
-if c is None:
-    import subprocess; c = json.loads(subprocess.run(["hyprctl", "-j", "activewindow"], capture_output=True, text=True).stdout)
-print(*c["size"])' "$addr")
-    w=$((w > aw ? aw : w)); h=$((h > ah ? ah : h))
-    place "$((ax + (aw - w) / 2))" "$((ay + (ah - h) / 2))" "$w" "$h" ;;
-  *) sed -n '2,5p' "$0"; exit 1 ;;
-esac
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__)
+        return 1
+    cmd = args[0]
+    st = load()
+    if cmd == "rect":
+        w = window()
+        r = rect(args[1], area(w), w) if w else None
+        if r:
+            print(*r)
+        return 0
+    if cmd == "key":
+        w = window(args[2] if len(args) > 2 else None)
+        if not w or w.get("fullscreen"):
+            return 0
+        a = area(w)
+        z = current_zone(w, a, st)
+        nxt = KEYS.get(args[1], {}).get(z)
+        if args[1] == "down" and nxt is None:
+            restore(w, st)
+        elif nxt:
+            place(w, nxt, st, a)
+    elif cmd == "restore":
+        w = window(args[1] if len(args) > 1 else None)
+        if w:
+            restore(w, st)
+    elif cmd == "unsnap":
+        w = window(args[1])
+        if w and st.get(w["address"], {}).get("orig"):
+            restore(w, st, at=(int(float(args[2])), int(float(args[3]))))
+    elif cmd == "zone":
+        w = window(args[1] if len(args) > 1 else None)
+        print((current_zone(w, area(w), st) or "") if w else "")
+        return 0
+    else:
+        w = window(args[1] if len(args) > 1 else None)
+        if not w or w.get("fullscreen"):
+            return 0
+        if rect(cmd, (0, 0, 100, 100), w) is None and cmd != "center":
+            print(__doc__)
+            return 1
+        place(w, cmd, st)
+    save(st)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

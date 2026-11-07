@@ -16,6 +16,10 @@ case "${1:-}" in
   snap) exec qs -p "$dir" ipc call snap "${2:-end}" ;;
   minimize) exec qs -p "$dir" ipc call shell minimize ;;
   project) exec qs -p "$dir" ipc call display project ;;
+  super-up) exec qs -p "$dir" ipc call switcher superUp ;;
+  quit-app) exec qs -p "$dir" ipc call shell quitApp ;;
+  hide-app) exec qs -p "$dir" ipc call shell hideApp ;;
+  desktop) shift; exec qs -p "$dir" ipc call desktops "${1:-next}" "${2:-0}" ;;
   show-desktop) exec qs -p "$dir" ipc call shell showDesktop ;;
   *) exec qs -p "$dir" ipc call shell "$@" ;;
 esac

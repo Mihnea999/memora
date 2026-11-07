@@ -20,6 +20,7 @@ import qs.snap
 import qs.alert
 import qs.notch
 import qs.display
+import qs.desktops
 
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
@@ -41,6 +42,7 @@ ShellRoot {
   Alert {}
   Notch {}
   Project {}
+  Desktops {}
 
   IpcHandler {
     target: "osd"
@@ -56,6 +58,12 @@ ShellRoot {
     function close(): void { Shell.close() }
     function power(what: string): void { Shell.power(what) }
     function restore(addr: string): void { const a = addr.replace(/^0x/, ""); const w = Hyprland.toplevels.values.find(t => String(t.address).replace(/^0x/, "") === a); if (w) Apps.restore(w) }
+    function quitApp(): void { const w = Hyprland.activeToplevel; if (w) Apps.quit(Apps.classOf(Apps.windows.find(x => x.address === w.address) || w)) }
+    function hideApp(): void {
+      const w = Hyprland.activeToplevel; if (!w) return
+      const c = Apps.classOf(Apps.windows.find(x => x.address === w.address) || w)
+      Apps.windowsOf(c).filter(x => !Apps.isMinimized(x)).forEach(x => Apps.minimize(x.address))
+    }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {
       const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)

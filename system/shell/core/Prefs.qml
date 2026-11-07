@@ -34,11 +34,15 @@ Singleton {
   property int lockAfter: 5            // minutes of inactivity before the screen locks; 0 never
   property int sleepAfter: 30          // minutes before the computer sleeps; 0 never
   property bool updateCheck: true      // look for updates in the background and say when there are some
+  // Desktops and windows
+  property int desktops: 2             // how many desktops there are (more appear when needed)
+  property bool snapAssist: true       // after docking a window, offer others for the rest of the screen
+  property bool snapLayouts: true      // drag a window to the top middle for a choice of layouts
 
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
-    "lockAfter", "sleepAfter", "updateCheck"]
+    "lockAfter", "sleepAfter", "updateCheck", "desktops", "snapAssist", "snapLayouts"]
 
   // A duration, scaled by the speed setting; 0 when animations are off.
   function motion(ms) { return animations ? Math.round(ms / Math.max(0.25, animationSpeed)) : 0 }

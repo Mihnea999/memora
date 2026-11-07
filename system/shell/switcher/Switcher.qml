@@ -17,6 +17,10 @@ Scope {
   function build() {
     const ws = Apps.windows.slice()
     ws.sort((a, b) => (a.lastIpcObject.focusHistoryID || 0) - (b.lastIpcObject.focusHistoryID || 0))
+    // The window in front is always first, so one Tab goes to the one before it.
+    const act = Hyprland.activeToplevel
+    const i = act ? ws.findIndex(w => w.address === act.address) : -1
+    if (i > 0) ws.unshift(ws.splice(i, 1)[0])
     list = ws
   }
   function step(d) {
@@ -30,12 +34,20 @@ Scope {
     if (w) Apps.focus(w)
   }
 
+  // Super or Alt let go (reported by the Memora plugin): finish switching.
+  Connections {
+    target: Hyprland
+    function onRawEvent(ev) { if (ev.name === "memorakeyup" && sw.open) sw.commit() }
+  }
+
   IpcHandler {
     target: "switcher"
     function next(): void { sw.step(1) }
     function prev(): void { sw.step(-1) }
     function commit(): void { sw.commit() }
     function cancel(): void { sw.open = false }
+    // Super let go: finish switching, or (a tap on its own) open Apps.
+    function superUp(): void { if (sw.open) sw.commit(); else Shell.toggle("launchpad") }
   }
 
   Variants {
@@ -51,6 +63,24 @@ Scope {
       color: "transparent"
       WlrLayershell.layer: WlrLayer.Overlay
       WlrLayershell.namespace: "memora-switcher"
+      // While open it has the keyboard, to see the held key (Super or Alt) go up:
+      // that finishes the switch. Tab presses still reach the compositor's binds.
+      WlrLayershell.keyboardFocus: sw.open && visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+      Item {
+        id: keys
+        anchors.fill: parent
+        focus: sw.open
+        Connections { target: sw; function onOpenChanged() { if (sw.open) Qt.callLater(() => keys.forceActiveFocus()) } }
+        Keys.onReleased: ev => {
+          if ([Qt.Key_Meta, Qt.Key_Super_L, Qt.Key_Super_R, Qt.Key_Alt, Qt.Key_AltGr].indexOf(ev.key) >= 0) sw.commit()
+        }
+        Keys.onPressed: ev => {
+          if (ev.key === Qt.Key_Escape) sw.open = false
+          else if (ev.key === Qt.Key_Right || ev.key === Qt.Key_Tab) sw.step(1)
+          else if (ev.key === Qt.Key_Left || ev.key === Qt.Key_Backtab) sw.step(-1)
+          else if (ev.key === Qt.Key_Return) sw.commit()
+        }
+      }
 
       Glass {
         anchors.fill: parent

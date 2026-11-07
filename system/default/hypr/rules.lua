@@ -44,7 +44,7 @@ hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welco
 hl.window_rule({ name = "memora-float-tool-size", match = { class = "^(memora-float)$" }, size = "900 600" })
 
 -- Glass surfaces: blur what is behind the shell's translucent layers.
-for _, ns in ipairs({ "memora-bar", "memora-dock", "memora-panel", "memora-launchpad", "memora-spotlight",
+for _, ns in ipairs({ "memora-bar", "memora-dock", "memora-panel", "memora-launchpad", "memora-spotlight", "memora-overview",
   "memora-notifications", "memora-osd", "memora-dialog", "memora-switcher" }) do
   hl.layer_rule({ name = "memora-glass-" .. ns, match = { namespace = "^(" .. ns .. ")$" }, blur = true, ignore_alpha = 0.3 })
 end
