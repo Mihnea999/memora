@@ -1,10 +1,11 @@
 {
  "featured": [
-  "md.obsidian.Obsidian",
-  "org.blender.Blender",
-  "com.visualstudio.code"
+  "cli.claude-code",
+  "dev.zed.Zed",
+  "org.blender.Blender"
  ],
  "categories": [
+  "AI",
   "Productivity",
   "Internet",
   "Creativity",
@@ -327,6 +328,421 @@
    "name": "Warehouse",
    "summary": "Manage installed apps",
    "description": "See what your apps take up, their data and their versions.",
+   "category": "Utilities"
+  },
+  {
+   "id": "cli.claude-code",
+   "name": "Claude Code",
+   "summary": "Anthropic's coding agent",
+   "description": "Claude in your terminal: it reads your project, edits files, runs commands and explains what it did. Sign in with your Claude account or an API key.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#d97757",
+   "mark": "✳"
+  },
+  {
+   "id": "cli.codex",
+   "name": "Codex CLI",
+   "summary": "OpenAI's coding agent",
+   "description": "OpenAI's agent for the terminal: plans changes, edits code and runs tests in your project.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#10a37f",
+   "mark": "⌘"
+  },
+  {
+   "id": "cli.gemini-cli",
+   "name": "Gemini CLI",
+   "summary": "Google's coding agent",
+   "description": "Google Gemini in the terminal, with a large context window and Google Search grounding.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#4285f4",
+   "mark": "✦"
+  },
+  {
+   "id": "cli.copilot-cli",
+   "name": "Copilot CLI",
+   "summary": "GitHub's coding agent",
+   "description": "GitHub Copilot in your terminal, working with your repositories, issues and pull requests.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#6e40c9",
+   "mark": "◉"
+  },
+  {
+   "id": "cli.opencode",
+   "name": "OpenCode",
+   "summary": "An open coding agent for any model",
+   "description": "An open-source coding agent for the terminal that works with Claude, GPT, Gemini, DeepSeek or local models.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#1f2937",
+   "mark": "{}"
+  },
+  {
+   "id": "cli.qwen-code",
+   "name": "Qwen Code",
+   "summary": "Alibaba's coding agent",
+   "description": "A command-line coding agent tuned for the Qwen Coder models.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#615ced",
+   "mark": "Q"
+  },
+  {
+   "id": "cli.crush",
+   "name": "Crush",
+   "summary": "A glamorous coding agent",
+   "description": "Charm's coding agent for the terminal, with sessions, many providers and a beautiful interface.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#ff5fd2",
+   "mark": "♥"
+  },
+  {
+   "id": "cli.aider",
+   "name": "Aider",
+   "summary": "Pair programming in your terminal",
+   "description": "Edits code in your git repository with the model of your choice and commits each change with a clear message.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#14b014",
+   "mark": "a"
+  },
+  {
+   "id": "cli.ollama",
+   "name": "Ollama",
+   "summary": "Run AI models on this computer",
+   "description": "Downloads and runs open models (Llama, Qwen, DeepSeek, Gemma…) locally, on your graphics card when it can. Memora AI can use it too.",
+   "category": "AI",
+   "source": "cli",
+   "color": "#111111",
+   "mark": "🦙"
+  },
+  {
+   "id": "ai.lmstudio.lm-studio",
+   "name": "LM Studio",
+   "summary": "Discover and run local models",
+   "description": "Find, download and chat with open models on your own computer, with a local server for other apps.",
+   "category": "AI"
+  },
+  {
+   "id": "ai.jan.Jan",
+   "name": "Jan",
+   "summary": "A private ChatGPT that runs offline",
+   "description": "An open-source assistant that runs models on your computer, or connects to the cloud ones you choose.",
+   "category": "AI"
+  },
+  {
+   "id": "com.jeffser.Alpaca",
+   "name": "Alpaca",
+   "summary": "Chat with local models",
+   "description": "A clean, simple way to chat with models through Ollama.",
+   "category": "AI"
+  },
+  {
+   "id": "io.gpt4all.gpt4all",
+   "name": "GPT4All",
+   "summary": "Local AI, with your documents",
+   "description": "Private chat with open models and with your own documents, all on this computer.",
+   "category": "AI"
+  },
+  {
+   "id": "io.github.qwersyk.Newelle",
+   "name": "Newelle",
+   "summary": "An assistant for your desktop",
+   "description": "A virtual assistant that can talk, run commands and work with many providers.",
+   "category": "AI"
+  },
+  {
+   "id": "com.vscodium.codium",
+   "name": "VSCodium",
+   "summary": "VS Code without telemetry",
+   "description": "The open-source build of VS Code, without Microsoft's telemetry.",
+   "category": "Development"
+  },
+  {
+   "id": "com.sublimehq.SublimeText",
+   "name": "Sublime Text",
+   "summary": "A sophisticated text editor",
+   "description": "A fast, polished editor for code, markup and prose.",
+   "category": "Development"
+  },
+  {
+   "id": "com.sublimemerge.App",
+   "name": "Sublime Merge",
+   "summary": "A Git client from the makers of Sublime",
+   "description": "Fast, clean Git with a powerful diff view.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.WebStorm",
+   "name": "WebStorm",
+   "summary": "The JavaScript and TypeScript IDE",
+   "description": "JetBrains' IDE for web development: React, Node, TypeScript and more.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.PyCharm-Professional",
+   "name": "PyCharm",
+   "summary": "The Python IDE",
+   "description": "JetBrains' IDE for Python, data science and web frameworks.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.GoLand",
+   "name": "GoLand",
+   "summary": "The Go IDE",
+   "description": "JetBrains' IDE for Go.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.RustRover",
+   "name": "RustRover",
+   "summary": "The Rust IDE",
+   "description": "JetBrains' IDE for Rust.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.Rider",
+   "name": "Rider",
+   "summary": "The .NET IDE",
+   "description": "JetBrains' IDE for C#, .NET and game development.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.CLion",
+   "name": "CLion",
+   "summary": "The C and C++ IDE",
+   "description": "JetBrains' IDE for C and C++.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.PhpStorm",
+   "name": "PhpStorm",
+   "summary": "The PHP IDE",
+   "description": "JetBrains' IDE for PHP and web.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.DataGrip",
+   "name": "DataGrip",
+   "summary": "An IDE for databases",
+   "description": "Query, edit and explore many kinds of databases.",
+   "category": "Development"
+  },
+  {
+   "id": "com.google.AndroidStudio",
+   "name": "Android Studio",
+   "summary": "Build Android apps",
+   "description": "Google's official IDE for Android, with the emulator and SDK manager.",
+   "category": "Development"
+  },
+  {
+   "id": "org.godotengine.Godot",
+   "name": "Godot",
+   "summary": "Make games",
+   "description": "A free, open-source engine for 2D and 3D games.",
+   "category": "Development"
+  },
+  {
+   "id": "com.unity.UnityHub",
+   "name": "Unity Hub",
+   "summary": "Make games with Unity",
+   "description": "Install Unity editors and manage your projects.",
+   "category": "Development"
+  },
+  {
+   "id": "org.gnome.Builder",
+   "name": "Builder",
+   "summary": "Make GNOME apps",
+   "description": "An IDE for GNOME and GTK apps.",
+   "category": "Development"
+  },
+  {
+   "id": "re.sonny.Workbench",
+   "name": "Workbench",
+   "summary": "Learn and prototype GNOME UI",
+   "description": "Try GTK and libadwaita interfaces live.",
+   "category": "Development"
+  },
+  {
+   "id": "com.usebruno.Bruno",
+   "name": "Bruno",
+   "summary": "A fast, Git-friendly API client",
+   "description": "Explore and test APIs; collections are plain files you keep in your repository.",
+   "category": "Development"
+  },
+  {
+   "id": "rest.insomnia.Insomnia",
+   "name": "Insomnia",
+   "summary": "Design and debug APIs",
+   "description": "REST, GraphQL, gRPC and WebSocket requests in one place.",
+   "category": "Development"
+  },
+  {
+   "id": "io.httpie.Httpie",
+   "name": "HTTPie",
+   "summary": "APIs, for humans",
+   "description": "A friendly client for HTTP APIs.",
+   "category": "Development"
+  },
+  {
+   "id": "io.beekeeperstudio.Studio",
+   "name": "Beekeeper Studio",
+   "summary": "A friendly SQL editor",
+   "description": "Query and edit Postgres, MySQL, SQLite and more.",
+   "category": "Development"
+  },
+  {
+   "id": "com.axosoft.GitKraken",
+   "name": "GitKraken",
+   "summary": "A visual Git client",
+   "description": "See your history, branch and merge with confidence.",
+   "category": "Development"
+  },
+  {
+   "id": "org.gnome.meld",
+   "name": "Meld",
+   "summary": "Compare files and folders",
+   "description": "See and merge differences, two or three ways.",
+   "category": "Development"
+  },
+  {
+   "id": "com.github.marhkb.Pods",
+   "name": "Pods",
+   "summary": "Manage containers",
+   "description": "A clean app for Podman containers and images.",
+   "category": "Development"
+  },
+  {
+   "id": "me.iepure.devtoolbox",
+   "name": "Dev Toolbox",
+   "summary": "Small tools for developers",
+   "description": "JSON, Base64, JWT, regex, hashes, colours and more.",
+   "category": "Development"
+  },
+  {
+   "id": "org.gnome.Boxes",
+   "name": "Boxes",
+   "summary": "Virtual machines, simply",
+   "description": "Run other operating systems in a window.",
+   "category": "Development"
+  },
+  {
+   "id": "cli.node",
+   "name": "Node.js",
+   "summary": "JavaScript runtime (LTS)",
+   "description": "The long-term-support Node.js with npm, set up through mise.",
+   "category": "Development",
+   "source": "cli",
+   "color": "#3c873a",
+   "mark": "⬢"
+  },
+  {
+   "id": "cli.python",
+   "name": "Python + uv",
+   "summary": "Python and its fastest package tool",
+   "description": "The latest Python with uv, set up through mise.",
+   "category": "Development",
+   "source": "cli",
+   "color": "#3776ab",
+   "mark": "py"
+  },
+  {
+   "id": "cli.go",
+   "name": "Go",
+   "summary": "The Go toolchain",
+   "description": "The latest Go, set up through mise.",
+   "category": "Development",
+   "source": "cli",
+   "color": "#00add8",
+   "mark": "go"
+  },
+  {
+   "id": "cli.rust",
+   "name": "Rust",
+   "summary": "The Rust toolchain",
+   "description": "rustup with the stable toolchain.",
+   "category": "Development",
+   "source": "cli",
+   "color": "#b7410e",
+   "mark": "rs"
+  },
+  {
+   "id": "cli.bun",
+   "name": "Bun",
+   "summary": "A fast all-in-one JavaScript runtime",
+   "description": "Runtime, bundler, test runner and package manager in one.",
+   "category": "Development",
+   "source": "cli",
+   "color": "#2b2b2b",
+   "mark": "bun"
+  },
+  {
+   "id": "cli.deno",
+   "name": "Deno",
+   "summary": "A secure TypeScript runtime",
+   "description": "TypeScript out of the box, secure by default.",
+   "category": "Development",
+   "source": "cli",
+   "color": "#111111",
+   "mark": "🦕"
+  },
+  {
+   "id": "cli.flutter",
+   "name": "Flutter",
+   "summary": "Build apps for every screen",
+   "description": "Google's UI toolkit, with the SDK set up through mise.",
+   "category": "Development",
+   "source": "cli",
+   "color": "#02569b",
+   "mark": "F"
+  },
+  {
+   "id": "cli.docker",
+   "name": "Docker",
+   "summary": "Containers",
+   "description": "The Docker engine with Compose and Buildx (asks for your password).",
+   "category": "Development",
+   "source": "cli",
+   "color": "#2496ed",
+   "mark": "🐳"
+  },
+  {
+   "id": "com.vysp3r.ProtonPlus",
+   "name": "ProtonPlus",
+   "summary": "Newer Proton and Wine for your games",
+   "description": "Install and update Proton-GE and other compatibility tools for Steam, Lutris and Heroic.",
+   "category": "Games"
+  },
+  {
+   "id": "app.zen_browser.zen",
+   "name": "Zen Browser",
+   "summary": "A calm, beautiful browser",
+   "description": "A Firefox-based browser with vertical tabs and a focus on design.",
+   "category": "Internet"
+  },
+  {
+   "id": "com.google.Chrome",
+   "name": "Google Chrome",
+   "summary": "Google's browser",
+   "description": "The browser from Google, with your Google account.",
+   "category": "Internet"
+  },
+  {
+   "id": "com.github.tchx84.Flatseal",
+   "name": "Flatseal",
+   "summary": "Manage app permissions",
+   "description": "See and change what each App Store app may access.",
+   "category": "Utilities"
+  },
+  {
+   "id": "it.mijorus.gearlever",
+   "name": "Gear Lever",
+   "summary": "Manage AppImages",
+   "description": "Integrate AppImage apps (like Cursor) into Memora.",
    "category": "Utilities"
   }
  ]

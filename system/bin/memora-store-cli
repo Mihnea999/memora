@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# memora-store-cli — App Store entries that are command-line tools rather than
+# Flathub apps (AI coding agents, language toolchains). Each is installed for
+# you, from its makers' official channel.
+#   memora-store-cli list               ids that are installed
+#   memora-store-cli install|remove ID
+#   memora-store-cli open ID            start it in Terminal
+set -uo pipefail
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+
+node_ready() {
+  command -v npm >/dev/null && return 0
+  mise use -g node@lts >/dev/null 2>&1 && mise reshim >/dev/null 2>&1
+  command -v npm >/dev/null
+}
+uv_ready() { command -v uv >/dev/null || { mise use -g uv@latest >/dev/null 2>&1 && mise reshim >/dev/null 2>&1; }; command -v uv >/dev/null; }
+npm_tool() { # install|remove PACKAGE
+  node_ready || { echo "Node.js could not be set up."; return 1; }
+  if [[ $1 == install ]]; then npm install -g "$2"; else npm uninstall -g "$2"; fi
+  mise reshim >/dev/null 2>&1 || true
+}
+ollama_pkg() {
+  local gpu; gpu="$(lspci 2>/dev/null | grep -iE 'vga|3d|display')"
+  if grep -qi nvidia <<<"$gpu" && [[ -f /etc/memora/nvidia ]]; then echo ollama-cuda
+  elif grep -qiE 'amd|radeon' <<<"$gpu"; then echo ollama-rocm
+  else echo ollama; fi
+}
+
+# id | command it provides | how to install | how to remove
+recipe() {
+  case "$1" in
+    claude-code) cmd=claude; inst() { curl -fsSL https://claude.ai/install.sh | bash; }; rem() { rm -f "$HOME/.local/bin/claude"; rm -rf "$HOME/.local/share/claude"; } ;;
+    codex) cmd=codex; inst() { npm_tool install @openai/codex; }; rem() { npm_tool remove @openai/codex; } ;;
+    gemini-cli) cmd=gemini; inst() { npm_tool install @google/gemini-cli; }; rem() { npm_tool remove @google/gemini-cli; } ;;
+    copilot-cli) cmd=copilot; inst() { npm_tool install @github/copilot; }; rem() { npm_tool remove @github/copilot; } ;;
+    opencode) cmd=opencode; inst() { npm_tool install opencode-ai; }; rem() { npm_tool remove opencode-ai; } ;;
+    qwen-code) cmd=qwen; inst() { npm_tool install @qwen-code/qwen-code; }; rem() { npm_tool remove @qwen-code/qwen-code; } ;;
+    crush) cmd=crush; inst() { npm_tool install @charmland/crush; }; rem() { npm_tool remove @charmland/crush; } ;;
+    aider) cmd=aider; inst() { uv_ready && uv tool install --python 3.12 aider-chat; }; rem() { uv tool uninstall aider-chat; } ;;
+    ollama) cmd=ollama; inst() { pkexec bash -c "pacman -S --needed --noconfirm $(ollama_pkg) && systemctl enable --now ollama"; }; rem() { pkexec bash -c "systemctl disable --now ollama; pacman -Rns --noconfirm \$(pacman -Qq | grep -x 'ollama\(-cuda\|-rocm\)\?')"; } ;;
+    node) cmd=node; inst() { mise use -g node@lts && mise reshim; }; rem() { mise unuse -g node; } ;;
+    python) cmd=uv; inst() { mise use -g python@latest uv@latest && mise reshim; }; rem() { mise unuse -g python uv; } ;;
+    go) cmd=go; inst() { mise use -g go@latest && mise reshim; }; rem() { mise unuse -g go; } ;;
+    rust) cmd=cargo; inst() { pkexec pacman -S --needed --noconfirm rustup && rustup default stable; }; rem() { pkexec pacman -Rns --noconfirm rustup; } ;;
+    bun) cmd=bun; inst() { mise use -g bun@latest && mise reshim; }; rem() { mise unuse -g bun; } ;;
+    deno) cmd=deno; inst() { mise use -g deno@latest && mise reshim; }; rem() { mise unuse -g deno; } ;;
+    flutter) cmd=flutter; inst() { memora-dev install flutter; }; rem() { mise unuse -g flutter; } ;;
+    docker) cmd=docker; inst() { pkexec bash -c "pacman -S --needed --noconfirm docker docker-compose docker-buildx && systemctl enable --now docker && usermod -aG docker $USER"; }; rem() { pkexec bash -c "systemctl disable --now docker; pacman -Rns --noconfirm docker-buildx docker-compose docker"; } ;;
+    *) return 1 ;;
+  esac
+}
+IDS=(claude-code codex gemini-cli copilot-cli opencode qwen-code crush aider ollama node python go rust bun deno flutter docker)
+
+case "${1:-}" in
+  list)
+    for id in "${IDS[@]}"; do recipe "$id" && command -v "$cmd" >/dev/null 2>&1 && echo "cli.$id"; done ;;
+  install|remove)
+    id="${2#cli.}"; recipe "$id" || { echo "Unknown tool $id"; exit 2; }
+    if [[ $1 == install ]]; then inst; else rem; fi ;;
+  open)
+    id="${2#cli.}"; recipe "$id" || exit 2
+    exec memora-float bash -lc "$cmd; exec bash" ;;
+  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

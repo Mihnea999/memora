@@ -38,7 +38,7 @@ ShellRoot {
   }
   Process {
     id: lister
-    command: ["flatpak", "list", "--user", "--app", "--columns=application"]
+    command: ["bash", "-c", "flatpak list --user --app --columns=application; memora-store-cli list"]
     stdout: StdioCollector { onStreamFinished: { const m = {}; text.split("\n").forEach(l => { if (l.trim()) m[l.trim()] = true }); app.installed = m } }
   }
   function refresh() { lister.running = true }
@@ -46,7 +46,8 @@ ShellRoot {
   Component { id: jobProc; Process {
     property string appId
     property string kind
-    command: kind === "install"
+    command: appId.startsWith("cli.") ? ["memora-store-cli", kind, appId]
+      : kind === "install"
       ? ["flatpak", "install", "--user", "-y", "--noninteractive", "flathub", appId]
       : ["flatpak", "uninstall", "--user", "-y", "--noninteractive", appId]
     running: true
@@ -62,7 +63,7 @@ ShellRoot {
       const j = Object.assign({}, app.jobs); delete j[appId]; app.jobs = j
       app.refresh()
       if (code !== 0) app.status = (kind === "install" ? "Couldn't install " : "Couldn't remove ") + app.nameOf(appId) + "."
-      else if (kind === "install") Quickshell.execDetached(["notify-send", "-a", "App Store", app.nameOf(appId) + " is ready", "Find it in Launchpad."])
+      else if (kind === "install") Quickshell.execDetached(["notify-send", "-a", "App Store", app.nameOf(appId) + " is ready", appId.startsWith("cli.") ? "Open it from the App Store, or type its name in Terminal." : "Find it in Apps."])
       destroy()
     }
   } }
@@ -73,9 +74,10 @@ ShellRoot {
     status = ""
     jobProc.createObject(app, { appId: id, kind: kind })
   }
-  function open(id) { Quickshell.execDetached(["flatpak", "run", id]) }
+  function open(id) { Quickshell.execDetached(id.startsWith("cli.") ? ["memora-store-cli", "open", id] : ["flatpak", "run", id]) }
+  function entry(id) { return catalog.apps.find(x => x.id === id) || null }
   function nameOf(id) { const a = catalog.apps.find(x => x.id === id); return a ? a.name : id }
-  function iconOf(id) { return iconDir && id ? "file://" + iconDir + id + ".png" : "" }
+  function iconOf(id) { return iconDir && id && !id.startsWith("cli.") ? "file://" + iconDir + id + ".png" : "" }
 
   readonly property var shown: {
     const q = query.toLowerCase()
@@ -141,7 +143,7 @@ ShellRoot {
               color: parent.here ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.35 : 0.18) : (nh.hovered ? Theme.hover : "transparent")
               Behavior on color { ColorAnimation { duration: Theme.fast } }
               Sym { id: ns; x: 10; anchors.verticalCenter: parent.verticalCenter; width: 14; height: 14; color: parent.parent.here ? Theme.accent : Theme.textDim
-                    name: ({ Discover: "ai", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow" })[modelData] || "plus" }
+                    name: ({ Discover: "sparkle", AI: "ai", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow" })[modelData] || "plus" }
               Txt { anchors { left: ns.right; leftMargin: 10; verticalCenter: parent.verticalCenter } text: modelData; font.weight: parent.parent.here ? Font.Bold : Font.Normal }
             }
             HoverHandler { id: nh }
@@ -297,9 +299,9 @@ ShellRoot {
               id: inf
               x: 16; y: 12; width: parent.width - 32
               columns: 2; columnSpacing: 20; rowSpacing: 6
-              Txt { text: "Source"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: "Flathub"; font.pixelSize: Theme.small }
+              Txt { text: "Source"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "Its makers' official installer" : "Flathub"; font.pixelSize: Theme.small }
               Txt { text: "Identifier"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail; font.pixelSize: Theme.small }
-              Txt { text: "Installs for"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: "You (no password needed), in its own sandbox"; font.pixelSize: Theme.small }
+              Txt { text: "Installs for"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "You; opens in Terminal" : "You (no password needed), in its own sandbox"; font.pixelSize: Theme.small }
             }
           }
         }
@@ -321,10 +323,23 @@ ShellRoot {
         asynchronous: true
         visible: status === Image.Ready
       }
+      // Command-line tools: their mark on their colour.
+      readonly property var e: app.entry(si.appId)
+      Rectangle {
+        anchors.fill: parent
+        visible: !!si.e && si.e.source === "cli"
+        radius: width * 0.22
+        gradient: Gradient {
+          GradientStop { position: 0; color: si.e && si.e.color ? Qt.lighter(si.e.color, 1.25) : "#555" }
+          GradientStop { position: 1; color: si.e && si.e.color ? si.e.color : "#333" }
+        }
+        border.color: Qt.rgba(1, 1, 1, 0.18)
+        Txt { anchors.centerIn: parent; text: si.e ? (si.e.mark || si.e.name.charAt(0)) : ""; font.pixelSize: parent.width * (si.e && si.e.mark && si.e.mark.length > 2 ? 0.26 : 0.4); font.weight: Font.Bold; color: "#ffffff" }
+      }
       // Until Flathub's icon is here: the app's initial on a tile.
       Rectangle {
         anchors.fill: parent
-        visible: ii.status !== Image.Ready
+        visible: ii.status !== Image.Ready && !(si.e && si.e.source === "cli")
         radius: width * 0.22
         color: Theme.tile
         border.color: Theme.separator
