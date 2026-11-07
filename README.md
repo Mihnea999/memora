@@ -34,7 +34,10 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 |---|---|
 | Menu bar | System menu, the focused app's name, File / Edit / View / Go / Window / Help (they send the standard shortcuts, so they work in any app), status icons, clock |
 | Dock | Pinned and running apps with magnification, running dots, bounce on launch, minimized windows, Downloads, Trash, right-click menus |
-| Launchpad | All apps in pages, with search (tap Super, or the grid in the Dock) |
+| Apps | A glass library rising from the Dock: search, most used, apps grouped by kind (tap Super, or the grid in the Dock) |
+| Memora AI | A notch in the middle of the menu bar that unfolds into a conversation (Super+A) |
+| Widgets | Clock, weather, calendar, system, now playing and notes on the desktop; right-click the desktop > Edit Widgets |
+| Screens | Extend, mirror, one screen only (Super+P, or by itself when a screen is plugged in) |
 | Spotlight | Apps, files, settings, maths, ask the AI (Super+Space); also clipboard history and keyboard shortcuts |
 | Control Center | Wi-Fi, Bluetooth, Focus, appearance, display, sound, media, power |
 | Notifications | Banners, and Notification Center with a calendar (click the clock) |
@@ -42,8 +45,9 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 | Dialogs | Administrator password (polkit), volume and brightness |
 | Alt+Tab | Window switcher |
 
-Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **App Store** (curated Flathub
-apps, per user), **Activity Monitor**, **Memora AI**, **Welcome**, all in the same style. Anything that
+Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Photos**, **Player** (films and
+music), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
+**Activity Monitor**, **Welcome**, all in the same style. Terminal is Ghostty with Memora's light and dark themes. Anything that
 can't be undone (shut down, restart, log out, emptying the Trash, deleting forever) asks first.
 
 Liquid glass is configurable in System Settings > Appearance: Clear or Tinted, transparency, frost
@@ -58,6 +62,7 @@ Icons are Memora's own (`tools/icons.py`); apps without one are placed on the sa
 `memora-ai` (Super+A, the sparkle in the menu bar, or `?? question` in the terminal).
 Set it up in System Settings > Memora AI:
 
+- **DeepSeek** (its Anthropic-compatible API, default `deepseek-chat`): the same tools, without web search
 - **Claude** through the Anthropic API (default `claude-opus-5-5`): uses tools — runs commands, reads and
   writes files, opens apps, changes settings, manages windows, looks at the screen and clicks or types,
   searches and reads the web, remembers things you tell it
@@ -93,7 +98,8 @@ removing core packages) show a red warning first. Administrator commands go thro
 | Snapshots | snapper + snap-pac (one before every pacman transaction) |
 | Login | greetd with the Memora login screen; straight to the desktop after the disk password when encrypted |
 | Session | Hyprland (Lua config) via uwsm, Memora shell |
-| Drivers | Picked from `lspci`: NVIDIA (open), AMD, Intel, VM |
+| Drivers | Picked from `lspci`: NVIDIA open driver (DKMS) for Turing and later, open-source driver for older NVIDIA cards; AMD, Intel, VM; 32-bit drivers for games. Laptops with two chips keep the desktop on the built-in one and run games on NVIDIA (`memora-gpu`) |
+| Gaming (optional) | Steam with Proton, GameMode, MangoHud, ProtonPlus |
 
 ## Layout
 

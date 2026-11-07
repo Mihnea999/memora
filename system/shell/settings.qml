@@ -163,12 +163,18 @@ ShellRoot {
         height: 40
         DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
       }
+      // Each pane settles in: a short rise and fade.
       Loader {
         id: loader
         anchors.fill: parent
         source: "settings/" + (app.paneFiles[app.pane] || "Wifi") + ".qml"
-        opacity: status === Loader.Ready ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        transform: Translate { id: rise; y: 0 }
+        onLoaded: enter.restart()
+        ParallelAnimation {
+          id: enter
+          NumberAnimation { target: loader; property: "opacity"; from: 0; to: 1; duration: Theme.normal; easing.type: Theme.easing }
+          NumberAnimation { target: rise; property: "y"; from: 14; to: 0; duration: Theme.slow; easing.type: Easing.OutQuint }
+        }
       }
     }
   }
