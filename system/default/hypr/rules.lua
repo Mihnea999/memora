@@ -40,7 +40,7 @@ for _, class in ipairs({ "memora-float", "memora-ai", "memora-welcome", "org.pul
   hl.window_rule({ name = "memora-float-" .. class, match = { class = "^(" .. class .. ")$" }, float = true, center = true })
 end
 hl.window_rule({ name = "memora-ai-size", match = { class = "^(memora-ai)$" }, size = "760 720" })
-hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welcome)$" }, size = "680 500" })
+hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welcome)$" }, size = "720 520" })
 hl.window_rule({ name = "memora-float-tool-size", match = { class = "^(memora-float)$" }, size = "900 600" })
 
 -- Glass surfaces: blur what is behind the shell's translucent layers.

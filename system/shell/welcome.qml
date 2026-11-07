@@ -11,7 +11,7 @@ import qs.ui
 ShellRoot {
   id: app
   property int page: 0
-  readonly property int pages: 4
+  readonly property int pages: 5
 
   FloatingWindow {
     id: win
@@ -19,8 +19,8 @@ ShellRoot {
     // opens again next time instead of lingering without a window.
     onVisibleChanged: if (!visible) Qt.quit()
     title: "Welcome to Memora"
-    implicitWidth: 680
-    implicitHeight: 500
+    implicitWidth: 720
+    implicitHeight: 520
     color: "transparent"
     Rectangle { anchors.fill: parent; color: Theme.window }
     Item {
@@ -102,7 +102,42 @@ ShellRoot {
           }
         }
 
-        // 4. Ready
+        // 4. Getting around
+        Item {
+          width: stage.width; height: stage.height
+          Column {
+            anchors.centerIn: parent
+            spacing: 18
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Getting around"; font.pixelSize: 22; font.weight: Font.Bold }
+            Grid {
+              anchors.horizontalCenter: parent.horizontalCenter
+              columns: 2; columnSpacing: 14; rowSpacing: 14
+              Repeater {
+                model: [["search", "Find anything", "Super+Space"], ["dock", "All your apps", "Tap Super"],
+                        ["display", "Desktops & windows", "Ctrl+Super+↑, or three fingers up"], ["sparkle", "Windows side by side", "Drag to an edge, or Super+arrows"]]
+                delegate: Rectangle {
+                  required property var modelData
+                  width: 300; height: 84; radius: 14
+                  color: Theme.field; border.color: Theme.separator
+                  Rectangle {
+                    x: 14; anchors.verticalCenter: parent.verticalCenter
+                    width: 40; height: 40; radius: 11; color: Theme.accent
+                    Sym { anchors.centerIn: parent; name: modelData[0]; width: 20; height: 20; color: "#ffffff" }
+                  }
+                  Column {
+                    x: 68; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 80
+                    spacing: 3
+                    Txt { text: modelData[1]; font.weight: Font.Bold }
+                    Txt { text: modelData[2]; color: Theme.textDim; font.pixelSize: Theme.small; width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 2 }
+                  }
+                }
+              }
+            }
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Super works like ⌘ on a Mac: Super+W closes, Super+Q quits, Super+Tab switches."; color: Theme.textDim; font.pixelSize: Theme.small }
+          }
+        }
+
+        // 5. Ready
         Item {
           width: stage.width; height: stage.height
           Column {
@@ -113,7 +148,7 @@ ShellRoot {
               anchors.horizontalCenter: parent.horizontalCenter
               columns: 2; columnSpacing: 26; rowSpacing: 10
               Repeater {
-                model: [["Tap Super", "Launchpad, all your apps"], ["Super + Space", "Spotlight search"], ["Alt + Tab", "Switch windows"],
+                model: [["Tap Super", "All your apps"], ["Super + Space", "Spotlight search"], ["Super + Tab", "Switch apps"],
                         ["Super + A", "Memora AI"], ["Click the clock", "Calendar and notifications"], ["Click the switches icon", "Control Center"]]
                 delegate: Txt { required property var modelData; text: modelData[0]; font.weight: index % 2 === 0 ? Font.Bold : Font.Normal; required property int index }
               }
