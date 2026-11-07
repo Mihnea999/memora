@@ -92,14 +92,14 @@ PanelWindow {
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.bottom: parent.bottom
     anchors.bottomMargin: dock.hidden ? -(dock.base + 40) : dock.gap
-    width: row.width + 16
-    height: dock.base + 16
+    width: row.width + 22
+    height: dock.base + 18
     Behavior on anchors.bottomMargin { NumberAnimation { duration: Theme.slow; easing.type: Theme.easing } }
 
     Glass {
       id: plate
       anchors.fill: parent
-      radius: 22
+      radius: 26
       fill: Theme.glass
       shadowSize: 30
     }
@@ -119,7 +119,7 @@ PanelWindow {
       anchors.horizontalCenter: parent.horizontalCenter
       orientation: ListView.Horizontal
       interactive: false
-      spacing: 4
+      spacing: 7
       width: contentWidth
       height: dock.base
       model: items
