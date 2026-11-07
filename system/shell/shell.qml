@@ -34,6 +34,7 @@ ShellRoot {
   Switcher {}
   Lock {}
   Snap {}
+  Genie {}
 
   IpcHandler {
     target: "osd"

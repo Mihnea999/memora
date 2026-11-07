@@ -137,13 +137,31 @@ Singleton {
     if (isMinimized(w)) return restore(w)
     dispatch('hl.dsp.focus({ window = "' + sel(w.address) + '" })')
   }
+  // Minimizing plays the Genie animation (dock/Genie.qml), which then calls finishMinimize.
+  signal minimizing(string addr, var win, rect from)
+  signal restoring(string addr, var win, rect to)
+  property point dockTarget: Qt.point(0, 0)      // where minimized windows land, set by the Dock
+  function byAddr(addr) {
+    const a = String(addr).replace(/^0x/, "")
+    return Hyprland.toplevels.values.find(t => String(t.address).replace(/^0x/, "") === a) || null
+  }
+  function rectOf(w) {
+    const o = w && w.lastIpcObject
+    return o && o.at ? Qt.rect(o.at[0], o.at[1], o.size[0], o.size[1]) : Qt.rect(0, 0, 0, 0)
+  }
   function minimize(addr) {
+    const w = byAddr(addr)
+    if (w && isMinimized(w)) return
+    minimizing(String(addr), w, rectOf(w))
+  }
+  function finishMinimize(addr) {
     dispatch('hl.dsp.window.move({ workspace = "special:minimized", follow = false, window = "' + sel(addr) + '" })')
   }
-  function restore(w) {
+  function restore(w) { restoring(String(w.address), w, rectOf(w)) }
+  function finishRestore(addr) {
     const ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 1
-    dispatch('hl.dsp.window.move({ workspace = "' + ws + '", follow = true, window = "' + sel(w.address) + '" })')
-    dispatch('hl.dsp.focus({ window = "' + sel(w.address) + '" })')
+    dispatch('hl.dsp.window.move({ workspace = "' + ws + '", follow = true, window = "' + sel(addr) + '" })')
+    dispatch('hl.dsp.focus({ window = "' + sel(addr) + '" })')
   }
   function close(w) { if (w && w.wayland) w.wayland.close() }
   function zoom(w) {

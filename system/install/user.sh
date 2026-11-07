@@ -30,6 +30,14 @@ xdg-mime default org.gnome.Papers.desktop application/pdf
 for t in text/plain text/markdown text/x-log application/json text/x-python text/x-shellscript; do xdg-mime default org.gnome.TextEditor.desktop "$t"; done
 for t in x-scheme-handler/http x-scheme-handler/https text/html; do xdg-mime default chromium.desktop "$t"; done
 
+# Browser profile: draw its window with the system (GTK) theme, so it gets
+# Memora's round window buttons, and skip the welcome page.
+mkdir -p "$cfg/chromium/Default"
+[[ -f $cfg/chromium/Default/Preferences ]] || printf '%s\n' \
+  '{"extensions":{"theme":{"system_theme":1}},"browser":{"custom_chrome_frame":true,"has_seen_welcome_page":true}}' \
+  > "$cfg/chromium/Default/Preferences"
+touch "$cfg/chromium/First Run"
+
 printf '%s\n' --no-first-run --no-default-browser-check --password-store=gnome-libsecret --ozone-platform-hint=auto \
   > "$cfg/chromium-flags.conf"
 

@@ -184,6 +184,14 @@ PanelWindow {
     }
   }
 
+  // Minimized windows fly to the end of the Dock, before Downloads and Trash.
+  function updateTarget() {
+    const p = hit.mapToItem(null, hit.width - 150, hit.height / 2)
+    // The Dock's window sits at the bottom of the screen; p is inside it.
+    Apps.dockTarget = Qt.point(dock.modelData.x + p.x, dock.modelData.y + dock.modelData.height - dock.height + p.y)
+  }
+  Connections { target: hit; function onWidthChanged() { dock.updateTarget() } function onXChanged() { dock.updateTarget() } }
+
   ListModel { id: items }
   property var entries: ({})
   function keyOf(e) { return e.kind === "window" ? "w:" + e.win.address : e.kind + ":" + e.id }
@@ -203,7 +211,7 @@ PanelWindow {
     })
   }
   onModelChanged: sync()
-  Component.onCompleted: sync()
+  Component.onCompleted: { sync(); updateTarget() }
 
   Component {
     id: sepComp

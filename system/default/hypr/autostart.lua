@@ -1,3 +1,7 @@
+-- Minimize buttons in apps (see system/plugin).
+local f = io.open("/usr/lib/memora/memora-minimize.so", "r")
+if f then f:close(); pcall(hl.plugin.load, "/usr/lib/memora/memora-minimize.so") end
+
 hl.on("hyprland.start", function()
   hl.exec_cmd("dbus-update-activation-environment --systemd --all")
   hl.exec_cmd("memora-theme desktop-settings")

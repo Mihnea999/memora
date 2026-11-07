@@ -47,7 +47,7 @@ ShellRoot {
   function welcome() {
     notes = [{ id: "n" + Date.now(), folder: "Notes", pinned: true, deleted: false, created: Date.now(), modified: Date.now(),
       text: "Welcome to Notes\nEverything you write is saved as you type.\n☐ Make a checklist with the button above\n☑ Pin a note to keep it on top",
-      html: "<h1>Welcome to Notes</h1><p>Everything you write is saved as you type.</p><p>☐ Make a checklist with the button above</p><p>☑ Pin a note to keep it on top</p><p><b>Bold</b>, <i>italic</i> and <s>strikethrough</s> are in the Format menu.</p>" }]
+      html: "<h1>Welcome to Notes</h1><p>Everything you write is saved as you type.</p><p><span style='font-size:22px; color:#9a9aa2;'>☐</span>&nbsp;Make a checklist with the button above</p><p><span style='font-size:22px; color:#f5b72e;'>☑</span>&nbsp;Pin a note to keep it on top</p><p><b>Bold</b>, <i>italic</i> and <s>strikethrough</s> are in the Format menu.</p>" }]
     saveLater.restart()
   }
 
@@ -149,7 +149,12 @@ ShellRoot {
   property bool loadingNote: false
   property bool applying: false
   // Rich text separates paragraphs with U+2029; notes use plain newlines.
-  function plain() { return editor.getText(0, editor.length).replace(/[\u2029\u2028]/g, "\n") }
+  function plain() { return editor.getText(0, editor.length).replace(/[\u2029\u2028]/g, "\n").replace(/\u00a0/g, " ") }
+  // Checkboxes are drawn larger than the text, the ticked ones in Notes' colour.
+  function box(ticked) {
+    return ticked ? '<span style="font-size:' + Math.round(app.textSize * 1.45) + 'px; color:#f5b72e;">☑</span>'
+                  : '<span style="font-size:' + Math.round(app.textSize * 1.45) + 'px; color:#9a9aa2;">☐</span>'
+  }
   function lineStart(t, pos) { return Math.max(t.lastIndexOf("\n", pos - 1), -1) + 1 }
   function lineEnd(t, pos) { const e = t.indexOf("\n", pos); return e < 0 ? t.length : e }
   onCurrentChanged: loadNote()
@@ -206,7 +211,7 @@ ShellRoot {
     const s = app.lineStart(t, editor.cursorPosition)
     const cur = t.substr(s, 2)
     if (cur === "☐ " || cur === "☑ " || cur === "• ") { editor.remove(s, s + 2); if (cur.charAt(0) === mark.charAt(0) || (mark === "☐ " && cur === "☑ ")) { editorChanged(); return } }
-    editor.insert(s, mark)
+    editor.insert(s, mark === "☐ " ? box(false) + "&nbsp;" : "•&nbsp;")
     editorChanged()
   }
 
@@ -485,7 +490,7 @@ ShellRoot {
             Qt.callLater(() => {
               if (firstLine) app.styleRange(0, app.lineEnd(app.plain(), 0), "title")
               app.bodyAtCursor()
-              if (listy) insert(cursorPosition, pre === "• " ? "• " : "☐ ")
+              if (listy) insert(cursorPosition, pre === "• " ? "•&nbsp;" : app.box(false) + "&nbsp;")
               app.editorChanged()
             })
           }
@@ -495,7 +500,7 @@ ShellRoot {
               const pos = editor.positionAt(ev.position.x, ev.position.y)
               for (const p of [pos, pos - 1]) {
                 const ch = editor.getText(p, p + 1)
-                if (ch === "☐" || ch === "☑") { editor.remove(p, p + 1); editor.insert(p, ch === "☐" ? "☑" : "☐"); app.editorChanged(); return }
+                if (ch === "☐" || ch === "☑") { editor.remove(p, p + 1); editor.insert(p, app.box(ch === "☐")); app.editorChanged(); return }
               }
             }
           }

@@ -281,7 +281,8 @@ FloatingWindow {
     id: content
     anchors { left: side.right; right: parent.right; top: tools.bottom; bottom: status.top; leftMargin: 6 }
     focus: true
-    clip: true
+    // Not clipped, so a dragged file stays visible over the sidebar.
+    clip: false
 
     // The current list: the folder, or search results.
     readonly property bool searching: win.query.length >= 2
@@ -314,6 +315,7 @@ FloatingWindow {
       else if (c && ev.key === Qt.Key_N) app.openWindow(win.path)
       else if (c && ev.key === Qt.Key_W) win.closeMe()
       else if (c && ev.key === Qt.Key_A) win.selectAll()
+      else if (c && ev.key === Qt.Key_I && win.selection.length) info.show(win.selection[0])
       else if (c && ev.key === Qt.Key_C) win.copy(false)
       else if (c && ev.key === Qt.Key_X) win.copy(true)
       else if (c && ev.key === Qt.Key_V) win.paste()
@@ -334,15 +336,16 @@ FloatingWindow {
     }
 
     // Click on empty space: clear the selection; right-click: folder menu.
-    TapHandler { onTapped: { win.selected = ({}); content.forceActiveFocus() } }
+    function hitAt(x, y) {
+      return win.view === "icons" ? grid.itemAt(x - grid.x + grid.contentX, y - grid.y + grid.contentY)
+                                  : list.itemAt(x - list.x + list.contentX, y - list.parent.y - list.y + list.contentY)
+    }
+    TapHandler { onTapped: ev => { if (!content.hitAt(ev.position.x, ev.position.y)) win.selected = ({}); content.forceActiveFocus() } }
     // Only on empty space: a file under the pointer opens its own menu.
     TapHandler {
       acceptedButtons: Qt.RightButton
       onTapped: ev => {
-        const x = ev.position.x, y = ev.position.y
-        const hit = win.view === "icons" ? grid.itemAt(x - grid.x + grid.contentX, y - grid.y + grid.contentY)
-                                         : list.itemAt(x - list.x + list.contentX, y - list.parent.y - list.y + list.contentY)
-        if (!hit) menu.show(x, y, null)
+        if (!content.hitAt(ev.position.x, ev.position.y)) menu.show(ev.position.x, ev.position.y, null)
       }
     }
 
@@ -364,6 +367,9 @@ FloatingWindow {
       cellHeight: win.iconSize + 52
       model: content.n
       boundsBehavior: Flickable.StopAtBounds
+      // Scroll with the wheel; a drag always moves files.
+      interactive: false
+      WheelHandler { onWheel: ev => grid.contentY = Math.max(0, Math.min(grid.contentHeight - grid.height, grid.contentY - ev.angleDelta.y)) }
       delegate: Item {
         id: cell
         required property int index
@@ -418,9 +424,10 @@ FloatingWindow {
         DragHandler {
           id: dh
           target: null
+          grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
           onActiveChanged: {
             if (active) { if (!cell.sel) win.select(cell.f.path, 0); win.dragging = win.selection.slice(); ghost.icon = thumb.source; ghost.count = win.dragging.length }
-            else { if (ghost.over) ghost.over.dropHere(); win.dragging = []; ghost.over = null }
+            else ghost.release()
           }
           onCentroidChanged: if (active) { const p = cell.mapToItem(content, centroid.position.x, centroid.position.y); ghost.x = p.x - 32; ghost.y = p.y - 32; ghost.track(p) }
         }
@@ -462,6 +469,8 @@ FloatingWindow {
         clip: true
         model: content.n
         boundsBehavior: Flickable.StopAtBounds
+        interactive: false
+        WheelHandler { onWheel: ev => list.contentY = Math.max(0, Math.min(list.contentHeight - list.height, list.contentY - ev.angleDelta.y)) }
         delegate: Rectangle {
           id: lrow
           required property int index
@@ -483,6 +492,19 @@ FloatingWindow {
             Txt { width: listHead.w * 0.13; text: lrow.f.dir ? "Folder" : win.kindOf(lrow.f.name, false).replace(/^./, c => c.toUpperCase()); color: lrow.sel ? Qt.rgba(1, 1, 1, 0.85) : Theme.textDim; font.pixelSize: Theme.small }
           }
           TapHandler { onTapped: ev => { win.select(lrow.f.path, ev.modifiers); content.forceActiveFocus() } onDoubleTapped: win.openItem(lrow.f.path, lrow.f.dir) }
+          property bool hot: false
+          function dropHere() { if (lrow.f.dir) win.moveInto(lrow.f.path) }
+          border.color: hot && f.dir ? Theme.accent : "transparent"
+          border.width: 2
+          DragHandler {
+            target: null
+            grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
+            onActiveChanged: {
+              if (active) { if (!lrow.sel) win.select(lrow.f.path, 0); win.dragging = win.selection.slice(); ghost.icon = win.iconFor(lrow.f.path, lrow.f.name, lrow.f.dir); ghost.count = win.dragging.length }
+              else ghost.release()
+            }
+            onCentroidChanged: if (active) { const p = lrow.mapToItem(content, centroid.position.x, centroid.position.y); ghost.x = p.x - 32; ghost.y = p.y - 32; ghost.track(p) }
+          }
           TapHandler { acceptedButtons: Qt.RightButton; onTapped: ev => { if (!lrow.sel) win.select(lrow.f.path, 0); const p = lrow.mapToItem(content, ev.position.x, ev.position.y); menu.show(p.x, p.y, lrow.f) } }
         }
       }
@@ -496,9 +518,17 @@ FloatingWindow {
       property url icon
       property int count: 0
       property var over: null
+      // Let go: into the folder under the pointer, or onto a sidebar place.
+      function release() {
+        if (ghost.over) ghost.over.dropHere()
+        else ghost.Drag.drop()
+        if (ghost.over) ghost.over.hot = false
+        win.dragging = []; ghost.over = null
+      }
       function track(p) {
-        // Highlight the folder under the pointer (icon view).
-        const c = grid.itemAt(p.x - grid.x + grid.contentX, p.y - grid.y + grid.contentY)
+        // Highlight the folder under the pointer (icons or list).
+        const c = win.view === "icons" ? grid.itemAt(p.x - grid.x + grid.contentX, p.y - grid.y + grid.contentY)
+                                       : list.itemAt(p.x - list.x + list.contentX, p.y - list.parent.y - list.y + list.contentY)
         if (over && over !== c) over.hot = false
         over = c && c.f && c.f.dir && win.dragging.indexOf(c.f.path) < 0 ? c : null
         if (over) over.hot = true
@@ -549,6 +579,94 @@ FloatingWindow {
       color: Theme.textDim; font.pixelSize: Theme.small
     }
   }
+
+  // ---- Get Info
+  Glass {
+    id: info
+    property string path: ""
+    property var d: ({})
+    readonly property bool isDir: !!d.mode && d.mode.startsWith("d")
+    visible: opacity > 0
+    opacity: path !== "" ? 1 : 0
+    scale: path !== "" ? 1 : 0.94
+    Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+    Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutBack } }
+    z: 40
+    anchors.centerIn: parent
+    width: 380; height: icol.implicitHeight + 40
+    radius: 18; fill: Theme.glassStrong; shadowSize: 40
+    function show(p) {
+      path = p; d = ({})
+      infoProc.command = ["bash", "-c",
+        "p=\"$1\"; stat -c '%s|%W|%Y|%A|%U' -- \"$p\"; echo '@@'; " +
+        "if [ -d \"$p\" ]; then du -sb -- \"$p\" 2>/dev/null | cut -f1; else echo; fi; echo '@@'; " +
+        "if [ -d \"$p\" ]; then find \"$p\" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l; else echo; fi; echo '@@'; " +
+        "t=$(gio info -a standard::content-type -- \"$p\" 2>/dev/null | awk '/content-type/ {print $2}'); echo \"$t\"; echo '@@'; " +
+        "a=$(xdg-mime query default \"$t\" 2>/dev/null); echo \"${a%.desktop}\"", "_", p]
+      infoProc.running = true
+    }
+    Process {
+      id: infoProc
+      stdout: StdioCollector {
+        onStreamFinished: {
+          const f = text.split("@@\n").map(x => x.trim())
+          const st = (f[0] || "").split("|")
+          info.d = { size: parseInt(st[0]) || 0, created: parseInt(st[1]) || 0, modified: parseInt(st[2]) || 0, mode: st[3] || "", owner: st[4] || "",
+                     total: parseInt(f[1]) || 0, items: parseInt(f[2]) || 0, type: f[3] || "", app: f[4] || "" }
+        }
+      }
+    }
+    TapHandler {}
+    ColumnLayout {
+      id: icol
+      x: 20; y: 20; width: parent.width - 40
+      spacing: 12
+      RowLayout {
+        spacing: 14
+        Image {
+          Layout.preferredWidth: 64; Layout.preferredHeight: 64; sourceSize: Qt.size(128, 128); fillMode: Image.PreserveAspectFit
+          readonly property string nm: info.path.split("/").pop()
+          source: !info.path ? "" : (!info.isDir && win.kindOf(nm, false) === "image" ? "file://" + info.path : win.iconFor(info.path, nm, info.isDir))
+        }
+        ColumnLayout {
+          spacing: 2
+          Layout.fillWidth: true
+          Txt { Layout.fillWidth: true; text: info.path.split("/").pop(); font.weight: Font.Bold; font.pixelSize: Theme.fontSize + 2; elide: Text.ElideMiddle }
+          Txt { text: info.isDir ? win.sizeText(info.d.total || 0) + ", " + (info.d.items || 0) + " items" : win.sizeText(info.d.size || 0); color: Theme.textDim; font.pixelSize: Theme.small }
+        }
+      }
+      Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
+      GridLayout {
+        columns: 2; columnSpacing: 14; rowSpacing: 7
+        Layout.fillWidth: true
+        InfoKey { text: "Kind" }
+        InfoVal { text: info.isDir ? "Folder" : (info.d.type || "File") }
+        InfoKey { text: "Where" }
+        InfoVal { text: info.path.substring(0, info.path.lastIndexOf("/")).replace(app.home, "~") || "/" }
+        InfoKey { text: "Created" }
+        InfoVal { text: info.d.created ? win.dateText(new Date(info.d.created * 1000)) : "Unknown" }
+        InfoKey { text: "Modified" }
+        InfoVal { text: info.d.modified ? win.dateText(new Date(info.d.modified * 1000)) : "" }
+        InfoKey { text: "Opens with"; visible: !!info.d.app }
+        InfoVal { text: Apps.nameFor(info.d.app || ""); visible: !!info.d.app }
+        InfoKey { text: "Owner" }
+        InfoVal { text: info.d.owner || "" }
+        InfoKey { text: "Permissions" }
+        InfoVal { text: info.d.mode || "" }
+      }
+      RowLayout {
+        Layout.topMargin: 4
+        Item { Layout.fillWidth: true }
+        Rectangle {
+          implicitWidth: dt.implicitWidth + 28; implicitHeight: 28; radius: 8; color: Theme.accent
+          Txt { id: dt; anchors.centerIn: parent; text: "Done"; color: "#ffffff"; font.weight: Font.Bold }
+          TapHandler { onTapped: { info.path = ""; content.forceActiveFocus() } }
+        }
+      }
+    }
+  }
+  component InfoKey: Txt { color: Theme.textDim; font.pixelSize: Theme.small + 0.5; Layout.alignment: Qt.AlignTop }
+  component InfoVal: Txt { Layout.fillWidth: true; font.pixelSize: Theme.small + 0.5 }
 
   // ---- go to folder
   Glass {
@@ -617,6 +735,8 @@ FloatingWindow {
       return [
         { text: "Open", action: () => win.selection.forEach(p => win.openItem(p, f.dir && p === f.path)) },
         f.dir ? { text: "Open in New Window", action: () => app.openWindow(f.path) } : { text: "Open With…", submenu: true },
+        { separator: true },
+        { text: "Get Info", keys: "Ctrl I", action: () => info.show(f.path) },
         { separator: true },
         { text: "Rename", keys: "F2", enabled: !many, action: () => win.renaming = f.path },
         { text: "Copy", keys: "Ctrl C", action: () => win.copy(false) },

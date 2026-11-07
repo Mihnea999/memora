@@ -160,6 +160,23 @@ grep -q pam_gnome_keyring /etc/pam.d/greetd || {
 }
 grep -q pam_gnome_keyring /etc/pam.d/passwd || echo 'password   optional     pam_gnome_keyring.so' >> /etc/pam.d/passwd
 
+# Plugin that lets app minimize buttons send windows to the Dock. It is built
+# against the installed Hyprland, and again after every Hyprland update.
+bash $MEMORA_PATH/plugin/build.sh || echo "memora-minimize plugin failed to build (minimize buttons will do nothing)"
+mkdir -p /etc/pacman.d/hooks
+cat > /etc/pacman.d/hooks/memora-plugin.hook <<'HOOK'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = hyprland
+
+[Action]
+Description = Rebuilding the Memora Hyprland plugin...
+When = PostTransaction
+Exec = /usr/bin/bash /usr/share/memora/plugin/build.sh
+HOOK
+
 # fastfetch shows Memora, not the Arch logo.
 install -Dm644 $MEMORA_PATH/fastfetch/config.jsonc /etc/xdg/fastfetch/config.jsonc
 

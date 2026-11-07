@@ -48,4 +48,4 @@ for _, ns in ipairs({ "memora-bar", "memora-dock", "memora-panel", "memora-launc
   "memora-notifications", "memora-osd", "memora-dialog", "memora-switcher" }) do
   hl.layer_rule({ name = "memora-glass-" .. ns, match = { namespace = "^(" .. ns .. ")$" }, blur = true, ignore_alpha = 0.3 })
 end
-hl.layer_rule({ name = "memora-no-anim-wallpaper", match = { namespace = "^(memora-wallpaper)$" }, no_anim = true })
+hl.layer_rule({ name = "memora-no-anim-wallpaper", match = { namespace = "^(memora-wallpaper|memora-genie|memora-snap)$" }, no_anim = true })
