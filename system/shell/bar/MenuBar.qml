@@ -55,7 +55,7 @@ PanelWindow {
       menuId: "system"
       Image {
         anchors.centerIn: parent
-        source: "file://" + Quickshell.env("HOME") + "/.config/memora/current/logo.png"
+        source: "file://" + Theme.share + "/themes/" + Theme.mode + "/logo.png"
         sourceSize: Qt.size(32, 32)
         width: 15; height: 15
         cache: false

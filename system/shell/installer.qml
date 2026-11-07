@@ -186,7 +186,11 @@ ShellRoot {
   // ---- the screen -----------------------------------------------------------
   FloatingWindow {
     id: win
+    title: "Install Memora"
     color: "black"
+    // Full screen in cage; a large window anywhere else.
+    implicitWidth: 1280
+    implicitHeight: 800
     Image {
       anchors.fill: parent
       source: "file://" + Theme.share + "/wallpapers/ember-" + app.look + ".jpg"
@@ -223,7 +227,7 @@ ShellRoot {
 
       Item {
         id: stage
-        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: foot.top; topMargin: 50; leftMargin: 48; rightMargin: 48 }
+        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: foot.top; topMargin: 50; bottomMargin: 18; leftMargin: 48; rightMargin: 48 }
         clip: true
 
         // 0 — hello
@@ -368,6 +372,7 @@ ShellRoot {
               Txt { text: "Computer name"; color: Theme.textDim; Layout.alignment: Qt.AlignRight }
               Kit.Field { Layout.fillWidth: true; text: app.hostName; onTextChanged: app.hostName = text }
             }
+            Item { Layout.fillHeight: true }
           }
         }
 
@@ -446,6 +451,7 @@ ShellRoot {
                 }
               }
             }
+            Item { Layout.fillHeight: true }
           }
         }
 
@@ -481,6 +487,7 @@ ShellRoot {
               Txt { id: warn; x: 16; y: 11; width: parent.width - 32; wrapMode: Text.Wrap
                 text: "Everything on " + (app.chosenDisk ? app.chosenDisk.model : "the disk") + " will be erased. This can't be undone." }
             }
+            Item { Layout.fillHeight: true }
           }
         }
 

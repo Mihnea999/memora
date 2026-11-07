@@ -74,7 +74,15 @@ ShellRoot {
           // Full program name (comm is cut at 15 characters), and app names people know.
           const exe = (f[6] || f[5]).split("/").pop()
           const base = exe.length > f[5].length && exe.startsWith(f[5].slice(0, 12)) ? exe : f[5]
-          return { pid: parseInt(f[0]), user: f[1], cpu: parseFloat(f[2]), mem: parseInt(f[3]), name: app.friendly[base] || base }
+          let name = app.friendly[base] || base
+          // Memora's own apps all run in Quickshell: name them by what they show.
+          if (base === "qs" || base === "quickshell") {
+            const target = f.slice(7).find(a => a.indexOf("/memora/shell") >= 0) || ""
+            const file = target.endsWith(".qml") ? target.split("/").pop().replace(".qml", "") : "shell"
+            name = ({ shell: "Memora desktop", settings: "System Settings", notes: "Notes", store: "App Store", activity: "Activity Monitor",
+              ai: "Memora AI", files: "Files", welcome: "Welcome", greeter: "Login window", installer: "Installer" })[file] || "Memora"
+          }
+          return { pid: parseInt(f[0]), user: f[1], cpu: parseFloat(f[2]), mem: parseInt(f[3]), name: name }
         }).filter(p => p.name !== "ps" && p.name !== "head")
         app.threads = th
       }

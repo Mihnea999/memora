@@ -203,7 +203,7 @@ ShellRoot {
                 scale: fh.hovered ? 1.02 : 1
                 Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
                 Txt { x: 20; y: 18; text: ["Editors' choice", "Make something", "For developers"][index % 3]; color: Qt.rgba(1, 1, 1, 0.8); font.pixelSize: Theme.small; font.weight: Font.Bold }
-                Txt { x: 20; y: 40; width: parent.width - 130; text: parent.a.name; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Bold }
+                Txt { x: 20; y: 40; width: parent.width - 130; height: 28; text: parent.a.name; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Bold; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 13; verticalAlignment: Text.AlignVCenter }
                 Txt { x: 20; y: 72; width: parent.width - 130; text: parent.a.summary; color: Qt.rgba(1, 1, 1, 0.85); wrapMode: Text.Wrap; maximumLineCount: 3 }
                 StoreIcon { appId: parent.modelData; width: 86; height: 86; anchors { right: parent.right; rightMargin: 20; verticalCenter: parent.verticalCenter } }
                 GetButton { appId: parent.modelData; anchors { left: parent.left; leftMargin: 20; bottom: parent.bottom; bottomMargin: 18 } light: true }
@@ -311,6 +311,8 @@ ShellRoot {
         id: ii
         anchors.fill: parent
         source: app.iconOf(si.appId)
+        // Some apps' icons are filed under their desktop file name.
+        onStatusChanged: if (status === Image.Error && String(source).indexOf(".desktop.png") < 0 && si.appId) source = app.iconDir ? "file://" + app.iconDir + si.appId + ".desktop.png" : ""
         sourceSize: Qt.size(256, 256)
         smooth: true; mipmap: true
         asynchronous: true

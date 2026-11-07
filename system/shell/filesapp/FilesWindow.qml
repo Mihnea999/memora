@@ -572,6 +572,7 @@ FloatingWindow {
       Repeater {
         model: {
           // Inside the home folder the path starts at Home; elsewhere at Computer.
+          if (win.inTrash) return [{ name: "Trash", path: win.trashDir }]
           const inHome = win.path === app.home || win.path.startsWith(app.home + "/")
           const rel = inHome ? win.path.slice(app.home.length) : win.path
           const parts = rel.split("/").filter(x => x)
@@ -590,7 +591,7 @@ FloatingWindow {
     }
     Txt {
       anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-      text: (win.selection.length ? win.selection.length + " of " : "") + content.n + " items" + (win.free ? ", " + win.free + " available" : "")
+      text: (win.selection.length ? win.selection.length + " of " : "") + content.n + (content.n === 1 ? " item" : " items") + (win.free ? ", " + win.free + " available" : "")
       color: Theme.textDim; font.pixelSize: Theme.small
     }
   }
@@ -647,7 +648,7 @@ FloatingWindow {
           spacing: 2
           Layout.fillWidth: true
           Txt { Layout.fillWidth: true; text: info.path.split("/").pop(); font.weight: Font.Bold; font.pixelSize: Theme.fontSize + 2; elide: Text.ElideMiddle }
-          Txt { text: info.isDir ? win.sizeText(info.d.total || 0) + ", " + (info.d.items || 0) + " items" : win.sizeText(info.d.size || 0); color: Theme.textDim; font.pixelSize: Theme.small }
+          Txt { text: info.isDir ? win.sizeText(info.d.total || 0) + ", " + (info.d.items || 0) + ((info.d.items || 0) === 1 ? " item" : " items") : win.sizeText(info.d.size || 0); color: Theme.textDim; font.pixelSize: Theme.small }
         }
       }
       Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }

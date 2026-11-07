@@ -92,11 +92,18 @@ ShellRoot {
   function deleteNote() {
     const n = note; if (!n) return
     const list = visibleNotes, i = list.indexOf(n)
-    if (n.deleted) notes = notes.filter(x => x !== n)
-    else { n.deleted = true; n.modified = Date.now(); changed() }
-    const rest = visibleNotes
-    current = rest.length ? rest[Math.min(i, rest.length - 1)].id : ""
-    saveLater.restart()
+    const finish = () => {
+      const rest = visibleNotes
+      current = rest.length ? rest[Math.min(i, rest.length - 1)].id : ""
+      saveLater.restart()
+    }
+    if (n.deleted) {
+      confirm.ask({ title: "Delete this note forever?", message: "You can't undo this action.", action: "Delete",
+        onAccept: () => { notes = notes.filter(x => x !== n); finish() } })
+      return
+    }
+    n.deleted = true; n.modified = Date.now(); changed()
+    finish()
   }
   function restoreNote() { if (note) { note.deleted = false; changed(); pickFirst() } }
   function togglePin() { if (note) { note.pinned = !note.pinned; changed() } }
@@ -118,6 +125,10 @@ ShellRoot {
   }
   function deleteFolder(f) {
     if (folders.length < 2) return
+    confirm.ask({ title: "Delete the folder “" + f + "”?", message: "Its notes move to Recently Deleted.", action: "Delete Folder",
+      onAccept: () => removeFolder(f) })
+  }
+  function removeFolder(f) {
     notes.forEach(n => { if (n.folder === f) { n.deleted = true; n.folder = folders.find(x => x !== f) } })
     folders = folders.filter(x => x !== f)
     if (folder === f) folder = "*"
@@ -224,6 +235,7 @@ ShellRoot {
     minimumSize: Qt.size(720, 420)
     color: "transparent"
     Rectangle { anchors.fill: parent; color: Theme.window }
+    ConfirmSheet { id: confirm }
 
     readonly property color tint: "#f5b72e"     // Notes' own highlight
     // ---- shortcuts (the menu bar sends the same keys)

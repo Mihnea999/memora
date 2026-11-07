@@ -29,7 +29,7 @@
    "category": "Productivity"
   },
   {
-   "id": "org.mozilla.Thunderbird",
+   "id": "org.mozilla.thunderbird",
    "name": "Thunderbird",
    "summary": "Email, calendar and contacts",
    "description": "A fast, private mail app for all your accounts, with a calendar and an address book.",
@@ -177,7 +177,7 @@
   },
   {
    "id": "com.visualstudio.code",
-   "name": "Visual Studio Code",
+   "name": "VS Code",
    "summary": "Code editor",
    "description": "Microsoft's editor with IntelliSense, debugging, Git and thousands of extensions.",
    "category": "Development"
