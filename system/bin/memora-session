@@ -1,0 +1,5 @@
+#!/bin/sh
+# memora-session — start the Memora desktop (run by the login screen).
+# uwsm reports every step on the console; keep that off the screen so the
+# login goes straight to the desktop.
+exec uwsm start -e -D Hyprland -N Memora -- start-hyprland >/dev/null 2>&1

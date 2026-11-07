@@ -184,7 +184,7 @@ Exec=uwsm start -e -D Hyprland -N Memora -- start-hyprland
 Type=Application
 DesktopNames=Hyprland
 DESKTOP
-session_cmd="sh -c 'exec uwsm start -e -D Hyprland -N Memora -- start-hyprland >/dev/null 2>&1'"
+session_cmd="memora-session"
 
 # The login screen is part of the Memora shell (shell/greeter.qml), shown by greetd in cage.
 mkdir -p /etc/greetd /var/lib/memora

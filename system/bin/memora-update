@@ -77,6 +77,9 @@ apply_memora() { # url version (as root)
   rm -rf "$MEMORA_PATH.new" && cp -a "$tmp/new" "$MEMORA_PATH.new" &&
     mv "$MEMORA_PATH" "$MEMORA_PATH.old" && mv "$MEMORA_PATH.new" "$MEMORA_PATH" && rm -rf "$MEMORA_PATH.old"
   [[ -x $MEMORA_PATH/plugin/build.sh ]] && bash "$MEMORA_PATH/plugin/build.sh" >/dev/null 2>&1
+  # New commands and apps that came with this version.
+  for f in "$MEMORA_PATH"/bin/*; do ln -sf "$f" "/usr/local/bin/$(basename "$f")"; done
+  install -Dm644 -t /usr/share/applications "$MEMORA_PATH"/applications/*.desktop
   rm -rf "$tmp"
 }
 
