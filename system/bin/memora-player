@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# memora-player [FILE] — Player, for films and music. With Player open, plays FILE in it.
+dir="${MEMORA_PATH:-/usr/share/memora}"
+source "$dir/lib/single.sh"
+qml="$dir/shell/player.qml"
+f="${1:-}"; f="${f#file://}"
+[[ -n $f ]] && f="$(realpath -m "$f")"
+if memora_single memora-player "$qml"; then
+  [[ -n $f ]] && qs -p "$qml" ipc call player open "$f"
+  exit 0
+fi
+MEMORA_PLAYER_FILE="$f" exec qs -p "$qml"

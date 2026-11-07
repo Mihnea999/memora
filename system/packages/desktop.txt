@@ -19,6 +19,8 @@ gnome-calculator
 qt6-imageformats
 kimageformats
 imagemagick
+qt6-multimedia
+qt6-multimedia-ffmpeg
 grim
 slurp
 satty
