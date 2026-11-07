@@ -33,9 +33,5 @@ Kit.Page {
     Kit.Row { label: "Magnify icons under the pointer"; Kit.Switch { checked: Prefs.magnify; onToggled: on => Prefs.set("magnify", on) } }
     Kit.Row { label: "Bounce apps while they open"; last: true; Kit.Switch { checked: Prefs.dockBounce; onToggled: on => Prefs.set("dockBounce", on) } }
   }
-  Kit.Group {
-    header: "Windows"
-    footer: "Drag a window to the left or right edge for half the screen, to a corner for a quarter, or to the menu bar to fill it."
-    Kit.Row { label: "Dock windows at the screen edges"; last: true; Kit.Switch { checked: Prefs.snapping; onToggled: on => Prefs.set("snapping", on) } }
-  }
+
 }

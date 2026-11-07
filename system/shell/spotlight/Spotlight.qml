@@ -55,9 +55,9 @@ PanelWindow {
   // ---- results ---------------------------------------------------------------
   readonly property var settingsPages: [
     ["Wi-Fi", "wifi"], ["Bluetooth", "bluetooth"], ["Sound", "sound"], ["Displays", "displays"],
-    ["Appearance", "appearance"], ["Wallpaper", "wallpaper"], ["Dock & Menu Bar", "dock"],
+    ["Appearance", "appearance"], ["Wallpaper", "wallpaper"], ["Dock & Menu Bar", "dock"], ["Windows & Desktops", "windows"], ["Animations", "animations"],
     ["Keyboard", "keyboard"], ["Mouse & Trackpad", "mouse"], ["Battery", "battery"],
-    ["Date & Time", "datetime"], ["Users", "users"], ["Memora AI", "ai"], ["Software Update", "update"], ["About", "about"]
+    ["Date & Time", "datetime"], ["Users", "users"], ["Privacy & Security", "privacy"], ["Memora AI", "ai"], ["Software Update", "update"], ["About", "about"]
   ]
 
   function calc(q) {

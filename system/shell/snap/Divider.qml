@@ -25,7 +25,14 @@ Scope {
       const A = a.lastIpcObject, B = b.lastIpcObject
       const gap = B.at[0] - (A.at[0] + A.size[0])
       const sameRow = Math.abs(A.at[1] - B.at[1]) <= 8 && Math.abs(A.size[1] - B.size[1]) <= 8
-      if (gap >= 0 && gap <= 24 && sameRow) out.push({ a: a, b: b, x: A.at[0] + A.size[0], gap: gap, y: A.at[1], h: A.size[1], mon: A.monitor })
+      if (!(gap >= 0 && gap <= 24 && sameRow)) continue
+      // Not while another window lies over the line between them.
+      const sx = A.at[0] + A.size[0], covered = list.some(c => {
+        if (c === a || c === b) return false
+        const C = c.lastIpcObject
+        return C.at[0] < sx + gap + 8 && C.at[0] + C.size[0] > sx - 8 && C.at[1] < A.at[1] + A.size[1] && C.at[1] + C.size[1] > A.at[1]
+      })
+      if (!covered) out.push({ a: a, b: b, x: sx, gap: gap, y: A.at[1], h: A.size[1], mon: A.monitor })
     }
     return out
   }

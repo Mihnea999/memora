@@ -25,6 +25,7 @@ ShellRoot {
     { id: "appearance", title: "Appearance", sym: "moon", color: "#1d1d20", group: 3 },
     { id: "wallpaper", title: "Wallpaper", sym: "photo", color: "#2fb6d9", group: 3 },
     { id: "dock", title: "Dock & Menu Bar", sym: "dock", color: "#46474d", group: 3 },
+    { id: "windows", title: "Windows & Desktops", sym: "display", color: "#5e5ce6", group: 3 },
     { id: "animations", title: "Animations", sym: "play", color: "#ff6b8a", group: 3 },
     { id: "displays", title: "Displays", sym: "display", color: "#2f7bff", group: 3 },
     { id: "keyboard", title: "Keyboard", sym: "keyboard", color: "#8a8d96", group: 4 },
@@ -41,7 +42,7 @@ ShellRoot {
 
   readonly property var paneFiles: ({
     wifi: "Wifi", bluetooth: "BluetoothPane", network: "NetworkPane", notifications: "NotificationsPane",
-    sound: "SoundPane", appearance: "AppearancePane", animations: "AnimationsPane", wallpaper: "WallpaperPane", dock: "DockPane",
+    sound: "SoundPane", appearance: "AppearancePane", animations: "AnimationsPane", windows: "WindowsPane", wallpaper: "WallpaperPane", dock: "DockPane",
     displays: "DisplaysPane", keyboard: "KeyboardPane", mouse: "MousePane", battery: "BatteryPane",
     datetime: "DateTimePane", users: "UsersPane", privacy: "PrivacyPane", ai: "AiPane", update: "UpdatePane", about: "AboutPane"
   })
