@@ -131,6 +131,7 @@ ICONS["apps/org.gnome.Ptyxis"] = icon(
       <path d="M490 640 h230" stroke="#7ee0a3"/>
     </g>''', rim_op=0.18)
 ICONS["apps/kitty"] = ICONS["apps/org.gnome.Ptyxis"]
+ICONS["apps/com.mitchellh.ghostty"] = ICONS["apps/org.gnome.Ptyxis"]
 
 # Memora AI: a white spark on a dusk gradient.
 ICONS["apps/memora-ai"] = icon(
@@ -169,6 +170,8 @@ ICONS["apps/org.gnome.Loupe"] = icon(
     <path d="M100 760 L380 450 L560 640 L670 530 L924 790 V924 H100 Z" fill="#3c9b6e"/>
     <path d="M100 820 L330 600 L520 790 L640 690 L924 900 V924 H100 Z" fill="#2c7a55"/>''')
 
+ICONS["apps/memora-photos"] = ICONS["apps/org.gnome.Loupe"]
+
 # Documents: a page with a red band and folded corner.
 ICONS["apps/org.gnome.Papers"] = icon(
     "docs", lg("bg", "#ff6b5f", "#d62f45"), "url(#bg)",
@@ -178,11 +181,17 @@ ICONS["apps/org.gnome.Papers"] = icon(
       <g stroke="#e0e2e8" stroke-width="22" stroke-linecap="round"><path d="M360 470 h300 M360 550 h300 M360 630 h220"/></g>
     </g>''')
 
-# Media player: a play button on magenta.
-ICONS["apps/mpv"] = icon(
-    "media", lg("bg", "#ff5f8f", "#8a2be2", 0, 0, 1, 1), "url(#bg)",
-    '''<circle cx="512" cy="512" r="250" fill="#ffffff" fill-opacity="0.18"/>
-    <path filter="url(#soft)" d="M450 370 L680 512 L450 654 Z" fill="#ffffff" stroke="#ffffff" stroke-width="36" stroke-linejoin="round"/>''')
+# Player: a glowing disc with a soft play mark, on graphite.
+ICONS["apps/memora-player"] = icon(
+    "player", lg("bg", "#2c2e35", "#0d0e11") + lg("disc", "#ff7a59", "#c2338f", 0, 0, 1, 1)
+    + '<radialGradient id="sheen" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.35"/><stop offset="0.6" stop-color="#fff" stop-opacity="0"/></radialGradient>',
+    "url(#bg)",
+    '''<g filter="url(#soft)">
+      <circle cx="512" cy="512" r="262" fill="url(#disc)"/>
+      <circle cx="512" cy="512" r="262" fill="url(#sheen)"/>
+      <path d="M462 404 Q462 380 484 392 L636 494 Q656 512 636 530 L484 632 Q462 644 462 620 Z" fill="#ffffff"/>
+    </g>''', rim_op=0.16)
+ICONS["apps/mpv"] = ICONS["apps/memora-player"]
 
 # Settings: a machined gear on silver.
 teeth = "".join(

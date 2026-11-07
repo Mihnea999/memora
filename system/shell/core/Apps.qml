@@ -22,7 +22,7 @@ Singleton {
     "kitty": "Terminal", "memora-ai": "Memora AI", "memora-settings": "Settings",
     "org.gnome.TextEditor": "Text Editor", "org.gnome.Calculator": "Calculator",
     "org.gnome.Papers": "Documents", "org.gnome.Loupe": "Photos", "mpv": "Media Player",
-    "memora-store": "App Store", "memora-float": "Memora", "memora-activity": "Activity Monitor", "memora-welcome": "Welcome", "gcr-prompter": "Passwords", "": "Files"
+    "memora-store": "App Store", "memora-photos": "Photos", "memora-player": "Player", "com.mitchellh.ghostty": "Terminal", "memora-float": "Memora", "memora-activity": "Activity Monitor", "memora-welcome": "Welcome", "gcr-prompter": "Passwords", "": "Files"
   })
 
   function nameFor(appId) {
@@ -35,7 +35,7 @@ Singleton {
   }
 
   // Icons drawn for Memora (tools/icons.py); others are shown on a tile.
-  readonly property var nativeIcons: ["memora-store", "memora-files", "memora-notes", "org.gnome.Nautilus", "memora-launchpad", "chromium", "org.gnome.Ptyxis",
+  readonly property var nativeIcons: ["memora-store", "memora-photos", "memora-player", "com.mitchellh.ghostty", "memora-files", "memora-notes", "org.gnome.Nautilus", "memora-launchpad", "chromium", "org.gnome.Ptyxis",
     "kitty", "memora-ai", "org.gnome.TextEditor", "org.gnome.Calculator", "org.gnome.Loupe", "org.gnome.Papers",
     "mpv", "memora-settings", "memora-activity", "folder", "folder-download", "user-trash", "user-trash-full"]
 
