@@ -38,6 +38,7 @@ ShellRoot {
   Switcher {}
   Lock {}
   Snap {}
+  Divider {}
   Genie {}
   Alert {}
   Notch {}
