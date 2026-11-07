@@ -85,7 +85,7 @@ ShellRoot {
     // ---- music: cover over a wash of its colours ------------------------------
     Item {
       anchors.fill: parent
-      visible: !app.isVideo
+      visible: !app.isVideo && app.file !== ""
       Image {
         id: wash
         anchors.fill: parent

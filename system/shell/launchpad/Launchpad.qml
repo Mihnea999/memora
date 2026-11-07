@@ -103,7 +103,13 @@ PanelWindow {
     color: Qt.rgba(0, 0, 0, Theme.dark ? 0.28 : 0.12)
     opacity: lp.shown
   }
-  TapHandler { onTapped: lp.menuApp !== "" ? lp.menuApp = "" : Shell.close() }
+  TapHandler {
+    onTapped: ev => {
+      if (lp.menuApp !== "") { lp.menuApp = ""; return }
+      const p = panel.mapFromItem(lp.contentItem, ev.position.x, ev.position.y)
+      if (p.x < 0 || p.y < 0 || p.x > panel.width || p.y > panel.height) Shell.close()
+    }
+  }
 
   // ---- the library ----------------------------------------------------------
   Glass {

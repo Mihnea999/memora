@@ -1,0 +1,6 @@
+#!/bin/sh
+# memora-greeter MODE — the login screen (run by greetd). Its compositor logs to
+# the console; keep the console blank, so nothing shows between login and desktop.
+printf '\033[2J\033[H\033[?25l'
+exec cage -s -mlast -- env MEMORA_MODE="${1:-dark}" QS_ICON_THEME=Memora QT_WAYLAND_DISABLE_WINDOWDECORATION=1 \
+  qs -p "${MEMORA_PATH:-/usr/share/memora}/shell/greeter.qml" >/dev/null 2>&1

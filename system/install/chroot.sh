@@ -217,7 +217,7 @@ session_cmd="memora-session"
 mkdir -p /etc/greetd /var/lib/memora
 printf %s "$MEMORA_USER" > /var/lib/memora/last-user
 chown -R greeter:greeter /var/lib/memora
-greeter_cmd="cage -s -mlast -- env MEMORA_MODE=$MEMORA_THEME QS_ICON_THEME=Memora QT_WAYLAND_DISABLE_WINDOWDECORATION=1 qs -p $MEMORA_PATH/shell/greeter.qml"
+greeter_cmd="memora-greeter $MEMORA_THEME"
 
 {
   printf '[terminal]\nvt = 1\n\n'
