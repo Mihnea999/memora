@@ -309,6 +309,28 @@ Canvas {
       ctx.beginPath(); ctx.moveTo(2.6, 11.6); ctx.lineTo(2.6, 13.8); ctx.lineTo(13.4, 13.8); ctx.lineTo(13.4, 11.6); ctx.stroke()
       break
     }
+    case "cloud": case "rain": case "snow": case "storm": case "fog": case "suncloud": {
+      const cloud = (ox, oy, k) => {
+        ctx.beginPath()
+        ctx.moveTo(ox + 3.4 * k, oy + 11 * k)
+        ctx.arc(ox + 4.2 * k, oy + 8.6 * k, 2.6 * k, Math.PI * 0.6, Math.PI * 1.45)
+        ctx.arc(ox + 7.6 * k, oy + 6.4 * k, 3.6 * k, Math.PI * 1.1, Math.PI * 1.95)
+        ctx.arc(ox + 11.4 * k, oy + 8.8 * k, 2.4 * k, Math.PI * 1.5, Math.PI * 0.45)
+        ctx.closePath(); ctx.fill()
+      }
+      if (c.name === "suncloud") {
+        ctx.beginPath(); ctx.arc(10.6, 5.2, 2.6, 0, Math.PI * 2); ctx.fill()
+        ctx.lineWidth = 1.2
+        for (let i = 0; i < 6; i++) { const a = -Math.PI * 0.95 + i * Math.PI / 4.2; ctx.beginPath(); ctx.moveTo(10.6 + Math.cos(a) * 3.9, 5.2 + Math.sin(a) * 3.9); ctx.lineTo(10.6 + Math.cos(a) * 5.2, 5.2 + Math.sin(a) * 5.2); ctx.stroke() }
+        cloud(-0.6, 1.6, 1)
+      } else cloud(0, c.name === "cloud" || c.name === "fog" ? 1.5 : -0.6, 1)
+      ctx.lineWidth = 1.4; ctx.lineCap = "round"
+      if (c.name === "rain") for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(5 + i * 3, 12.2); ctx.lineTo(4.2 + i * 3, 14.8); ctx.stroke() }
+      if (c.name === "snow") for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(4.8 + i * 3, 13.4 + (i % 2), 0.9, 0, Math.PI * 2); ctx.fill() }
+      if (c.name === "storm") { ctx.beginPath(); ctx.moveTo(8.6, 10.6); ctx.lineTo(6.8, 13.4); ctx.lineTo(8.6, 13.4); ctx.lineTo(7.4, 15.6); ctx.stroke() }
+      if (c.name === "fog") for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.moveTo(3, 13.6 + i * 1.8); ctx.lineTo(13, 13.6 + i * 1.8); ctx.stroke() }
+      break
+    }
     }
     ctx.restore()
   }
