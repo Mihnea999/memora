@@ -22,6 +22,9 @@ MEMORA_PATH="$MEMORA_PATH" "$MEMORA_PATH/bin/memora-theme" set "${MEMORA_THEME:-
 
 xdg-user-dirs-update || true
 
+# App Store source (Flathub), installed per user so apps need no password.
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true
+
 # Default apps for common kinds of files.
 xdg-mime default memora-files.desktop inode/directory
 for t in image/png image/jpeg image/webp image/gif image/bmp image/svg+xml image/heic image/tiff; do xdg-mime default org.gnome.Loupe.desktop "$t"; done

@@ -7,6 +7,13 @@ hl.env("SDL_VIDEODRIVER", "wayland")
 hl.env("MOZ_ENABLE_WAYLAND", "1")
 hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 hl.env("QS_ICON_THEME", "Memora")
+-- Apps from the App Store (Flatpak) appear in Launchpad, Spotlight and the Dock.
+local home = os.getenv("HOME") or ""
+local data = os.getenv("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+if not data:find("flatpak/exports", 1, true) then
+  data = home .. "/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:" .. data
+end
+hl.env("XDG_DATA_DIRS", data)
 -- Memora commands, including ones added by an update.
 hl.env("PATH", (os.getenv("MEMORA_PATH") or "/usr/share/memora") .. "/bin:" .. (os.getenv("PATH") or "/usr/bin"))
 hl.env("MEMORA_PATH", os.getenv("MEMORA_PATH") or "/usr/share/memora")

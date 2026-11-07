@@ -98,6 +98,13 @@ ICONS["apps/memora-notes"] = icon(
       <rect x="610" y="380" width="64" height="44" rx="10" fill="#ff7a8a"/>
     </g>''', rim="#000000", rim_op=0.07)
 
+# App Store: a white "A" built from three strokes, on a vivid blue.
+ICONS["apps/memora-store"] = icon(
+    "store", lg("bg", "#3fb8ff", "#1f5ef0"), "url(#bg)",
+    '''<g filter="url(#soft)" stroke="#ffffff" stroke-width="64" stroke-linecap="round" fill="none">
+      <path d="M512 250 L330 640"/><path d="M512 250 L694 640"/><path d="M300 560 L724 560"/>
+    </g>''')
+
 # Launchpad: nine coloured tiles on graphite.
 tiles = ["#ff6b6b", "#ffb347", "#ffd84d", "#5fd38a", "#3fc3c9", "#4d8dff", "#8f6bff", "#e86bd8", "#b8bcc6"]
 tile_svg = "".join(

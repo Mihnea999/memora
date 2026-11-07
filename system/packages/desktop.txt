@@ -43,3 +43,4 @@ python-anthropic
 libnotify
 ydotool
 adw-gtk-theme
+flatpak

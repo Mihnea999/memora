@@ -1,0 +1,333 @@
+{
+ "featured": [
+  "md.obsidian.Obsidian",
+  "org.blender.Blender",
+  "com.visualstudio.code"
+ ],
+ "categories": [
+  "Productivity",
+  "Internet",
+  "Creativity",
+  "Development",
+  "Media",
+  "Games",
+  "Utilities"
+ ],
+ "apps": [
+  {
+   "id": "md.obsidian.Obsidian",
+   "name": "Obsidian",
+   "summary": "Notes that link to each other",
+   "description": "A private knowledge base of plain Markdown files, with links between notes, a graph of your ideas and a large set of plugins.",
+   "category": "Productivity"
+  },
+  {
+   "id": "org.libreoffice.LibreOffice",
+   "name": "LibreOffice",
+   "summary": "Documents, spreadsheets and slides",
+   "description": "The complete office suite. Opens and saves Word, Excel and PowerPoint files.",
+   "category": "Productivity"
+  },
+  {
+   "id": "org.mozilla.Thunderbird",
+   "name": "Thunderbird",
+   "summary": "Email, calendar and contacts",
+   "description": "A fast, private mail app for all your accounts, with a calendar and an address book.",
+   "category": "Productivity"
+  },
+  {
+   "id": "com.bitwarden.desktop",
+   "name": "Bitwarden",
+   "summary": "Passwords, everywhere",
+   "description": "An open-source password manager that keeps your logins in sync across devices.",
+   "category": "Productivity"
+  },
+  {
+   "id": "io.github.alainm23.planify",
+   "name": "Planify",
+   "summary": "Tasks and projects",
+   "description": "A calm to-do list with projects, sections, labels and Todoist or Nextcloud sync.",
+   "category": "Productivity"
+  },
+  {
+   "id": "org.gnome.gitlab.somas.Apostrophe",
+   "name": "Apostrophe",
+   "summary": "Distraction-free writing",
+   "description": "A Markdown editor that gets out of your way, with a focus mode and live preview.",
+   "category": "Productivity"
+  },
+  {
+   "id": "org.zotero.Zotero",
+   "name": "Zotero",
+   "summary": "Research and citations",
+   "description": "Collect, organise and cite your sources, from web pages to PDFs.",
+   "category": "Productivity"
+  },
+  {
+   "id": "org.mozilla.firefox",
+   "name": "Firefox",
+   "summary": "The independent browser",
+   "description": "Fast and private browsing from Mozilla, with containers and strong tracking protection.",
+   "category": "Internet"
+  },
+  {
+   "id": "com.brave.Browser",
+   "name": "Brave",
+   "summary": "Browser with built-in blocking",
+   "description": "A Chromium-based browser that blocks ads and trackers out of the box.",
+   "category": "Internet"
+  },
+  {
+   "id": "com.discordapp.Discord",
+   "name": "Discord",
+   "summary": "Voice, video and chat",
+   "description": "Talk with friends and communities in servers, voice channels and direct messages.",
+   "category": "Internet"
+  },
+  {
+   "id": "org.telegram.desktop",
+   "name": "Telegram",
+   "summary": "Fast, synced messaging",
+   "description": "Messages, groups and channels that stay in sync across all your devices.",
+   "category": "Internet"
+  },
+  {
+   "id": "org.signal.Signal",
+   "name": "Signal",
+   "summary": "Private messaging",
+   "description": "End-to-end encrypted messages and calls, linked to your phone.",
+   "category": "Internet"
+  },
+  {
+   "id": "com.slack.Slack",
+   "name": "Slack",
+   "summary": "Work chat",
+   "description": "Channels, threads and huddles for your team.",
+   "category": "Internet"
+  },
+  {
+   "id": "com.spotify.Client",
+   "name": "Spotify",
+   "summary": "Music and podcasts",
+   "description": "Millions of songs and podcasts, with your playlists from every device.",
+   "category": "Internet"
+  },
+  {
+   "id": "org.localsend.localsend_app",
+   "name": "LocalSend",
+   "summary": "Share files nearby",
+   "description": "Send files to phones and computers on the same network, no account needed.",
+   "category": "Internet"
+  },
+  {
+   "id": "org.gimp.GIMP",
+   "name": "GIMP",
+   "summary": "Edit photos and images",
+   "description": "A powerful image editor for retouching, compositing and creating artwork.",
+   "category": "Creativity"
+  },
+  {
+   "id": "org.inkscape.Inkscape",
+   "name": "Inkscape",
+   "summary": "Vector illustration",
+   "description": "Draw logos, icons and illustrations in SVG.",
+   "category": "Creativity"
+  },
+  {
+   "id": "org.kde.krita",
+   "name": "Krita",
+   "summary": "Digital painting",
+   "description": "A painting studio with brushes, layers and animation, made for artists.",
+   "category": "Creativity"
+  },
+  {
+   "id": "org.blender.Blender",
+   "name": "Blender",
+   "summary": "3D for everyone",
+   "description": "Modelling, sculpting, animation, rendering and video editing in one app.",
+   "category": "Creativity"
+  },
+  {
+   "id": "org.kde.kdenlive",
+   "name": "Kdenlive",
+   "summary": "Edit videos",
+   "description": "A multi-track video editor with effects, titles and transitions.",
+   "category": "Creativity"
+  },
+  {
+   "id": "com.obsproject.Studio",
+   "name": "OBS Studio",
+   "summary": "Record and stream",
+   "description": "Capture your screen, camera and sound; record or stream live.",
+   "category": "Creativity"
+  },
+  {
+   "id": "org.audacityteam.Audacity",
+   "name": "Audacity",
+   "summary": "Record and edit audio",
+   "description": "Cut, mix and clean up recordings with a classic audio editor.",
+   "category": "Creativity"
+  },
+  {
+   "id": "org.darktable.Darktable",
+   "name": "darktable",
+   "summary": "Photo development",
+   "description": "Develop RAW photos non-destructively, from exposure to colour grading.",
+   "category": "Creativity"
+  },
+  {
+   "id": "com.visualstudio.code",
+   "name": "Visual Studio Code",
+   "summary": "Code editor",
+   "description": "Microsoft's editor with IntelliSense, debugging, Git and thousands of extensions.",
+   "category": "Development"
+  },
+  {
+   "id": "dev.zed.Zed",
+   "name": "Zed",
+   "summary": "Fast, collaborative code editor",
+   "description": "A code editor built for speed, with AI and multiplayer editing.",
+   "category": "Development"
+  },
+  {
+   "id": "com.jetbrains.IntelliJ-IDEA-Community",
+   "name": "IntelliJ IDEA Community",
+   "summary": "Java and Kotlin IDE",
+   "description": "JetBrains' IDE for Java, Kotlin and the JVM.",
+   "category": "Development"
+  },
+  {
+   "id": "com.getpostman.Postman",
+   "name": "Postman",
+   "summary": "Build and test APIs",
+   "description": "Send requests, inspect responses and share collections with your team.",
+   "category": "Development"
+  },
+  {
+   "id": "io.dbeaver.DBeaverCommunity",
+   "name": "DBeaver",
+   "summary": "Databases",
+   "description": "A universal database tool for Postgres, MySQL, SQLite and more.",
+   "category": "Development"
+  },
+  {
+   "id": "io.podman_desktop.PodmanDesktop",
+   "name": "Podman Desktop",
+   "summary": "Containers",
+   "description": "Manage containers, images and pods from a friendly window.",
+   "category": "Development"
+  },
+  {
+   "id": "io.github.shiftey.Desktop",
+   "name": "GitHub Desktop",
+   "summary": "Git, simplified",
+   "description": "Commit, branch and open pull requests without the command line.",
+   "category": "Development"
+  },
+  {
+   "id": "org.videolan.VLC",
+   "name": "VLC",
+   "summary": "Plays everything",
+   "description": "The media player that opens almost any video or audio file.",
+   "category": "Media"
+  },
+  {
+   "id": "io.github.celluloid_player.Celluloid",
+   "name": "Celluloid",
+   "summary": "Simple video player",
+   "description": "A clean video player built on mpv.",
+   "category": "Media"
+  },
+  {
+   "id": "io.bassi.Amberol",
+   "name": "Amberol",
+   "summary": "Plays music, and nothing else",
+   "description": "A small, elegant music player for your local songs.",
+   "category": "Media"
+  },
+  {
+   "id": "de.haeckerfelix.Shortwave",
+   "name": "Shortwave",
+   "summary": "Internet radio",
+   "description": "Listen to thousands of radio stations from around the world.",
+   "category": "Media"
+  },
+  {
+   "id": "org.gnome.Podcasts",
+   "name": "Podcasts",
+   "summary": "Listen to podcasts",
+   "description": "Subscribe to and play your favourite shows.",
+   "category": "Media"
+  },
+  {
+   "id": "com.valvesoftware.Steam",
+   "name": "Steam",
+   "summary": "Thousands of games",
+   "description": "Valve's store and launcher, with Proton for Windows games.",
+   "category": "Games"
+  },
+  {
+   "id": "com.heroicgameslauncher.hgl",
+   "name": "Heroic",
+   "summary": "Epic, GOG and Amazon games",
+   "description": "One launcher for your Epic, GOG and Amazon libraries.",
+   "category": "Games"
+  },
+  {
+   "id": "net.lutris.Lutris",
+   "name": "Lutris",
+   "summary": "All your games in one place",
+   "description": "Install and launch games from any source.",
+   "category": "Games"
+  },
+  {
+   "id": "org.prismlauncher.PrismLauncher",
+   "name": "Prism Launcher",
+   "summary": "Minecraft instances",
+   "description": "Manage many Minecraft installations and mod packs.",
+   "category": "Games"
+  },
+  {
+   "id": "io.missioncenter.MissionCenter",
+   "name": "Mission Center",
+   "summary": "CPU, GPU, memory and disks",
+   "description": "Detailed live graphs of everything your computer is doing.",
+   "category": "Utilities"
+  },
+  {
+   "id": "org.gnome.World.PikaBackup",
+   "name": "Pika Backup",
+   "summary": "Back up your files",
+   "description": "Simple, encrypted backups to a drive or a server, on a schedule.",
+   "category": "Utilities"
+  },
+  {
+   "id": "de.haeckerfelix.Fragments",
+   "name": "Fragments",
+   "summary": "BitTorrent",
+   "description": "A tidy torrent client.",
+   "category": "Utilities"
+  },
+  {
+   "id": "io.gitlab.adhami3310.Impression",
+   "name": "Impression",
+   "summary": "Write disk images",
+   "description": "Make bootable USB sticks from ISO files.",
+   "category": "Utilities"
+  },
+  {
+   "id": "com.usebottles.bottles",
+   "name": "Bottles",
+   "summary": "Run Windows software",
+   "description": "Run Windows apps in tidy, isolated bottles.",
+   "category": "Utilities"
+  },
+  {
+   "id": "io.github.flattool.Warehouse",
+   "name": "Warehouse",
+   "summary": "Manage installed apps",
+   "description": "See what your apps take up, their data and their versions.",
+   "category": "Utilities"
+  }
+ ]
+}

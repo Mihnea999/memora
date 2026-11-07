@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=App Store
+Comment=Get great apps for Memora
+Exec=qs -p /usr/share/memora/shell/store.qml
+Icon=memora-store
+Terminal=false
+Categories=System;PackageManager;
+Keywords=apps;install;software;store;flatpak;

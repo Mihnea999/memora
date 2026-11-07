@@ -1,0 +1,393 @@
+//@ pragma UseQApplication
+//@ pragma AppId memora-store
+//@ pragma IconTheme Memora
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+import Quickshell.Io
+import qs.core
+import qs.ui
+
+// App Store: a hand-picked set of good apps from Flathub. Apps install into your
+// account (no password), sandboxed, and show up in Launchpad right away.
+ShellRoot {
+  id: app
+  readonly property string home: Quickshell.env("HOME")
+  // Flathub's catalogue lives in a folder named after its checksum; found after the update.
+  property string iconDir: ""
+  property var catalog: ({ featured: [], categories: [], apps: [] })
+  property var installed: ({})          // id -> true
+  property var jobs: ({})               // id -> { kind: "install"|"remove", progress: 0..1 }
+  property string section: "Discover"
+  property string query: ""
+  property string detail: ""            // app id shown in detail
+  property bool ready: false            // Flathub reachable and its catalogue fetched
+  property string status: "Connecting to Flathub…"
+
+  FileView {
+    path: Theme.share + "/store/catalog.json"
+    onLoaded: { try { app.catalog = JSON.parse(text()) } catch (e) {} }
+  }
+
+  // ---- Flathub
+  Process {
+    id: setup
+    running: true
+    command: ["bash", "-c", "flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak update --user --appstream flathub >/dev/null 2>&1; echo $?; d=$(ls -dt ~/.local/share/flatpak/appstream/flathub/x86_64/*/icons/128x128 2>/dev/null | head -1); echo \"$d\""]
+    stdout: StdioCollector { onStreamFinished: { const f = text.trim().split("\n"); app.iconDir = f[1] ? f[1] + "/" : ""; app.ready = f[0] === "0"; app.status = app.ready ? "" : "Flathub can't be reached. Check the internet connection." ; app.refresh() } }
+  }
+  Process {
+    id: lister
+    command: ["flatpak", "list", "--user", "--app", "--columns=application"]
+    stdout: StdioCollector { onStreamFinished: { const m = {}; text.split("\n").forEach(l => { if (l.trim()) m[l.trim()] = true }); app.installed = m } }
+  }
+  function refresh() { lister.running = true }
+
+  Component { id: jobProc; Process {
+    property string appId
+    property string kind
+    command: kind === "install"
+      ? ["flatpak", "install", "--user", "-y", "--noninteractive", "flathub", appId]
+      : ["flatpak", "uninstall", "--user", "-y", "--noninteractive", appId]
+    running: true
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: data => {
+        // flatpak prints "… 42%" while downloading.
+        const m = data.match(/(\d{1,3})%/g)
+        if (m) app.setProgress(appId, parseInt(m[m.length - 1]) / 100)
+      }
+    }
+    onExited: code => {
+      const j = Object.assign({}, app.jobs); delete j[appId]; app.jobs = j
+      app.refresh()
+      if (code !== 0) app.status = (kind === "install" ? "Couldn't install " : "Couldn't remove ") + app.nameOf(appId) + "."
+      else if (kind === "install") Quickshell.execDetached(["notify-send", "-a", "App Store", app.nameOf(appId) + " is ready", "Find it in Launchpad."])
+      destroy()
+    }
+  } }
+  function setProgress(id, p) { const j = Object.assign({}, jobs); if (j[id]) { j[id].progress = p; jobs = j } }
+  function start(id, kind) {
+    if (jobs[id]) return
+    const j = Object.assign({}, jobs); j[id] = { kind: kind, progress: 0 }; jobs = j
+    status = ""
+    jobProc.createObject(app, { appId: id, kind: kind })
+  }
+  function open(id) { Quickshell.execDetached(["flatpak", "run", id]) }
+  function nameOf(id) { const a = catalog.apps.find(x => x.id === id); return a ? a.name : id }
+  function iconOf(id) { return iconDir && id ? "file://" + iconDir + id + ".png" : "" }
+
+  readonly property var shown: {
+    const q = query.toLowerCase()
+    if (q) return catalog.apps.filter(a => (a.name + " " + a.summary + " " + a.category).toLowerCase().indexOf(q) >= 0)
+    if (section === "Installed") return catalog.apps.filter(a => installed[a.id])
+    if (section === "Discover") return catalog.apps
+    return catalog.apps.filter(a => a.category === section)
+  }
+
+  // ================================================================ window
+  FloatingWindow {
+    id: win
+    title: "App Store"
+    implicitWidth: 1120
+    implicitHeight: 720
+    minimumSize: Qt.size(820, 520)
+    color: "transparent"
+    Rectangle { anchors.fill: parent; color: Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.97) : Qt.rgba(0.99, 0.99, 1, 0.98) }
+
+    // ---- sidebar
+    Rectangle {
+      id: side
+      width: 220
+      anchors { top: parent.top; bottom: parent.bottom; left: parent.left; margins: 8 }
+      radius: 12
+      color: Theme.dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
+      border.color: Theme.separator
+      WindowControls { x: 14; y: 14; window: win; onCloseRequested: Qt.quit() }
+      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }
+
+      Rectangle {
+        id: search
+        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 44; leftMargin: 12; rightMargin: 12 }
+        height: 30; radius: 8
+        color: Theme.field; border.color: sf.activeFocus ? Theme.accent : Theme.separator
+        Sym { name: "search"; width: 12; height: 12; color: Theme.textDim; anchors { left: parent.left; leftMargin: 9; verticalCenter: parent.verticalCenter } }
+        TextInput {
+          id: sf
+          anchors { left: parent.left; right: parent.right; leftMargin: 28; rightMargin: 8; verticalCenter: parent.verticalCenter }
+          color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.small + 0.5
+          clip: true
+          onTextChanged: { app.query = text; app.detail = "" }
+          Keys.onEscapePressed: text = ""
+          Txt { visible: !sf.text; text: "Search"; color: Theme.textFaint; font.pixelSize: Theme.small + 0.5; anchors.verticalCenter: parent.verticalCenter }
+        }
+      }
+      Column {
+        anchors { left: parent.left; right: parent.right; top: search.bottom; topMargin: 12 }
+        spacing: 1
+        Repeater {
+          model: ["Discover"].concat(app.catalog.categories).concat(["Installed"])
+          delegate: Item {
+            required property string modelData
+            required property int index
+            readonly property bool here: app.section === modelData && !app.query
+            width: parent.width; height: 32 + (modelData === "Installed" ? 10 : 0)
+            Rectangle {
+              y: modelData === "Installed" ? 10 : 0
+              x: 6; width: parent.width - 12; height: 32; radius: 8
+              color: parent.here ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.35 : 0.18) : (nh.hovered ? Theme.hover : "transparent")
+              Behavior on color { ColorAnimation { duration: Theme.fast } }
+              Sym { id: ns; x: 10; anchors.verticalCenter: parent.verticalCenter; width: 14; height: 14; color: parent.parent.here ? Theme.accent : Theme.textDim
+                    name: ({ Discover: "ai", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow" })[modelData] || "plus" }
+              Txt { anchors { left: ns.right; leftMargin: 10; verticalCenter: parent.verticalCenter } text: modelData; font.weight: parent.parent.here ? Font.Bold : Font.Normal }
+            }
+            HoverHandler { id: nh }
+            TapHandler { onTapped: { app.section = modelData; app.detail = ""; sf.text = ""; listIn.restart() } }
+          }
+        }
+      }
+    }
+
+    // ---- content
+    Item {
+      id: main
+      anchors { left: side.right; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 6 }
+      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }
+
+      Flickable {
+        id: flick
+        anchors { fill: parent; topMargin: 14 }
+        contentHeight: col.implicitHeight + 40
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        visible: app.detail === ""
+        opacity: 1
+        transform: Translate { id: lshift }
+        SequentialAnimation {
+          id: listIn
+          PropertyAction { target: flick; property: "opacity"; value: 0 }
+          PropertyAction { target: lshift; property: "y"; value: 12 }
+          ParallelAnimation {
+            NumberAnimation { target: flick; property: "opacity"; to: 1; duration: Theme.normal }
+            NumberAnimation { target: lshift; property: "y"; to: 0; duration: Theme.slow; easing.type: Easing.OutQuint }
+          }
+        }
+
+        ColumnLayout {
+          id: col
+          x: 28; width: flick.width - 56
+          spacing: 18
+          Txt { text: app.query ? "Results" : app.section; font.pixelSize: 26; font.weight: Font.Bold }
+          Txt { visible: app.status !== ""; text: app.status; color: Theme.textDim }
+
+          // Featured: three large cards on Discover.
+          RowLayout {
+            visible: app.section === "Discover" && !app.query
+            Layout.fillWidth: true
+            spacing: 16
+            Repeater {
+              model: app.catalog.featured
+              delegate: Rectangle {
+                required property string modelData
+                required property int index
+                readonly property var a: app.catalog.apps.find(x => x.id === modelData) || ({ name: "", summary: "" })
+                Layout.fillWidth: true
+                Layout.preferredHeight: 190
+                radius: 18
+                clip: true
+                gradient: Gradient {
+                  orientation: Gradient.Horizontal
+                  GradientStop { position: 0; color: ["#5b4bd6", "#e2683b", "#2a73d9"][index % 3] }
+                  GradientStop { position: 1; color: ["#9a6bff", "#f5a14a", "#35b6e0"][index % 3] }
+                }
+                scale: fh.hovered ? 1.02 : 1
+                Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+                Txt { x: 20; y: 18; text: ["Editors' choice", "Make something", "For developers"][index % 3]; color: Qt.rgba(1, 1, 1, 0.8); font.pixelSize: Theme.small; font.weight: Font.Bold }
+                Txt { x: 20; y: 40; width: parent.width - 130; text: parent.a.name; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Bold }
+                Txt { x: 20; y: 72; width: parent.width - 130; text: parent.a.summary; color: Qt.rgba(1, 1, 1, 0.85); wrapMode: Text.Wrap; maximumLineCount: 3 }
+                StoreIcon { appId: parent.modelData; width: 86; height: 86; anchors { right: parent.right; rightMargin: 20; verticalCenter: parent.verticalCenter } }
+                GetButton { appId: parent.modelData; anchors { left: parent.left; leftMargin: 20; bottom: parent.bottom; bottomMargin: 18 } light: true }
+                HoverHandler { id: fh }
+                TapHandler { onTapped: app.detail = parent.modelData }
+              }
+            }
+          }
+
+          // Grouped by category on Discover, a single grid elsewhere.
+          Repeater {
+            model: app.section === "Discover" && !app.query ? app.catalog.categories : [""]
+            delegate: ColumnLayout {
+              required property string modelData
+              Layout.fillWidth: true
+              spacing: 10
+              RowLayout {
+                visible: modelData !== ""
+                Layout.fillWidth: true
+                Txt { text: modelData; font.pixelSize: Theme.large + 2; font.weight: Font.Bold; Layout.fillWidth: true }
+                Txt { text: "See All"; color: Theme.accent; TapHandler { onTapped: { app.section = modelData; listIn.restart() } } }
+              }
+              GridLayout {
+                Layout.fillWidth: true
+                columns: Math.max(1, Math.floor(col.width / 300))
+                columnSpacing: 14; rowSpacing: 4
+                Repeater {
+                  model: modelData !== "" ? app.catalog.apps.filter(a => a.category === modelData).slice(0, Math.max(1, Math.floor(col.width / 300)) * 2) : app.shown
+                  delegate: Card { required property var modelData; a: modelData; Layout.fillWidth: true }
+                }
+              }
+              Txt { visible: modelData === "" && app.shown.length === 0; text: app.section === "Installed" ? "Apps you get here will show up here." : "Nothing matches."; color: Theme.textDim }
+            }
+          }
+        }
+      }
+
+      // ---- one app
+      Item {
+        id: page
+        anchors.fill: parent
+        visible: app.detail !== ""
+        readonly property var a: app.catalog.apps.find(x => x.id === app.detail) || ({ name: "", summary: "", description: "", category: "" })
+        opacity: visible ? 1 : 0
+        transform: Translate { x: page.visible ? 0 : 40; Behavior on x { NumberAnimation { duration: Theme.slow; easing.type: Easing.OutQuint } } }
+        Behavior on opacity { NumberAnimation { duration: Theme.normal } }
+
+        Row {
+          x: 24; y: 14
+          spacing: 6
+          Sym { name: "chevron"; rotation: 180; width: 12; height: 12; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+          Txt { text: app.query ? "Results" : app.section; color: Theme.accent }
+          TapHandler { onTapped: app.detail = "" }
+        }
+        ColumnLayout {
+          x: 40; y: 60; width: parent.width - 80
+          spacing: 18
+          RowLayout {
+            spacing: 22
+            StoreIcon { appId: app.detail; Layout.preferredWidth: 128; Layout.preferredHeight: 128 }
+            ColumnLayout {
+              spacing: 6
+              Txt { text: page.a.name; font.pixelSize: 28; font.weight: Font.Bold }
+              Txt { text: page.a.summary; color: Theme.textDim; font.pixelSize: Theme.large }
+              Txt { text: page.a.category; color: Theme.accent; font.pixelSize: Theme.small }
+              Row {
+                Layout.topMargin: 8
+                spacing: 10
+                GetButton { appId: app.detail; big: true }
+                Rectangle {
+                  visible: !!app.installed[app.detail] && !app.jobs[app.detail]
+                  width: rt.implicitWidth + 26; height: 32; radius: 16
+                  color: rh.hovered ? Theme.pressed : Theme.hover
+                  Txt { id: rt; anchors.centerIn: parent; text: "Remove"; color: Theme.red }
+                  HoverHandler { id: rh }
+                  TapHandler { onTapped: app.start(app.detail, "remove") }
+                }
+              }
+            }
+          }
+          Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
+          Txt { Layout.fillWidth: true; text: page.a.description; wrapMode: Text.Wrap; font.pixelSize: Theme.fontSize + 1; lineHeight: 1.3 }
+          Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: inf.implicitHeight + 24
+            radius: 12; color: Theme.field; border.color: Theme.separator
+            GridLayout {
+              id: inf
+              x: 16; y: 12; width: parent.width - 32
+              columns: 2; columnSpacing: 20; rowSpacing: 6
+              Txt { text: "Source"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: "Flathub"; font.pixelSize: Theme.small }
+              Txt { text: "Identifier"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail; font.pixelSize: Theme.small }
+              Txt { text: "Installs for"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: "You (no password needed), in its own sandbox"; font.pixelSize: Theme.small }
+            }
+          }
+        }
+      }
+    }
+
+    // ---- pieces
+    component StoreIcon: Item {
+      id: si
+      property string appId
+      Image {
+        id: ii
+        anchors.fill: parent
+        source: app.iconOf(si.appId)
+        sourceSize: Qt.size(256, 256)
+        smooth: true; mipmap: true
+        asynchronous: true
+        visible: status === Image.Ready
+      }
+      // Until Flathub's icon is here: the app's initial on a tile.
+      Rectangle {
+        anchors.fill: parent
+        visible: ii.status !== Image.Ready
+        radius: width * 0.22
+        color: Theme.tile
+        border.color: Theme.separator
+        Txt { anchors.centerIn: parent; text: app.nameOf(si.appId).charAt(0); font.pixelSize: parent.width * 0.42; font.weight: Font.Bold; color: Theme.textDim }
+      }
+    }
+
+    component Card: Rectangle {
+      id: card
+      property var a
+      implicitHeight: 76
+      radius: 12
+      color: ch.hovered ? Theme.hover : "transparent"
+      Behavior on color { ColorAnimation { duration: Theme.fast } }
+      StoreIcon { id: ci; appId: card.a.id; width: 56; height: 56; x: 10; anchors.verticalCenter: parent.verticalCenter }
+      Column {
+        anchors { left: ci.right; leftMargin: 12; right: gb.left; rightMargin: 10; verticalCenter: parent.verticalCenter }
+        spacing: 3
+        Txt { width: parent.width; text: card.a.name; font.weight: Font.Bold }
+        Txt { width: parent.width; text: card.a.summary; color: Theme.textDim; font.pixelSize: Theme.small }
+      }
+      GetButton { id: gb; appId: card.a.id; anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter } }
+      Rectangle { anchors { left: ci.right; leftMargin: 12; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.separator; opacity: 0.6 }
+      HoverHandler { id: ch }
+      TapHandler { onTapped: app.detail = card.a.id }
+    }
+
+    // Get / progress ring / Open, in one pill.
+    component GetButton: Item {
+      id: gbtn
+      property string appId
+      property bool big: false
+      property bool light: false
+      readonly property var job: app.jobs[appId]
+      readonly property bool have: !!app.installed[appId]
+      width: job ? height : pill.width
+      height: big ? 32 : 28
+      Behavior on width { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+      Rectangle {
+        id: pill
+        visible: !gbtn.job
+        width: gt.implicitWidth + (gbtn.big ? 40 : 30); height: parent.height; radius: height / 2
+        color: gbtn.light ? Qt.rgba(1, 1, 1, 0.92) : (gbtn.have ? Theme.hover : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16))
+        scale: pt.pressed ? 0.94 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.fast } }
+        Txt { id: gt; anchors.centerIn: parent; text: gbtn.have ? "Open" : "Get"; font.weight: Font.Bold; color: gbtn.light ? "#1c1c1e" : Theme.accent }
+        TapHandler { id: pt; enabled: app.ready || gbtn.have; onTapped: gbtn.have ? app.open(gbtn.appId) : app.start(gbtn.appId, "install") }
+      }
+      // Progress ring while it downloads.
+      Canvas {
+        anchors.fill: parent
+        visible: !!gbtn.job
+        property real p: gbtn.job ? gbtn.job.progress : 0
+        onPChanged: requestPaint()
+        onVisibleChanged: requestPaint()
+        RotationAnimation on rotation { running: !!gbtn.job && gbtn.job.progress === 0; from: 0; to: 360; duration: 1000; loops: Animation.Infinite }
+        onPaint: {
+          const c = getContext("2d"); c.reset()
+          const r = width / 2 - 2
+          c.lineWidth = 2.5
+          c.strokeStyle = Theme.separator
+          c.beginPath(); c.arc(width / 2, height / 2, r, 0, Math.PI * 2); c.stroke()
+          c.strokeStyle = Theme.accent
+          c.beginPath(); c.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.08, p)); c.stroke()
+          c.fillStyle = Theme.accent
+          c.fillRect(width / 2 - 3.5, height / 2 - 3.5, 7, 7)
+        }
+      }
+    }
+  }
+}
