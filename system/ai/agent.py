@@ -8,6 +8,7 @@ With Claude (the Anthropic API) it has tools: run commands, read and write
 files, open apps, change settings, manage windows, look at the screen and
 click/type, search the web. Anything risky waits for the person's OK; the
 gravest actions (erasing disks, deleting the system) show a stronger warning.
+With DeepSeek (its Anthropic-compatible API) it has the same tools, minus web search.
 Other providers (Claude Code, Ollama, OpenAI-compatible) answer without tools.
 """
 import base64
@@ -529,6 +530,8 @@ class Agent:
         try:
             if provider == "anthropic":
                 self.claude_turn()
+            elif provider == "deepseek":
+                self.claude_turn(deepseek=True)
             elif provider == "claude-code":
                 self.claude_code_turn(text)
             else:
@@ -538,23 +541,36 @@ class Agent:
 
     # Claude, with tools. A manual streaming loop: text appears as it is
     # written, and each tool call can stop for the person's OK.
-    def claude_turn(self):
+    # DeepSeek speaks the same protocol (its Anthropic-compatible endpoint), so
+    # it gets the same tools and confirmations; it has no server tools (web
+    # search) and no adaptive thinking.
+    def claude_turn(self, deepseek=False):
         import anthropic
-        key = os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
-            raise RuntimeError("No Anthropic API key yet. Add one in System Settings > Memora AI.")
-        client = anthropic.Anthropic(api_key=key)
-        model = self.cfg.get("model") or DEFAULT_MODEL
+        if deepseek:
+            key = os.environ.get("DEEPSEEK_API_KEY")
+            if not key:
+                raise RuntimeError("No DeepSeek API key yet. Add one in System Settings > Memora AI.")
+            client = anthropic.Anthropic(api_key=key, base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/anthropic"))
+            model = self.cfg.get("model") or "deepseek-chat"
+            tools = [{k: v for k, v in t.items() if k != "eager_input_streaming"} for t in self.tool_specs()]
+            extra = {"max_tokens": 8000}
+        else:
+            key = os.environ.get("ANTHROPIC_API_KEY")
+            if not key:
+                raise RuntimeError("No Anthropic API key yet. Add one in System Settings > Memora AI.")
+            client = anthropic.Anthropic(api_key=key)
+            model = self.cfg.get("model") or DEFAULT_MODEL
+            tools = self.tool_specs() + SERVER_TOOLS
+            extra = {"max_tokens": 32000, "thinking": {"type": "adaptive"}}
         retries = 0
         while not self.ui.stopped():
             try:
                 with client.messages.stream(
                     model=model,
-                    max_tokens=32000,
                     system=system_prompt(),
-                    thinking={"type": "adaptive"},
-                    tools=self.tool_specs() + SERVER_TOOLS,
+                    tools=tools,
                     messages=self.messages,
+                    **extra,
                 ) as stream:
                     for event in stream:
                         if self.ui.stopped():
@@ -795,7 +811,8 @@ def main():
     if mode == "serve":
         ui = WindowUI()
         agent = Agent(ui)
-        ui.send(type="ready", provider=agent.cfg.get("provider"), model=agent.cfg.get("model") or DEFAULT_MODEL)
+        p = agent.cfg.get("provider")
+        ui.send(type="ready", provider=p, model=agent.cfg.get("model") or ("deepseek-chat" if p == "deepseek" else DEFAULT_MODEL))
         while True:
             m = ui.inbox.get()
             if m.get("type") == "quit":

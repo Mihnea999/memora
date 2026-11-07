@@ -21,7 +21,10 @@ Kit.Page {
     onLoaded: { try { p.cfg = Object.assign({ provider: "anthropic", model: "", baseUrl: "" }, JSON.parse(text())) } catch (e) {} }
   }
   Kit.Cmd { id: keyCheck; onDone: out => p.hasKey = out.trim() === "yes" }
-  Kit.Cmd { id: saver; onDone: keyCheck.exec(["bash", "-c", "grep -qE '^(ANTHROPIC|OPENAI)_API_KEY=.+' " + p.dir + "/ai.secret 2>/dev/null && echo yes"]) }
+  readonly property string keyName: ({ anthropic: "ANTHROPIC_API_KEY", deepseek: "DEEPSEEK_API_KEY" })[p.cfg.provider] || "OPENAI_API_KEY"
+  function checkKey() { keyCheck.exec(["bash", "-c", "grep -qE '^" + p.keyName + "=.+' \"$1\" 2>/dev/null && echo yes", "_", p.dir + "/ai.secret"]) }
+  onKeyNameChanged: checkKey()
+  Kit.Cmd { id: saver; onDone: p.checkKey() }
   Kit.Cmd { id: tester; onDone: out => p.test = out.trim() || "No answer." }
   Component.onCompleted: saver.done("")
 
@@ -39,7 +42,7 @@ Kit.Page {
       label: "Runs on"; badge: "ai"; badgeColor: "#8a5cff"; last: true
       Kit.Choice {
         value: p.cfg.provider
-        options: [{ text: "Claude", value: "anthropic" }, { text: "Claude Code", value: "claude-code" }, { text: "Ollama", value: "ollama" }, { text: "Other", value: "openai" }]
+        options: [{ text: "Claude", value: "anthropic" }, { text: "DeepSeek", value: "deepseek" }, { text: "Claude Code", value: "claude-code" }, { text: "Ollama", value: "ollama" }, { text: "Other", value: "openai" }]
         onPicked: v => p.save("provider", v)
       }
     }
@@ -47,12 +50,12 @@ Kit.Page {
 
   Kit.Group {
     header: "Account"
-    visible: p.cfg.provider === "anthropic" || p.cfg.provider === "openai"
+    visible: p.cfg.provider === "anthropic" || p.cfg.provider === "deepseek" || p.cfg.provider === "openai"
     Kit.Row {
       label: "API key"; detail: p.hasKey ? "Saved on this computer" : "Not set"
       RowLayout { spacing: 8
-        Kit.Field { id: keyField; secret: true; placeholder: p.cfg.provider === "anthropic" ? "sk-ant-…" : "Key"; width: 220 }
-        Kit.Button { text: "Save"; primary: true; onClicked: { p.saveKey(p.cfg.provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY", keyField.text); keyField.text = "" } }
+        Kit.Field { id: keyField; secret: true; placeholder: p.cfg.provider === "anthropic" ? "sk-ant-…" : (p.cfg.provider === "deepseek" ? "sk-…" : "Key"); width: 220 }
+        Kit.Button { text: "Save"; primary: true; onClicked: { p.saveKey(p.keyName, keyField.text); keyField.text = "" } }
       }
     }
     Kit.Row {
@@ -61,16 +64,16 @@ Kit.Page {
       Kit.Field { text: p.cfg.baseUrl; placeholder: "https://…/v1"; width: 260; onAccepted: p.save("baseUrl", text) }
     }
     Kit.Row {
-      visible: p.cfg.provider === "anthropic"
-      label: "Get a key"; detail: "console.anthropic.com"; last: true
-      Kit.Button { text: "Open…"; onClicked: Quickshell.execDetached(["xdg-open", "https://console.anthropic.com/settings/keys"]) }
+      visible: p.cfg.provider === "anthropic" || p.cfg.provider === "deepseek"
+      label: "Get a key"; detail: p.cfg.provider === "deepseek" ? "platform.deepseek.com" : "console.anthropic.com"; last: true
+      Kit.Button { text: "Open…"; onClicked: Quickshell.execDetached(["xdg-open", p.cfg.provider === "deepseek" ? "https://platform.deepseek.com/api_keys" : "https://console.anthropic.com/settings/keys"]) }
     }
   }
 
   Kit.Group {
     header: "Model"
     Kit.Row {
-      label: "Model"; detail: p.cfg.provider === "anthropic" ? "Default: claude-opus-5-5" : (p.cfg.provider === "ollama" ? "e.g. qwen3:8b" : "")
+      label: "Model"; detail: p.cfg.provider === "anthropic" ? "Default: claude-opus-5-5" : p.cfg.provider === "deepseek" ? "Default: deepseek-chat" : (p.cfg.provider === "ollama" ? "e.g. qwen3:8b" : "")
       last: true
       Kit.Field { text: p.cfg.model; placeholder: "default"; width: 220; onAccepted: p.save("model", text) }
     }
