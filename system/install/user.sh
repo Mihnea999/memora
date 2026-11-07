@@ -55,6 +55,13 @@ if [[ ${MEMORA_ENCRYPT:-0} == 1 ]]; then
 fi
 
 # Optional toolkits picked in the installer that live in $HOME.
+# Gaming: ProtonPlus (newer Proton and Wine builds for Steam), and on laptops
+# with two graphics chips, Steam and every game it starts on the fast one.
+if [[ " ${MEMORA_USER_TOOLKITS:-} " == *" gaming "* ]]; then
+  flatpak install --user -y --noninteractive flathub com.vysp3r.ProtonPlus >/dev/null 2>&1 || echo "ProtonPlus can be installed later from the App Store."
+  [[ -f /etc/memora/hybrid ]] && "$MEMORA_PATH/bin/memora-gpu" games on || true
+  MEMORA_USER_TOOLKITS="${MEMORA_USER_TOOLKITS// gaming/}"
+fi
 for t in ${MEMORA_USER_TOOLKITS:-}; do
   echo "Installing toolkit: $t"
   PATH="$HOME/.local/bin:$PATH" "$MEMORA_PATH/bin/memora-dev" install "$t" || echo "Toolkit $t failed; run 'memora dev install $t' later."

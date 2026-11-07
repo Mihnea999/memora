@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# memora-gpu — the graphics card(s), and games on the fast one.
+#   memora-gpu info                 what is in this computer (JSON)
+#   memora-gpu run CMD...           run CMD on the dedicated card (laptops with two)
+#   memora-gpu games on|off         Steam and its games (native and Proton) on the dedicated card
+set -euo pipefail
+apps="$HOME/.local/share/applications"
+hybrid() { [[ -f /etc/memora/hybrid ]]; }
+
+case "${1:-info}" in
+  info)
+    jq -n --arg cards "$(lspci -nn | grep -iE 'vga|3d|display' | sed 's/^[^ ]* //' )" \
+          --arg driver "$( { [[ -f /etc/memora/nvidia ]] && modinfo -F version nvidia 2>/dev/null; } || echo "")" \
+          --argjson hybrid "$(hybrid && echo true || echo false)" \
+          --argjson legacy "$([[ -f /etc/memora/nvidia-legacy ]] && echo true || echo false)" \
+          --argjson games "$([[ -f $apps/steam.desktop ]] && grep -q memora-gpu "$apps/steam.desktop" && echo true || echo false)" \
+          '{cards: ($cards | split("\n") | map(select(. != ""))), nvidiaDriver: $driver, hybrid: $hybrid, legacy: $legacy, gamesOnDedicated: $games}' ;;
+  run)
+    shift
+    if hybrid; then
+      export __NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only __GLX_VENDOR_LIBRARY_NAME=nvidia
+    elif [[ -e /sys/class/drm/card1 && ! -f /etc/memora/nvidia ]]; then
+      export DRI_PRIME=1   # two non-NVIDIA cards: the second (usually the faster) one
+    fi
+    exec "$@" ;;
+  games)
+    src=/usr/share/applications/steam.desktop
+    [[ -f $src ]] || { echo "Steam isn't installed."; exit 1; }
+    mkdir -p "$apps"
+    if [[ ${2:-} == on ]]; then
+      sed -E 's|^Exec=/usr/bin/steam|Exec=memora-gpu run /usr/bin/steam|; s|^Exec=steam|Exec=memora-gpu run steam|' "$src" > "$apps/steam.desktop"
+    else
+      rm -f "$apps/steam.desktop"
+    fi ;;
+  *) sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

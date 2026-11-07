@@ -184,10 +184,10 @@ questions() {
 
   title "Developer tools"
   TOOLKITS="$(printf '%s\n' \
-    "node      Node.js LTS (mise)" "claude    Claude Code CLI" "python    Python + uv (mise)" \
+    "gaming    Steam, Proton, GameMode" "node      Node.js LTS (mise)" "claude    Claude Code CLI" "python    Python + uv (mise)" \
     "docker    Docker + Compose" "ollama    Local AI models" "flutter   Flutter SDK" \
     "android   Android adb + JDK" "rust      Rust (rustup)" "go        Go (mise)" |
-    gum choose --no-limit --selected "node      Node.js LTS (mise),claude    Claude Code CLI" \
+    gum choose --no-limit --selected "gaming    Steam, Proton, GameMode,node      Node.js LTS (mise),claude    Claude Code CLI" \
       --header "Install now (space to toggle, enter to continue). More later with: memora dev" |
     awk '{print $1}' | paste -sd' ')" || TOOLKITS=""
 }

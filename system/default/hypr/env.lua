@@ -18,11 +18,13 @@ hl.env("XDG_DATA_DIRS", data)
 hl.env("PATH", (os.getenv("MEMORA_PATH") or "/usr/share/memora") .. "/bin:" .. (os.getenv("PATH") or "/usr/bin"))
 hl.env("MEMORA_PATH", os.getenv("MEMORA_PATH") or "/usr/share/memora")
 
--- NVIDIA tweaks, written by the installer only on NVIDIA machines.
-local f = io.open("/etc/memora/nvidia", "r")
-if f then
-  f:close()
+-- NVIDIA. On a desktop with only an NVIDIA card everything uses it. On a
+-- laptop with a built-in chip too (/etc/memora/hybrid) the desktop stays on the
+-- built-in chip, which saves battery, and games go to NVIDIA (see memora-gpu).
+local function exists(p) local h = io.open(p, "r"); if h then h:close(); return true end return false end
+if exists("/etc/memora/nvidia") and not exists("/etc/memora/hybrid") then
   hl.env("LIBVA_DRIVER_NAME", "nvidia")
   hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
   hl.env("NVD_BACKEND", "direct")
+  hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 end

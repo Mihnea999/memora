@@ -26,7 +26,7 @@ Kit.Page {
   function refresh() { st.exec(["memora-display", "state"]) }
   function set(k, v) { setter.exec(["memora-display", "set", k, String(v)]) }
   function mode(m) { setter.exec(["memora-display", "mode", m]) }
-  Component.onCompleted: { refresh(); ns.exec(["pgrep", "-x", "hyprsunset"]) }
+  Component.onCompleted: { refresh(); ns.exec(["pgrep", "-x", "hyprsunset"]); gq.exec(["memora-gpu", "info"]) }
   Connections { target: Hyprland; function onRawEvent(ev) { if (ev.name.indexOf("monitor") === 0) refreshLater.restart() } }
 
   readonly property string mainName: p.cfg.main && p.mons.some(m => m.name === p.cfg.main) ? p.cfg.main : (p.mons[0] ? p.mons[0].name : "")
@@ -111,6 +111,32 @@ Kit.Page {
           onPicked: v => p.set("scale." + g.modelData.name, v)
         }
       }
+    }
+  }
+
+  // ---- graphics ----------------------------------------------------------------
+  property var gpu: ({ cards: [], nvidiaDriver: "", hybrid: false, legacy: false, gamesOnDedicated: false })
+  Kit.Cmd { id: gq; onDone: out => { try { p.gpu = JSON.parse(out) } catch (e) {} } }
+  Kit.Cmd { id: gset; onDone: gq.exec(["memora-gpu", "info"]) }
+  Kit.Group {
+    header: "Graphics"
+    footer: p.gpu.hybrid ? "The desktop runs on the built-in chip to save battery; games run on the NVIDIA card. To send another app there, start it with: memora-gpu run APP"
+      : (p.gpu.legacy ? "This NVIDIA card is older than the current NVIDIA driver supports, so it uses the open-source driver." : "Drivers come with system updates, always the newest stable version.")
+    Repeater {
+      model: p.gpu.cards
+      delegate: Kit.Row {
+        required property string modelData
+        required property int index
+        label: modelData.replace(/\s*\[[0-9a-f]{4}:[0-9a-f]{4}\].*$/, "").replace(/^.*?: /, "").replace(/ Corporation| Inc\.|\(rev [0-9a-f]+\)/g, "")
+        detail: modelData.toLowerCase().indexOf("nvidia") >= 0 && p.gpu.nvidiaDriver ? "NVIDIA driver " + p.gpu.nvidiaDriver : ""
+        badge: "display"; badgeColor: modelData.toLowerCase().indexOf("nvidia") >= 0 ? "#76b900" : "#8a8d96"
+        last: index === p.gpu.cards.length - 1 && !p.gpu.hybrid
+      }
+    }
+    Kit.Row {
+      visible: p.gpu.hybrid
+      label: "Games use the NVIDIA card"; detail: "Steam, and every game it starts, native or Windows"; last: true
+      Kit.Switch { checked: p.gpu.gamesOnDedicated; onToggled: on => gset.exec(["memora-gpu", "games", on ? "on" : "off"]) }
     }
   }
 

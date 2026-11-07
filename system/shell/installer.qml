@@ -28,7 +28,7 @@ ShellRoot {
   property string locale: "en_US.UTF-8"
   property var keyboard: ({ name: "English (US)", keymap: "us", xkb: "us" })
   property string look: "dark"
-  property var toolkits: ["node", "claude"]
+  property var toolkits: ["gaming", "node", "claude"]
   // installing
   property string step: ""
   property real progress: 0
@@ -44,7 +44,7 @@ ShellRoot {
     { name: "Hungarian", keymap: "hu", xkb: "hu" }]
   readonly property var locales: [["en_US.UTF-8", "English (US)"], ["en_GB.UTF-8", "English (UK)"], ["ro_RO.UTF-8", "Română"],
     ["de_DE.UTF-8", "Deutsch"], ["fr_FR.UTF-8", "Français"], ["es_ES.UTF-8", "Español"], ["it_IT.UTF-8", "Italiano"]]
-  readonly property var kits: [["node", "Node.js"], ["python", "Python"], ["claude", "Claude Code"], ["docker", "Docker"],
+  readonly property var kits: [["gaming", "Gaming (Steam, Proton)"], ["node", "Node.js"], ["python", "Python"], ["claude", "Claude Code"], ["docker", "Docker"],
     ["rust", "Rust"], ["go", "Go"], ["flutter", "Flutter"], ["android", "Android tools"], ["ollama", "Local AI (Ollama)"]]
 
   readonly property string userError: userName && !/^[a-z_][a-z0-9_-]{0,31}$/.test(userName) ? "Lowercase letters, digits, - and _" : ""
@@ -59,7 +59,7 @@ ShellRoot {
     ["Time zone", timezone.replace(/_/g, " ")],
     ["Keyboard", keyboard.name],
     ["Look", look === "dark" ? "Dark" : "Light"],
-    ["Developer tools", toolkits.length ? toolkits.map(k => (kits.find(x => x[0] === k) || [k, k])[1]).join(", ") : "None"]]
+    ["Extras", toolkits.length ? toolkits.map(k => (kits.find(x => x[0] === k) || [k, k])[1]).join(", ") : "None"]]
 
   function canGo(p) {
     if (p === 1) return online
@@ -439,7 +439,7 @@ ShellRoot {
                 }
               }
             }
-            Txt { text: "Developer tools (optional)"; font.weight: Font.Bold; Layout.topMargin: 8 }
+            Txt { text: "Extras (optional)"; font.weight: Font.Bold; Layout.topMargin: 8 }
             Flow {
               Layout.fillWidth: true
               spacing: 8

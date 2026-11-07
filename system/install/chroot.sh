@@ -71,17 +71,38 @@ echo 'Defaults passwd_timeout=0, timestamp_type=global, lecture=never' > /etc/su
 chmod 440 /etc/sudoers.d/*
 
 step "Graphics"
-gpu="$(lspci -nn | grep -iE 'vga|3d|display' || true)"
-gfx=(mesa vulkan-icd-loader)
-if grep -qi nvidia <<<"$gpu"; then
-  gfx+=(nvidia-open nvidia-utils egl-wayland libva-nvidia-driver)
-  touch /etc/memora/nvidia
-  echo 'options nvidia_drm modeset=1 fbdev=1' > /etc/modprobe.d/nvidia.conf
+# 32-bit libraries (multilib) are needed by Steam and by games' graphics drivers.
+if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+  printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
 fi
-grep -qE 'AMD|ATI|Radeon' <<<"$gpu" && gfx+=(vulkan-radeon libva-mesa-driver)
-grep -qi intel <<<"$gpu" && gfx+=(vulkan-intel intel-media-driver)
+pacman -Sy --noconfirm >/dev/null
+gpu="$(lspci -nn | grep -iE 'vga|3d|display' || true)"
+gfx=(mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader vulkan-mesa-layers)
+igpu=0
+grep -qE 'AMD|ATI|Radeon' <<<"$gpu" && { gfx+=(vulkan-radeon lib32-vulkan-radeon libva-mesa-driver); igpu=1; }
+grep -qi intel <<<"$gpu" && { gfx+=(vulkan-intel lib32-vulkan-intel intel-media-driver); igpu=1; }
 grep -qi 'virtio\|qxl\|vmware\|bochs' <<<"$gpu" && gfx+=(vulkan-swrast)
+if grep -qi nvidia <<<"$gpu"; then
+  # Turing (GTX 16 / RTX 20) and newer: NVIDIA's open kernel modules, built for
+  # every kernel by DKMS, so the newest driver follows each system update.
+  # Older cards: the open-source driver (the current NVIDIA driver no longer
+  # supports them).
+  if grep -qE '\b(TU|GA|GH|AD|GB)[0-9]{3}|RTX|GTX 16[0-9]{2}|\[10de:(1e|1f|2[0-9a-f])' <<<"$gpu"; then
+    gfx+=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils nvidia-settings egl-wayland libva-nvidia-driver opencl-nvidia)
+    touch /etc/memora/nvidia
+    printf 'options nvidia_drm modeset=1 fbdev=1\noptions nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_TemporaryFilePath=/var/tmp\n' > /etc/modprobe.d/nvidia.conf
+    # Laptops with a second, built-in graphics chip: the desktop runs on that,
+    # games are sent to the NVIDIA card (prime-run).
+    if [[ $igpu == 1 ]]; then gfx+=(nvidia-prime); touch /etc/memora/hybrid; fi
+  else
+    gfx+=(vulkan-nouveau lib32-vulkan-nouveau)
+    touch /etc/memora/nvidia-legacy
+  fi
+fi
 pacman -S --needed --noconfirm "${gfx[@]}"
+if [[ -f /etc/memora/nvidia ]]; then
+  systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
+fi
 
 step "Optional toolkits"
 user_kits=""
@@ -100,6 +121,12 @@ for t in $MEMORA_TOOLKITS; do
     android) pacman -S --needed --noconfirm android-tools jdk17-openjdk ;;
     flutter) pacman -S --needed --noconfirm jdk17-openjdk clang cmake ninja pkgconf gtk3; user_kits+=" flutter" ;;
     rust) pacman -S --needed --noconfirm rustup; user_kits+=" rust" ;;
+    gaming)
+      # Steam (with Proton for Windows games), GameMode and the MangoHud overlay;
+      # ProtonPlus (newer Proton builds) comes from the App Store in user.sh.
+      pacman -S --needed --noconfirm steam gamemode lib32-gamemode mangohud lib32-mangohud
+      usermod -aG gamemode "$MEMORA_USER" 2>/dev/null || true
+      user_kits+=" gaming" ;;
     *) user_kits+=" $t" ;;
   esac
 done
