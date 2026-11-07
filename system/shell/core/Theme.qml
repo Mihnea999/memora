@@ -58,8 +58,9 @@ Singleton {
   readonly property color glass: dark ? Qt.rgba(0.09, 0.09, 0.11, see(0.22)) : Qt.rgba(0.98, 0.98, 0.99, see(0.26))
   readonly property color glassStrong: dark ? Qt.rgba(0.11, 0.11, 0.13, see(0.34)) : Qt.rgba(0.99, 0.99, 1.0, see(0.40))
   readonly property color glassSolid: dark ? "#232326" : "#f5f5f7"
-  // App windows: the window itself is glass, its content sits on a calmer sheet.
-  readonly property color window: dark ? Qt.rgba(0.10, 0.10, 0.12, see(0.74)) : Qt.rgba(0.975, 0.975, 0.985, see(0.78))
+  // App windows: only a hint of glass, so text in them always reads well over
+  // whatever is behind (Frost blurs the rest).
+  readonly property color window: dark ? Qt.rgba(0.105, 0.105, 0.12, see(0.9)) : Qt.rgba(0.975, 0.975, 0.98, see(0.92))
   readonly property color sidebar: dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
   readonly property color bar: Prefs.menuBarTransparent && !Prefs.reduceTransparency ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.06, 0.06, 0.08, see(0.30)) : Qt.rgba(1, 1, 1, see(0.34)))
   readonly property real shine: Prefs.reduceTransparency ? 0.3 : Prefs.shine

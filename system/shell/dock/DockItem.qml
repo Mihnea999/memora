@@ -26,7 +26,7 @@ Item {
   Behavior on height { NumberAnimation { duration: Prefs.motion(110); easing.type: Easing.OutQuad } }
 
   readonly property string label: kind === "trash" ? "Trash" : kind === "folder" ? "Downloads"
-    : kind === "window" ? (entry.win.title || Apps.nameFor(appId)) : appId === "memora-launchpad" ? "Launchpad" : Apps.nameFor(appId)
+    : kind === "window" ? (entry.win.title || Apps.nameFor(appId)) : appId === "memora-launchpad" ? "Apps" : Apps.nameFor(appId)
 
   // Drag to rearrange; drag up out of the Dock to remove (apps only).
   readonly property bool draggable: kind === "app" && appId !== ""

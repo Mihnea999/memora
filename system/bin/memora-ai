@@ -11,6 +11,8 @@ memory="$HOME/.local/share/memora/ai/memory.md"
 win="$dir/shell/ai.qml"
 
 window() {
+  source "$dir/lib/single.sh"
+  if pgrep -f "qs -p $win" >/dev/null && ! memora_window memora-ai; then pkill -f "qs -p $win"; sleep 0.2; fi
   if pgrep -f "qs -p $win" >/dev/null; then
     [[ -n $* ]] && qs -p "$win" ipc call ai ask "$*"
     exec hyprctl dispatch 'hl.dsp.focus({ window = "class:memora-ai" })' >/dev/null

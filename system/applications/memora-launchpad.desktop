@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Launchpad
+Name=Apps
 Comment=All your apps
 Exec=memora-shell toggle launchpad
 Icon=memora-launchpad

@@ -51,6 +51,7 @@ ShellRoot {
     function show(name: string): void { Shell.show(name) }
     function close(): void { Shell.close() }
     function power(what: string): void { Shell.power(what) }
+    function restore(addr: string): void { const a = addr.replace(/^0x/, ""); const w = Hyprland.toplevels.values.find(t => String(t.address).replace(/^0x/, "") === a); if (w) Apps.restore(w) }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {
       const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)

@@ -15,7 +15,8 @@ ShellRoot {
   property string fullName: user
   property string message: ""
   property string pending: ""
-  readonly property var session: ["uwsm", "start", "-e", "-D", "Hyprland", "-N", "Memora", "--", "start-hyprland"]
+  // Quietly: uwsm reports every step on the console, which would flash on screen.
+  readonly property var session: ["sh", "-c", "exec uwsm start -e -D Hyprland -N Memora -- start-hyprland >/dev/null 2>&1"]
 
   // People who can log in, and who logged in last.
   Process {

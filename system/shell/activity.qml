@@ -100,6 +100,9 @@ ShellRoot {
 
   FloatingWindow {
     id: win
+    // Closed by the compositor (Alt+F4, Quit, Super+Q): end the app too, so it
+    // opens again next time instead of lingering without a window.
+    onVisibleChanged: if (!visible) Qt.quit()
     title: "Activity Monitor"
     implicitWidth: 880
     implicitHeight: 620

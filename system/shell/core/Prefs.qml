@@ -7,9 +7,9 @@ import Quickshell.Io
 // ~/.config/memora/shell.json (both watch the file).
 Singleton {
   id: p
-  property int dockSize: 52
+  property int dockSize: 58
   property bool magnify: true
-  property int magnifySize: 80
+  property int magnifySize: 86
   property bool clock24: true
   property bool showDate: true
   property string wallpaper: ""        // a picture of yours; empty: the set below

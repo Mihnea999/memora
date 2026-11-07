@@ -25,5 +25,4 @@ rename chromium "Browser"
 rename org.gnome.Papers "Documents"
 rename org.gnome.Loupe "Photos"
 rename mpv "Media Player"
-rename org.gnome.Nautilus "Files"
 update-desktop-database -q "$dst" 2>/dev/null || true

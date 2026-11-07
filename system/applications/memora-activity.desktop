@@ -2,7 +2,7 @@
 Type=Application
 Name=Activity Monitor
 Comment=See what is running and how much it uses
-Exec=qs -p /usr/share/memora/shell/activity.qml
+Exec=memora-app activity
 Icon=memora-activity
 Terminal=false
 Categories=System;Monitor;

@@ -2,7 +2,7 @@
 Type=Application
 Name=Notes
 Comment=Quick notes, checklists and ideas
-Exec=qs -p /usr/share/memora/shell/notes.qml
+Exec=memora-app notes
 Icon=memora-notes
 Terminal=false
 Categories=Office;Utility;

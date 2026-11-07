@@ -11,6 +11,7 @@ FloatingWindow {
   required property var app
   id: win
   property string startPath
+  onVisibleChanged: if (!visible) closeMe()
   signal closeMe()
   title: "Files"
   implicitWidth: 1040

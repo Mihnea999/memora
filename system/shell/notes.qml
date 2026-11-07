@@ -229,6 +229,9 @@ ShellRoot {
   // ================================================================ window
   FloatingWindow {
     id: win
+    // Closed by the compositor (Alt+F4, Quit, Super+Q): end the app too, so it
+    // opens again next time instead of lingering without a window.
+    onVisibleChanged: if (!visible) { app.saveNow(); Qt.quit() }
     title: "Notes"
     implicitWidth: 1080
     implicitHeight: 680

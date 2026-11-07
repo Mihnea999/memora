@@ -2,7 +2,7 @@
 Type=Application
 Name=App Store
 Comment=Get great apps for Memora
-Exec=qs -p /usr/share/memora/shell/store.qml
+Exec=memora-app store
 Icon=memora-store
 Terminal=false
 Categories=System;PackageManager;

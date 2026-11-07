@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# memora-settings [pane] — System Settings. With one already open, switches its pane.
+# memora-settings [pane] — System Settings. With one already open, brings it
+# forward (from the Dock too) and switches its pane.
 dir="${MEMORA_PATH:-/usr/share/memora}/shell"
+source "${MEMORA_PATH:-/usr/share/memora}/lib/single.sh"
 pane="${1:-}"
-if pgrep -f "qs -p $dir/settings.qml" >/dev/null; then
+if memora_single memora-settings "$dir/settings.qml"; then
   [[ -n $pane ]] && qs -p "$dir/settings.qml" ipc call settings open "$pane"
-  exec hyprctl dispatch 'hl.dsp.focus({ window = "class:memora-settings" })' >/dev/null
+  exit 0
 fi
 MEMORA_SETTINGS_PANE="${pane:-wifi}" exec qs -p "$dir/settings.qml"

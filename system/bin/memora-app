@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# memora-app NAME — open one of Memora's own apps (activity, notes, store, …):
+# brings the open window forward instead of starting a second copy.
+dir="${MEMORA_PATH:-/usr/share/memora}"
+source "$dir/lib/single.sh"
+name="${1:?usage: memora-app NAME}"
+qml="$dir/shell/$name.qml"
+[[ -f $qml ]] || { echo "No Memora app named $name"; exit 2; }
+memora_single "memora-$name" "$qml" && exit 0
+exec qs -p "$qml"

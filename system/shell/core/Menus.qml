@@ -102,7 +102,7 @@ Singleton {
       { text: "System Settings…", action: () => Apps.run("memora-settings") },
       { text: "App Store…", action: () => Apps.run("gtk-launch memora-store") },
       { text: "Software Update…", action: () => Apps.run("memora-settings update") },
-      { text: "Launchpad", action: () => Shell.show("launchpad") },
+      { text: "Apps", action: () => Shell.show("launchpad") },
       sep(),
       { text: "Force Quit " + (hasWin ? appName : "…"), enabled: hasWin, action: () => Apps.run("kill -9 " + win.lastIpcObject.pid) },
       sep(),
