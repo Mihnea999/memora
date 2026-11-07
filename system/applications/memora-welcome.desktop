@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome
+Comment=First steps with Memora
+Exec=memora-welcome
+Icon=memora-settings
+Terminal=false
+NoDisplay=true
