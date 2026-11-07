@@ -4,6 +4,9 @@
 #   memora-shell toggle NAME     launchpad | spotlight | control | calendar | switcher
 #   memora-shell close
 dir="${MEMORA_PATH:-/usr/share/memora}/shell"
+# App Store apps (Flatpak) appear in this folder; it must exist before the shell
+# starts, or the shell never sees apps installed later.
+mkdir -p "$HOME/.local/share/flatpak/exports/share/applications" 2>/dev/null
 case "${1:-}" in
   "") exec qs -p "$dir" ;;
   restart) pkill -f "qs -p $dir" ; sleep 0.3; exec uwsm app -- qs -p "$dir" ;;

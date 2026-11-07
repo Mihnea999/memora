@@ -28,7 +28,10 @@ Singleton {
   function nameFor(appId) {
     if (names[appId] !== undefined) return names[appId]
     const e = entry(appId)
-    return e ? e.name : (appId || "Files")
+    if (e) return e.name
+    // A reverse-DNS id (org.gimp.GIMP) whose entry isn't known yet: its last part.
+    if (appId && appId.indexOf(".") > 0) return appId.split(".").pop().replace(/[-_]/g, " ")
+    return appId || "Files"
   }
 
   // Icons drawn for Memora (tools/icons.py); others are shown on a tile.

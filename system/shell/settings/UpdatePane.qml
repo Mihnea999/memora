@@ -58,7 +58,7 @@ Kit.Page {
     }
     stderr: SplitParser { onRead: line => p.log = (p.log + line + "\n").slice(-20000) }
     onExited: code => {
-      if (code === 0 && !p.error) { p.phase = "done"; p.items = [] }
+      if (code === 0 && !p.error) { p.phase = "done"; p.items = []; Host.refresh() }
       else { p.phase = "failed"; if (!p.error) p.error = "The update did not finish." }
     }
   }

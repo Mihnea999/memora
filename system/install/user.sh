@@ -24,6 +24,7 @@ xdg-user-dirs-update || true
 
 # App Store source (Flathub), installed per user so apps need no password.
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true
+mkdir -p "$HOME/.local/share/flatpak/exports/share/applications"
 
 # Default apps for common kinds of files.
 xdg-mime default memora-files.desktop inode/directory
