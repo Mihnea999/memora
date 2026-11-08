@@ -134,7 +134,9 @@ PanelWindow {
     transformOrigin: Item.Bottom
     radius: 28
     fill: Theme.glassStrong
-    shadowSize: 50
+    // No shadow: over the veil it would pass Hyprland's blur threshold and
+    // show as a blurred halo around the panel.
+    shadow: false
     TapHandler { onTapped: lp.menuApp = "" }   // taps inside don't close
 
     // Search

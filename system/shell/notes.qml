@@ -27,11 +27,16 @@ ShellRoot {
     id: file
     path: app.store
     printErrors: false
+    // Notes added from elsewhere (Memora AI) show up; our own saves are skipped.
+    watchChanges: true
+    onFileChanged: reload()
     onLoaded: {
+      if (app.loaded && text() === app.lastSaved) return
       try { const j = JSON.parse(text()); app.notes = j.notes || []; app.folders = j.folders && j.folders.length ? j.folders : ["Notes"] } catch (e) {}
+      const again = app.loaded
       app.loaded = true
       if (!app.notes.length) app.welcome()
-      app.pickFirst()
+      if (!again || !app.notes.some(n => n.id === app.current)) app.pickFirst()
     }
     onLoadFailed: { app.loaded = true; app.welcome(); app.pickFirst() }
   }
@@ -39,8 +44,10 @@ ShellRoot {
   Timer { id: saveLater; interval: 600; onTriggered: app.saveNow() }
   function saveNow() {
     const t = JSON.stringify({ version: 1, folders: folders, notes: notes })
+    lastSaved = t
     file.setText(t); backup.setText(t)
   }
+  property string lastSaved: ""
   function changed() { notes = notes.slice(); saveLater.restart() }
   Component.onDestruction: saveNow()
 

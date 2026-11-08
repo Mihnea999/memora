@@ -21,6 +21,9 @@ Scope {
   property string status: ""
   property string model: ""
   property bool started: false
+  // While the assistant works in apps (typing, clicking) it folds into its pill
+  // and lets go of the keyboard, so keys reach the app; it opens again after.
+  property bool driving: false
   // items: { kind: "user"|"assistant"|"tool"|"confirm"|"error", text, id, ok, done, level, title, detail, why, answered }
   ListModel { id: items }
 
@@ -50,6 +53,7 @@ Scope {
     send({ type: "confirm", id: it.id, ok: ok })
     items.setProperty(index, "answered", true); items.setProperty(index, "ok", ok)
     status = ok ? "Working…" : ""
+    if (ok && driving) expanded = false
   }
 
   // The agent starts the first time it is needed and then stays.
@@ -66,6 +70,10 @@ Scope {
         case "ready": ai.model = m.provider === "anthropic" ? (m.model || "Claude") : (m.provider === "deepseek" ? "DeepSeek" : m.provider); break
         case "text": { const i = ai.lastAssistant(); items.setProperty(i, "text", items.get(i).text + m.delta); ai.status = "Writing…"; break }
         case "status": ai.status = m.text; break
+        case "hands":
+          if (m.on && !ai.driving) { ai.driving = true; ai.expanded = false }
+          else if (!m.on) ai.driving = false
+          break
         case "tool": items.append({ kind: "tool", text: m.summary, id: m.id, ok: true, done: false, level: "", title: m.name, detail: "", why: "", answered: false }); ai.status = m.summary; break
         case "tool_done": { const i = ai.find("tool", m.id); if (i >= 0) { items.setProperty(i, "done", true); items.setProperty(i, "ok", m.ok) } break }
         case "confirm":
@@ -73,7 +81,13 @@ Scope {
           ai.status = "Needs your OK"; ai.expanded = true
           break
         case "error": items.append({ kind: "error", text: m.message, id: 0, ok: false, done: true, level: "", title: "", detail: "", why: "", answered: false }); break
-        case "done": ai.busy = false; ai.status = ""; if (!ai.expanded) ai.flash = true; break
+        case "done":
+          ai.busy = false; ai.status = ""
+          // After working in apps it stays folded, so what it opened stays in
+          // view; the pill glows and a click shows the answer.
+          ai.driving = false
+          if (!ai.expanded) ai.flash = true
+          break
         }
       }
     }

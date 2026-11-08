@@ -81,6 +81,7 @@ def system_facts():
 
 def system_prompt():
     f = system_facts()
+    guides = "\n".join(f"  - {n}: {w}" for n, (w, _) in skills().items()) or "  (none installed)"
     memory = MEMORY.read_text() if MEMORY.exists() else "(empty)"
     return f"""You are Memora AI, the assistant built into Memora, a desktop operating system based on Arch Linux with the Hyprland compositor. You run on the person's own computer and can act on it with your tools.
 
@@ -90,7 +91,11 @@ How Memora works: packages come from pacman (official Arch repositories); there 
 
 Working style:
 - Do what is asked with your tools rather than telling the person how to do it, unless they asked for instructions.
-- Prefer the dedicated tools (open, system_setting, windows) over shell commands when one fits; use the screen tools (screenshot, click, type_text, press_keys, scroll) to work inside apps that have no command line. Take a screenshot first, act, then check with another screenshot.
+- Pick the most direct tool: a dedicated one (browse, open, system_setting, media, reminder, notes, apps, find_files, windows, arrange_window, weather, system_info…) beats a shell command, and a shell command beats clicking on the screen. Use the screen tools (screenshot, click, type_text, press_keys, scroll) only for work inside apps that has no other way.
+- Searching or showing something online: browse(search=…) or browse(url=…) opens the Browser right on it. Never open the Browser and type the search, and never type into this chat: you are the notch at the top of the screen, and keys you send go to the window you name with `window`.
+- Working in an app: open it, wait_for_window, screenshot, then click/type_text/press_keys with window=…, and check with a screenshot. While you do this the chat folds out of the way by itself.
+- Guides: before a task one of these covers, read it with skill(name) and follow it (once per conversation is enough):
+{guides}
 - Commands that need administrator rights: write them with sudo; Memora shows its own password dialog.
 - Risky actions are confirmed by the person before they run; if one is declined, accept it and offer an alternative. Never try to get around a declined action.
 - Keep answers short and plain. Answer in the language the person writes in. Use Markdown only where it helps (code blocks for commands and files).
@@ -183,22 +188,57 @@ TOOLS = [
     tool("list_directory", "List a folder: names, kinds and sizes.", {"path": S}, ["path"]),
     tool("open", "Open an app (by name, e.g. 'Files', 'Browser', 'Terminal', 'Text Editor', or a desktop id), a file or folder (path), or a web address (URL).",
          {"target": S}, ["target"]),
-    tool("system_setting", "Change a setting. volume/brightness: 0-100 or +N/-N. wifi/bluetooth/focus/night_shift: on|off. appearance: light|dark. wallpaper: image path, or 'default'. settings_pane: open System Settings at a pane (wifi, bluetooth, sound, displays, ...).",
-         {"setting": {"type": "string", "enum": ["volume", "brightness", "wifi", "bluetooth", "appearance", "wallpaper", "focus", "night_shift", "settings_pane"]}, "value": S},
+    tool("system_setting", "Change a setting. volume/brightness: 0-100 or +N/-N. wifi/bluetooth/do_not_disturb/night_shift/dock_autohide: on|off. keep_awake (screen stays on, no lock or sleep): off, on, or minutes. appearance: light|dark. wallpaper: image path, or 'default'. dock_size: 36-72. settings_pane: open System Settings at a pane (wifi, bluetooth, sound, displays, battery, dock, ...).",
+         {"setting": {"type": "string", "enum": ["volume", "brightness", "wifi", "bluetooth", "appearance", "wallpaper", "do_not_disturb", "focus", "night_shift", "keep_awake", "dock_autohide", "dock_size", "settings_pane"]}, "value": S},
          ["setting", "value"]),
     tool("windows", "List open windows, or focus, close, minimize, maximize or restore one. `window` is an address from the list or an app class.",
          {"action": {"type": "string", "enum": ["list", "focus", "close", "minimize", "maximize", "restore"]}, "window": S}, ["action"]),
     tool("screenshot", "Take a screenshot of the screen to see what is on it. Coordinates for click/scroll are in this image's pixels.", {}),
     tool("click", "Click at a point of the last screenshot.",
          {"x": I, "y": I, "button": {"type": "string", "enum": ["left", "right", "middle"]}, "double": {"type": "boolean"}}, ["x", "y"]),
-    tool("type_text", "Type text into the focused app, as if on the keyboard.", {"text": S}, ["text"]),
-    tool("press_keys", "Press a key or shortcut, e.g. 'Return', 'Escape', 'ctrl+s', 'ctrl+shift+t', 'alt+F4', 'super'.", {"keys": S}, ["keys"]),
+    tool("type_text", "Type text into an app, as if on the keyboard. Always pass `window` (an address from windows/wait_for_window, or the app's name or class, e.g. 'chromium'): that window is brought to the front first, so the text never lands in the chat. enter=true presses Return after.",
+         {"text": S, "window": S, "enter": {"type": "boolean"}}, ["text"]),
+    tool("press_keys", "Press a key or shortcut, e.g. 'Return', 'Escape', 'ctrl+s', 'ctrl+l', 'alt+F4', 'super'. Pass `window` to send it to that app (brought to the front first).",
+         {"keys": S, "window": S}, ["keys"]),
     tool("scroll", "Scroll at a point of the last screenshot.",
          {"x": I, "y": I, "direction": {"type": "string", "enum": ["up", "down", "left", "right"]}, "amount": I}, ["x", "y", "direction"]),
     tool("notify", "Show a desktop notification.", {"title": S, "body": S}, ["title"]),
+    tool("browse", "Open the Browser at a web address or straight on search results, and bring it to the front. Use this whenever the person wants to SEE something online (\"open the browser and search X\", \"show me X on YouTube\"): give `search` (Google results) or `url` (any address, e.g. a YouTube or Maps search URL). Never open the browser and then type the search.",
+         {"url": S, "search": S}),
+    tool("wait_for_window", "Wait until an app's window is open (after open/browse), bring it to the front and return its address. `app` is a name or class ('chromium', 'Text Editor', 'org.gnome.Nautilus').",
+         {"app": S, "timeout": I}, ["app"]),
+    tool("arrange_window", "Place a window on its screen: left, right, top, bottom, fill, center, top-left, top-right, bottom-left, bottom-right, left-third, center-third, right-third, left-two-thirds, right-two-thirds, or restore. `window`: address or app; default the focused one.",
+         {"zone": {"type": "string", "enum": ["left", "right", "top", "bottom", "fill", "center", "top-left", "top-right", "bottom-left", "bottom-right", "left-third", "center-third", "right-third", "left-two-thirds", "right-two-thirds", "restore"]}, "window": S}, ["zone"]),
+    tool("desktops", "Desktops (workspaces): go to desktop `number`, or move the focused window (or `window`) to it.",
+         {"action": {"type": "string", "enum": ["go", "move_window"]}, "number": I, "window": S}, ["action", "number"]),
+    tool("clipboard", "Read the clipboard, or put text on it (then paste in an app with press_keys ctrl+v).",
+         {"action": {"type": "string", "enum": ["get", "set"]}, "text": S}, ["action"]),
+    tool("media", "Music and video playing in any app (Player, Browser, Spotify…): status shows what is playing; play, pause, toggle, next, previous control it.",
+         {"action": {"type": "string", "enum": ["status", "play", "pause", "toggle", "next", "previous"]}}, ["action"]),
+    tool("apps", "Apps on this computer and in the App Store: list (installed apps), running (open apps), search (the App Store / Flathub), install or uninstall an App Store app by its id.",
+         {"action": {"type": "string", "enum": ["list", "running", "search", "install", "uninstall"]}, "query": S, "id": S}, ["action"]),
+    tool("find_files", "Find files: by `name` (wildcards allowed, e.g. '*.pdf', 'invoice*') and/or by `text` inside them. Searches `folder` (default the home folder), newest first, up to 50.",
+         {"name": S, "text": S, "folder": S}),
+    tool("reminder", "Reminders and timers: set one in `minutes` or `at` a time ('18:30', 'tomorrow 9:00', '2026-12-24 10:00') with `text`; list them; cancel one by id.",
+         {"action": {"type": "string", "enum": ["set", "list", "cancel"]}, "text": S, "minutes": I, "at": S, "id": S}, ["action"]),
+    tool("notes", "The Notes app: create a note (title and text; lines starting with '☐ ' are checklist items), list recent notes, search them, or read one by id.",
+         {"action": {"type": "string", "enum": ["create", "list", "search", "read"]}, "title": S, "text": S, "query": S, "id": S}, ["action"]),
+    tool("power", "Lock the screen, sleep, restart, shut down or log out. Restart, shut down and log out show their own question on screen.",
+         {"action": {"type": "string", "enum": ["lock", "sleep", "restart", "shutdown", "logout"]}}, ["action"]),
+    tool("system_info", "Facts about the computer now: battery, network, storage, memory, cpu, processes (the busiest), displays, audio, or all.",
+         {"what": {"type": "string", "enum": ["all", "battery", "network", "storage", "memory", "cpu", "processes", "displays", "audio"]}}, ["what"]),
+    tool("download", "Download a file from the internet into Downloads (or `folder`) and return its path.",
+         {"url": S, "folder": S}, ["url"]),
+    tool("weather", "Current weather and the next days, for `place` (a city) or where the computer is.", {"place": S}),
+    tool("skill", "Read a how-to guide before a task it covers (the list is in the system prompt). Follow it.", {"name": S}, ["name"]),
     tool("remember", "Save a fact about the person or their preferences to the memory file, for later conversations.", {"fact": S}, ["fact"]),
 ]
 SCREEN_TOOLS = {"screenshot", "click", "type_text", "press_keys", "scroll"}
+# Tools that put an app in front of the person or work in one: the chat folds into
+# its pill and lets go of the keyboard while they run.
+HANDS_TOOLS = {"click", "type_text", "press_keys", "scroll", "browse", "open", "wait_for_window", "arrange_window", "desktops"}
+# Read web pages without server tools (DeepSeek).
+FETCH_TOOL = tool("fetch_url", "Read a web page as plain text (for answering from it). Give a full URL.", {"url": S}, ["url"])
 SERVER_TOOLS = [
     {"type": "web_search_20260209", "name": "web_search"},
     {"type": "web_fetch_20260209", "name": "web_fetch"},
@@ -207,7 +247,7 @@ SERVER_TOOLS = [
 
 def check_input(name, data):
     """Validate a tool input against its schema (eager streaming skips server checks)."""
-    spec = next((t for t in TOOLS if t["name"] == name), None)
+    spec = next((t for t in TOOLS + [FETCH_TOOL] if t["name"] == name), None)
     if spec is None or not isinstance(data, dict):
         return "unknown tool or input is not an object"
     props = spec["input_schema"]["properties"]
@@ -312,13 +352,107 @@ def find_app(name):
     return best
 
 
+def clients():
+    try:
+        return [c for c in json.loads(sh(["hyprctl", "-j", "clients"]).stdout or "[]") if c.get("mapped")]
+    except ValueError:
+        return []
+
+
+def find_window(spec):
+    """A window by address, class, app name or title words; the most recently used first."""
+    spec = (spec or "").strip()
+    cs = sorted(clients(), key=lambda c: c.get("focusHistoryID", 99))
+    if not spec:
+        return cs[0] if cs else None
+    if spec.startswith("0x"):
+        return next((c for c in cs if c["address"] == spec), None)
+    want = spec.lower().removesuffix(".desktop")
+    app = find_app(spec)
+    aliases = {"browser": "chromium", "terminal": "com.mitchellh.ghostty", "files": "org.gnome.nautilus",
+               "text editor": "org.gnome.texteditor", "settings": "memora-settings", "system settings": "memora-settings"}
+    want = aliases.get(want, want)
+    for test in (lambda c: c["class"].lower() == want or c.get("initialClass", "").lower() == want,
+                 lambda c: bool(app) and c["class"].lower() == app.lower(),
+                 lambda c: want in c["class"].lower(),
+                 lambda c: want in c.get("title", "").lower()):
+        hit = next((c for c in cs if test(c)), None)
+        if hit:
+            return hit
+    return None
+
+
+def focus_window(c):
+    a = c["address"]
+    if c.get("workspace", {}).get("name") == "special:minimized":
+        sh(["hyprctl", "dispatch", f'hl.dsp.window.move({{ workspace = "{active_ws()}", follow = true, window = "address:{a}" }})'])
+    sh(["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{a}" }})'])
+    sh(["hyprctl", "dispatch", f'hl.dsp.window.alter_zorder({{ mode = "top", window = "address:{a}" }})'])
+    time.sleep(0.15)
+
+
+def shell_prefs(**kw):
+    """Change the shell's preferences (~/.config/memora/shell.json); the shell follows the file."""
+    prefs = CONF / "shell.json"
+    try:
+        j = json.loads(prefs.read_text())
+    except (OSError, ValueError):
+        j = {}
+    j.update(kw)
+    prefs.write_text(json.dumps(j, indent=2) + "\n")
+
+
+def html_text(html):
+    html = re.sub(r"(?is)<(script|style|noscript|svg)[^>]*>.*?</\1>", " ", html)
+    html = re.sub(r"(?i)<br\s*/?>|</(p|div|h[1-6]|li|tr|section|article)>", "\n", html)
+    text = re.sub(r"<[^>]+>", " ", html)
+    import html as h
+    text = h.unescape(text)
+    return re.sub(r"\n\s*\n+", "\n\n", re.sub(r"[ \t]+", " ", text)).strip()
+
+
+SKILLS = Path(MEMORA_PATH) / "ai" / "skills"
+
+
+def skills():
+    """{name: (when, body)} from ai/skills/*.md (front matter: name, when)."""
+    out = {}
+    for f in sorted(SKILLS.glob("*.md")) if SKILLS.exists() else []:
+        t = f.read_text()
+        m = re.match(r"---\n(.*?)\n---\n(.*)", t, re.S)
+        if not m:
+            continue
+        meta = dict(l.split(":", 1) for l in m.group(1).splitlines() if ":" in l)
+        out[meta.get("name", f.stem).strip()] = (meta.get("when", "").strip(), m.group(2).strip())
+    return out
+
+
+NOTES = HOME / ".local/share/memora/notes.json"
+
+
 class Tools:
     def __init__(self, ui):
         self.ui = ui
+        self.hands_on = False
 
     def run(self, name, data):
         """Returns (content, is_error). content: str or list of blocks."""
+        if name in HANDS_TOOLS and not self.hands_on:
+            # Fold the chat so the app is visible and gets the keyboard.
+            self.hands_on = True
+            getattr(self.ui, "hands", lambda on: None)(True)
+            time.sleep(0.35)
         return getattr(self, "t_" + name)(**data)
+
+    def target(self, window):
+        """Bring `window` to the front before keys go to it."""
+        if not window:
+            return None
+        c = find_window(window)
+        if not c:
+            raise RuntimeError(f"No open window matches '{window}'. Use windows(list) to see them.")
+        focus_window(c)
+        return c
 
     def t_run_command(self, command, reason, timeout=120):
         timeout = max(5, min(int(timeout or 120), 900))
@@ -380,7 +514,7 @@ class Tools:
             return f"No app called '{t}' is installed.", True
         subprocess.Popen(["uwsm", "app", "--", app + ".desktop"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
-        return f"Opened {app}.", False
+        return f"Opening {app}. Use wait_for_window before typing or clicking in it.", False
 
     def t_system_setting(self, setting, value):
         v = value.strip().lower()
@@ -406,8 +540,23 @@ class Tools:
             j["wallpaper"] = "" if v == "default" else str(Path(value.strip()).expanduser())
             prefs.write_text(json.dumps(j, indent=2) + "\n")
             return "Wallpaper changed.", False
-        elif setting == "focus":
-            return "Use the Control Center to turn Focus on or off; it is not reachable from here yet.", True
+        elif setting in ("focus", "do_not_disturb"):
+            r = sh(["memora-shell", "setFocusMode", "on" if on else "off"])
+        elif setting == "keep_awake":
+            if v in ("off", "false", "0", "no"):
+                until = 0
+            elif v.isdigit():
+                until = int((time.time() + int(v) * 60) * 1000)
+            else:
+                until = -1
+            shell_prefs(awakeUntil=until)
+            return ("Keep Awake is off." if until == 0 else "Keep Awake is on: the screen stays on and won't lock or sleep" + (f" for {v} minutes." if v.isdigit() else " until it is turned off.")), False
+        elif setting == "dock_autohide":
+            shell_prefs(dockAutohide=on)
+            return f"The Dock {'hides until the pointer reaches the bottom' if on else 'stays on screen'}.", False
+        elif setting == "dock_size":
+            shell_prefs(dockSize=max(36, min(72, int(re.sub(r"\D", "", v) or 58))))
+            return "Dock size changed.", False
         elif setting == "night_shift":
             r = sh(["bash", "-c", "setsid hyprsunset -t 4200 >/dev/null 2>&1 &" if on else "pkill -x hyprsunset; true"])
         elif setting == "settings_pane":
@@ -453,13 +602,269 @@ class Tools:
             return f"Could not click: {r.stderr.strip()}", True
         return f"Clicked {button} at {x},{y}.", False
 
-    def t_type_text(self, text):
+    def t_type_text(self, text, window="", enter=False):
+        c = self.target(window)
         r = sh(["wtype", "--", text], timeout=60)
-        return ("Typed." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
+        if r.returncode:
+            return f"Failed: {r.stderr.strip()}", True
+        if enter:
+            time.sleep(0.05)
+            press_keys("return")
+        where = f" into {c['class']} (\"{c['title'][:40]}\")" if c else ""
+        return f"Typed{where}{' and pressed Return' if enter else ''}.", False
 
-    def t_press_keys(self, keys):
+    def t_press_keys(self, keys, window=""):
+        c = self.target(window)
         press_keys(keys)
-        return f"Pressed {keys}.", False
+        return f"Pressed {keys}{' in ' + c['class'] if c else ''}.", False
+
+    # ---- the web, apps, windows
+    def t_browse(self, url="", search=""):
+        import urllib.parse
+        if not url and not search:
+            return "Give a url or a search.", True
+        if not url:
+            url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(search)
+        elif not re.match(r"^[a-z]+://", url):
+            url = "https://" + url
+        before = {c["address"] for c in clients() if c["class"] == "chromium"}
+        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        for _ in range(60):
+            time.sleep(0.25)
+            cs = [c for c in clients() if c["class"] in ("chromium", "firefox", "brave-browser", "google-chrome")]
+            new = [c for c in cs if c["address"] not in before]
+            if new or (cs and _ > 6):
+                focus_window(new[0] if new else sorted(cs, key=lambda c: c.get("focusHistoryID", 99))[0])
+                return f"The Browser is open on {url} and in front.", False
+        return f"Asked the Browser to open {url}; its window hasn't appeared yet.", False
+
+    def t_wait_for_window(self, app, timeout=10):
+        end = time.time() + max(1, min(int(timeout or 10), 60))
+        while time.time() < end:
+            c = find_window(app)
+            if c:
+                focus_window(c)
+                return f"{c['class']} is open and in front: address {c['address']}, title \"{c['title'][:60]}\", at {c['at']} size {c['size']}.", False
+            time.sleep(0.3)
+        return f"No window for '{app}' after {timeout}s.", True
+
+    def t_arrange_window(self, zone, window=""):
+        c = find_window(window)
+        if not c:
+            return "No window to arrange.", True
+        r = sh(["memora-window", zone, c["address"]])
+        return (f"{c['class']} placed: {zone}." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
+
+    def t_desktops(self, action, number, window=""):
+        n = max(1, min(int(number), 10))
+        if action == "go":
+            r = sh(["memora-shell", "desktop", "go", str(n)])
+        else:
+            if window:
+                self.target(window)
+            r = sh(["memora-shell", "desktop", "carry", str(n)])
+        return ("Done." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
+
+    def t_clipboard(self, action, text=""):
+        if action == "set":
+            # wl-copy stays behind to serve the clipboard: don't wait on its output.
+            r = subprocess.run(["wl-copy"], input=text, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            return ("On the clipboard." if r.returncode == 0 else "Couldn't set the clipboard."), r.returncode != 0
+        r = sh(["wl-paste", "-n"], timeout=10)
+        return (clip(r.stdout) or "(the clipboard is empty or holds an image)"), False
+
+    def t_media(self, action):
+        if action == "status":
+            r = sh(["playerctl", "metadata", "--format", "{{playerName}}: {{status}} · {{artist}} – {{title}} ({{duration(position)}}/{{duration(mpris:length)}})"])
+            return (r.stdout.strip() or "Nothing is playing."), False
+        r = sh(["playerctl", {"toggle": "play-pause"}.get(action, action)])
+        return ("Done." if r.returncode == 0 else "No player is running."), r.returncode != 0
+
+    def t_apps(self, action, query="", id=""):
+        if action == "list":
+            names = set()
+            for d in [HOME / ".local/share/applications", HOME / ".local/share/flatpak/exports/share/applications",
+                      Path("/var/lib/flatpak/exports/share/applications"), Path("/usr/share/applications")]:
+                for f in d.glob("*.desktop") if d.exists() else []:
+                    t = f.read_text(errors="ignore")
+                    if re.search(r"^NoDisplay=true", t, re.M):
+                        continue
+                    m = re.search(r"^Name=(.*)$", t, re.M)
+                    if m:
+                        names.add(f"{m.group(1)} ({f.stem})")
+            return "\n".join(sorted(names, key=str.lower)), False
+        if action == "running":
+            return "\n".join(sorted({f"{c['class']}: {c['title'][:50]}" for c in clients()})) or "No apps are open.", False
+        if action == "search":
+            r = sh(["flatpak", "search", "--columns=application,name,description", query], timeout=60)
+            rows = [l for l in r.stdout.splitlines() if l.strip() and not re.search(r"\.(Plugin|Extension|Locale|Debug|Manual|Docs)\b", l)]
+            return clip("\n".join(rows[:25]) or "Nothing found in the App Store."), False
+        if not id:
+            return "Give the app's id (from search or list).", True
+        if action == "install":
+            if not self.ui.confirm("risky", f"Install {id}?", f"flatpak install --user flathub {id}", "It installs an app from the App Store (Flathub) for you."):
+                return "The person declined.", True
+            r = sh(["flatpak", "install", "--user", "-y", "--noninteractive", "flathub", id], timeout=1800)
+        else:
+            if not self.ui.confirm("risky", f"Uninstall {id}?", f"flatpak uninstall --user {id}", "It removes this app; your documents stay."):
+                return "The person declined.", True
+            r = sh(["flatpak", "uninstall", "--user", "-y", "--noninteractive", id], timeout=600)
+        return clip(r.stdout[-2000:] + r.stderr[-2000:]).strip() or "Done.", r.returncode != 0
+
+    # ---- files
+    def t_find_files(self, name="", text="", folder="~"):
+        root = Path(folder or "~").expanduser()
+        if not root.exists():
+            return f"No folder {root}.", True
+        skip = ["-path", "*/.cache", "-prune", "-o", "-path", "*/.local/share/flatpak", "-prune", "-o", "-path", "*/node_modules", "-prune", "-o", "-path", "*/.git", "-prune", "-o"]
+        if text:
+            r = sh(["grep", "-rIil", "--exclude-dir=.cache", "--exclude-dir=.git", "--exclude-dir=node_modules", "--exclude-dir=.local",
+                    *(["--include", name] if name else []), "--", text, str(root)], timeout=60)
+            files = r.stdout.splitlines()
+        else:
+            r = sh(["find", str(root), *skip, "-iname", name or "*", "-type", "f", "-printf", "%T@ %p\n"], timeout=60)
+            files = [l.split(" ", 1)[1] for l in sorted(r.stdout.splitlines(), reverse=True) if " " in l]
+        return ("\n".join(files[:50]) + (f"\n… and {len(files) - 50} more" if len(files) > 50 else "")) or "No files found.", False
+
+    def t_download(self, url, folder="~/Downloads"):
+        d = Path(folder or "~/Downloads").expanduser()
+        d.mkdir(parents=True, exist_ok=True)
+        r = sh(["curl", "-fsSL", "--max-time", "600", "-OJ", "--output-dir", str(d), "-w", "%{filename_effective}", url], timeout=620)
+        return (f"Saved {r.stdout.strip()}." if r.returncode == 0 else f"Download failed: {r.stderr.strip()}"), r.returncode != 0
+
+    def t_fetch_url(self, url):
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) MemoraAI"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            body = r.read(3_000_000).decode(r.headers.get_content_charset() or "utf-8", errors="replace")
+        return clip(html_text(body) if "<" in body[:2000] else body), False
+
+    # ---- organiser
+    def t_reminder(self, action, text="", minutes=0, at="", id=""):
+        if action == "list":
+            r = sh(["systemctl", "--user", "list-timers", "memora-reminder-*", "--all", "--no-pager", "--output=json"])
+            try:
+                rows = json.loads(r.stdout or "[]")
+            except ValueError:
+                rows = []
+            out = []
+            for t in rows:
+                unit = t.get("unit", "").removesuffix(".timer")
+                desc = sh(["systemctl", "--user", "show", "-p", "Description", "--value", unit + ".service"]).stdout.strip()
+                when = time.strftime("%a %d %b %H:%M", time.localtime(int(t.get("next", 0)) / 1e6)) if t.get("next") else "?"
+                out.append(f"{unit}: {when} — {desc}")
+            return "\n".join(out) or "No reminders.", False
+        if action == "cancel":
+            if not id:
+                return "Give the reminder's id (from list).", True
+            r = sh(["systemctl", "--user", "stop", id.removesuffix(".timer") + ".timer"])
+            return ("Cancelled." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
+        if not text:
+            return "What should the reminder say?", True
+        if at:
+            r = sh(["date", "-d", at, "+%s"])
+            if r.returncode:
+                return f"Can't read the time '{at}'.", True
+            secs = int(r.stdout) - int(time.time())
+            if secs < 0:
+                secs += 86400   # a time earlier today means tomorrow
+        else:
+            secs = int(minutes or 0) * 60
+        if secs < 5:
+            return "Give minutes or a time in the future.", True
+        unit = f"memora-reminder-{time.time_ns() // 1_000_000}"
+        sound = "pw-play /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga 2>/dev/null || pw-play /usr/share/sounds/freedesktop/stereo/complete.oga 2>/dev/null"
+        cmd = f"notify-send -u critical -a Reminders -i alarm-symbolic 'Reminder' {shlex.quote(text)}; {sound}; true"
+        r = sh(["systemd-run", "--user", f"--unit={unit}", f"--description={text[:120]}", f"--on-active={secs}s",
+                "--timer-property=AccuracySec=1s", "bash", "-c", cmd])
+        when = time.strftime("%a %d %b %H:%M", time.localtime(time.time() + secs))
+        return (f"Reminder set for {when} (id {unit})." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
+
+    def t_notes(self, action, title="", text="", query="", id=""):
+        try:
+            j = json.loads(NOTES.read_text())
+        except (OSError, ValueError):
+            j = {"version": 1, "folders": ["Notes"], "notes": []}
+        notes = [n for n in j.get("notes", []) if not n.get("deleted")]
+        notes.sort(key=lambda n: n.get("modified", 0), reverse=True)
+        line = lambda n: f"{n['id']}  {time.strftime('%d %b %H:%M', time.localtime(n.get('modified', 0) / 1000))}  {n.get('text', '').splitlines()[0][:60] if n.get('text') else '(empty)'}"
+        if action == "list":
+            return "\n".join(line(n) for n in notes[:30]) or "No notes.", False
+        if action == "search":
+            q = query.lower()
+            return "\n".join(line(n) for n in notes if q in n.get("text", "").lower()) or "No note matches.", False
+        if action == "read":
+            n = next((n for n in notes if n["id"] == id), None)
+            return (n["text"] if n else "No note with that id."), not n
+        import html as h
+        body = [l for l in text.splitlines()]
+        para = lambda l: (f"<p><span style='font-size:22px; color:#9a9aa2;'>☐</span>&nbsp;{h.escape(l[2:])}</p>" if l.startswith("☐ ")
+                          else f"<p>{h.escape(l) or '<br>'}</p>")
+        now = int(time.time() * 1000)
+        n = {"id": f"n{now}", "folder": (j.get("folders") or ["Notes"])[0], "pinned": False, "deleted": False,
+             "created": now, "modified": now, "text": (title + "\n" if title else "") + text,
+             "html": (f"<h1>{h.escape(title)}</h1>" if title else "") + "".join(para(l) for l in body)}
+        j.setdefault("notes", []).append(n)
+        NOTES.parent.mkdir(parents=True, exist_ok=True)
+        NOTES.write_text(json.dumps(j))
+        return f"Note \"{title or text[:30]}\" saved in Notes.", False
+
+    # ---- the computer
+    def t_power(self, action):
+        if action == "lock":
+            r = sh(["memora-lock"])
+        elif action == "sleep":
+            r = sh(["systemctl", "suspend"])
+        else:
+            r = sh(["memora-power", action])
+        return ("Done." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
+
+    def t_system_info(self, what):
+        parts = {
+            "battery": "upower -i $(upower -e | grep -m1 BAT) 2>/dev/null | grep -E 'state|percentage|time to|energy-full:|capacity' || echo 'No battery (mains power).'",
+            "network": "nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device; echo; nmcli -t -f ACTIVE,SSID,SIGNAL dev wifi 2>/dev/null | grep '^yes' ; ip -brief addr | grep -v '^lo'",
+            "storage": "df -h -x tmpfs -x devtmpfs -x efivarfs --output=target,size,used,avail,pcent",
+            "memory": "free -h",
+            "cpu": "lscpu | grep -E 'Model name|^CPU\\(s\\)|MHz'; uptime; cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | head -3 | awk '{printf \"temp %.0f°C\\n\", $1/1000}'",
+            "processes": "ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -12",
+            "displays": "hyprctl -j monitors | jq -r '.[] | \"\\(.name): \\(.width)x\\(.height)@\\(.refreshRate|floor)Hz scale \\(.scale)\"'",
+            "audio": "wpctl status | sed -n '/Audio/,/Video/p' | head -40",
+        }
+        keys = list(parts) if what == "all" else [what]
+        out = []
+        for k in keys:
+            r = sh(["bash", "-c", parts[k]], timeout=15)
+            out.append(f"## {k}\n{r.stdout.strip()}")
+        return clip("\n\n".join(out)), False
+
+    def t_weather(self, place=""):
+        def get(u):
+            with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "MemoraAI"}), timeout=10) as r:
+                return json.loads(r.read())
+        import urllib.parse
+        if place:
+            g = get("https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + urllib.parse.quote(place)).get("results") or []
+            if not g:
+                return f"Don't know a place called {place}.", True
+            lat, lon, name = g[0]["latitude"], g[0]["longitude"], f"{g[0]['name']}, {g[0].get('country', '')}"
+        else:
+            loc = get("https://ipapi.co/json/")
+            lat, lon, name = loc["latitude"], loc["longitude"], loc.get("city", "here")
+        f = get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation"
+                "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto&forecast_days=4")
+        codes = {0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "cloudy", 45: "fog", 48: "fog", 51: "drizzle", 53: "drizzle", 55: "drizzle",
+                 61: "light rain", 63: "rain", 65: "heavy rain", 71: "light snow", 73: "snow", 75: "heavy snow", 80: "showers", 81: "showers",
+                 82: "heavy showers", 95: "thunderstorm", 96: "thunderstorm", 99: "thunderstorm"}
+        c, d = f["current"], f["daily"]
+        out = [f"{name}: now {c['temperature_2m']}°C (feels {c['apparent_temperature']}°C), {codes.get(c['weather_code'], 'code ' + str(c['weather_code']))}, wind {c['wind_speed_10m']} km/h"]
+        for i in range(len(d["time"])):
+            out.append(f"{d['time'][i]}: {d['temperature_2m_min'][i]}–{d['temperature_2m_max'][i]}°C, {codes.get(d['weather_code'][i], '?')}, rain chance {d['precipitation_probability_max'][i]}%")
+        return "\n".join(out), False
+
+    def t_skill(self, name):
+        sk = skills()
+        if name not in sk:
+            return f"No guide called '{name}'. Guides: {', '.join(sk)}.", True
+        return sk[name][1], False
 
     def t_scroll(self, x, y, direction, amount=3):
         sx, sy = SCREEN.to_screen(x, y)
@@ -504,6 +909,22 @@ def describe(name, data):
         "scroll": lambda d: "Scrolling " + d.get("direction", ""),
         "notify": lambda d: "Notification: " + d.get("title", ""),
         "remember": lambda d: "Remembering: " + d.get("fact", "")[:60],
+        "browse": lambda d: "Opening " + (d.get("url") or "a search for " + d.get("search", "")),
+        "wait_for_window": lambda d: "Waiting for " + d.get("app", ""),
+        "arrange_window": lambda d: f"Placing {d.get('window') or 'the window'}: {d.get('zone', '')}",
+        "desktops": lambda d: f"Desktop {d.get('number')}",
+        "clipboard": lambda d: "Reading the clipboard" if d.get("action") == "get" else "Copying to the clipboard",
+        "media": lambda d: "Media: " + d.get("action", ""),
+        "apps": lambda d: f"Apps: {d.get('action', '')} {d.get('query') or d.get('id') or ''}".strip(),
+        "find_files": lambda d: "Looking for " + (d.get("name") or d.get("text") or "files"),
+        "reminder": lambda d: "Reminder: " + (d.get("text") or d.get("action", "")),
+        "notes": lambda d: "Notes: " + (d.get("title") or d.get("query") or d.get("action", "")),
+        "power": lambda d: d.get("action", "").capitalize(),
+        "system_info": lambda d: "Checking " + d.get("what", "the computer"),
+        "download": lambda d: "Downloading " + d.get("url", ""),
+        "fetch_url": lambda d: "Reading " + d.get("url", ""),
+        "weather": lambda d: "Weather " + (d.get("place") or "here"),
+        "skill": lambda d: "Reading the guide: " + d.get("name", ""),
         "web_search": lambda d: "Searching the web: " + str(d.get("query", "")),
         "web_fetch": lambda d: "Reading " + str(d.get("url", "")),
     }.get(name, lambda d: name)(data or {})
@@ -532,6 +953,7 @@ class Agent:
 
     def turn(self, text):
         self.cfg = load_config()
+        self.tools.hands_on = False
         provider = self.cfg.get("provider") or "anthropic"
         self.messages.append({"role": "user", "content": text})
         try:
@@ -559,7 +981,7 @@ class Agent:
                 raise RuntimeError("No DeepSeek API key yet. Add one in System Settings > Memora AI.")
             client = anthropic.Anthropic(api_key=key, base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/anthropic"))
             model = self.cfg.get("model") or "deepseek-chat"
-            tools = [{k: v for k, v in t.items() if k != "eager_input_streaming"} for t in self.tool_specs()]
+            tools = [{k: v for k, v in t.items() if k != "eager_input_streaming"} for t in self.tool_specs() + [FETCH_TOOL]]
             extra = {"max_tokens": 8000}
         else:
             key = os.environ.get("ANTHROPIC_API_KEY")
@@ -768,6 +1190,10 @@ class WindowUI:
 
     def tool_end(self, tid, ok):
         self.send(type="tool_done", id=tid, ok=ok)
+
+    def hands(self, on):
+        """The chat folds into its pill (and lets go of the keyboard) while apps are used."""
+        self.send(type="hands", on=on)
 
     def confirm(self, level, title, detail, why):
         self.n += 1

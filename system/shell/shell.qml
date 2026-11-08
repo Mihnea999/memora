@@ -66,6 +66,7 @@ ShellRoot {
       const c = Apps.classOf(Apps.windows.find(x => x.address === w.address) || w)
       Apps.windowsOf(c).filter(x => !Apps.isMinimized(x)).forEach(x => Apps.minimize(x.address))
     }
+    function setFocusMode(on: string): void { Shell.focusMode = on === "on" || on === "true" }
     function toggleDockHiding(): void { Prefs.set("dockAutohide", !Prefs.dockAutohide) }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {

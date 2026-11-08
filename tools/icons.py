@@ -181,16 +181,27 @@ ICONS["apps/org.gnome.Papers"] = icon(
       <g stroke="#e0e2e8" stroke-width="22" stroke-linecap="round"><path d="M360 470 h300 M360 550 h300 M360 630 h220"/></g>
     </g>''')
 
-# Player: a glowing disc with a soft play mark, on graphite.
+# Player: one clean white play mark on a coral-to-magenta body. The triangle is
+# equilateral with evenly rounded corners, nudged right so it looks centred.
+def rounded_triangle(cx, cy, r, rad):
+    import math as m
+    pts = [(cx + r * m.cos(a), cy + r * m.sin(a)) for a in (0, 2 * m.pi / 3, 4 * m.pi / 3)]
+    d = ""
+    for k in range(3):
+        p0, p1, p2 = pts[k - 1], pts[k], pts[(k + 1) % 3]
+        def toward(a, b, t):
+            L = m.hypot(b[0] - a[0], b[1] - a[1]); return (a[0] + (b[0] - a[0]) * t / L, a[1] + (b[1] - a[1]) * t / L)
+        a = toward(p1, p0, rad); b = toward(p1, p2, rad)
+        d += ("M" if k == 0 else "L") + f"{a[0]:.1f} {a[1]:.1f} Q{p1[0]:.1f} {p1[1]:.1f} {b[0]:.1f} {b[1]:.1f} "
+    return d + "Z"
+
+
 ICONS["apps/memora-player"] = icon(
-    "player", lg("bg", "#2c2e35", "#0d0e11") + lg("disc", "#ff7a59", "#c2338f", 0, 0, 1, 1)
-    + '<radialGradient id="sheen" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.35"/><stop offset="0.6" stop-color="#fff" stop-opacity="0"/></radialGradient>',
+    "player", lg("bg", "#ff7a5c", "#d92e7a", 0.2, 0, 0.8, 1)
+    + '<radialGradient id="lift" cx="0.5" cy="0.18" r="0.75"><stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>',
     "url(#bg)",
-    '''<g filter="url(#soft)">
-      <circle cx="512" cy="512" r="262" fill="url(#disc)"/>
-      <circle cx="512" cy="512" r="262" fill="url(#sheen)"/>
-      <path d="M462 404 Q462 380 484 392 L636 494 Q656 512 636 530 L484 632 Q462 644 462 620 Z" fill="#ffffff"/>
-    </g>''', rim_op=0.16)
+    f'''<rect width="1024" height="1024" fill="url(#lift)"/>
+    <path filter="url(#soft)" fill="#ffffff" d="{rounded_triangle(536, 512, 228, 58)}"/>''', rim_op=0.22)
 ICONS["apps/mpv"] = ICONS["apps/memora-player"]
 
 # Settings: a machined gear on silver.

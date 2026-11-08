@@ -21,6 +21,7 @@ iwd
 bluez
 bluez-utils
 power-profiles-daemon
+upower
 pipewire
 pipewire-pulse
 pipewire-alsa

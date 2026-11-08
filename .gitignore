@@ -6,3 +6,4 @@ test/*.sock
 test/*.png
 test/*.ppm
 test/share/
+__pycache__/
