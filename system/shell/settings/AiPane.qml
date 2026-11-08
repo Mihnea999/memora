@@ -80,10 +80,37 @@ Kit.Page {
     }
   }
 
+  // Claude (API or Claude Code): pick a model and how hard it thinks. Also from
+  // the Memora AI window (click the model name at the top).
+  readonly property bool claude: p.cfg.provider === "anthropic" || p.cfg.provider === "claude-code"
   Kit.Group {
     header: "Model"
+    visible: p.claude
+    footer: "Higher effort gives better answers to hard questions, but is slower and uses more of your plan or credits."
     Kit.Row {
-      label: "Model"; detail: p.cfg.provider === "anthropic" ? "Default: claude-opus-5-5" : p.cfg.provider === "deepseek" ? "Default: deepseek-chat" : (p.cfg.provider === "ollama" ? "e.g. qwen3:8b" : "")
+      label: "Model"
+      Kit.Choice {
+        value: p.cfg.model || (p.cfg.provider === "claude-code" ? "" : "claude-opus-5-5")
+        options: (p.cfg.provider === "claude-code" ? [{ text: "Default", value: "" }] : []).concat([
+          { text: "Fable 5.1", value: "claude-fable-5-1" }, { text: "Opus 5.5", value: "claude-opus-5-5" },
+          { text: "Sonnet 5.5", value: "claude-sonnet-5-5" }, { text: "Haiku 5.5", value: "claude-haiku-5-5" }])
+        onPicked: v => p.save("model", v)
+      }
+    }
+    Kit.Row {
+      label: "Effort"; last: true
+      Kit.Choice {
+        value: p.cfg.effort || "high"
+        options: [{ text: "Low", value: "low" }, { text: "Medium", value: "medium" }, { text: "High", value: "high" }, { text: "Extra high", value: "xhigh" }, { text: "Max", value: "max" }]
+        onPicked: v => p.save("effort", v)
+      }
+    }
+  }
+  Kit.Group {
+    header: "Model"
+    visible: !p.claude
+    Kit.Row {
+      label: "Model"; detail: p.cfg.provider === "deepseek" ? "Default: deepseek-chat" : (p.cfg.provider === "ollama" ? "e.g. qwen3:8b" : "")
       last: true
       Kit.Field { text: p.cfg.model; placeholder: "default"; width: 220; onAccepted: p.save("model", text) }
     }

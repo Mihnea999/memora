@@ -9,7 +9,13 @@ files, open apps, change settings, manage windows, look at the screen and
 click/type, search the web. Anything risky waits for the person's OK; the
 gravest actions (erasing disks, deleting the system) show a stronger warning.
 With DeepSeek (its Anthropic-compatible API) it has the same tools, minus web search.
-Other providers (Claude Code, Ollama, OpenAI-compatible) answer without tools.
+With Claude Code it uses Claude Code's own tools, plus Memora's through
+`memora-ai tool NAME JSON`; its permission prompts come to the window
+(permit.py) and the conversation carries on from message to message.
+Other providers (Ollama, OpenAI-compatible) answer without tools.
+
+  agent.py tools            Memora's tools, with their inputs (for Claude Code)
+  agent.py tool NAME JSON   run one of them
 """
 import base64
 import json
@@ -23,6 +29,7 @@ import sys
 import threading
 import time
 import urllib.request
+import uuid
 from pathlib import Path
 
 HOME = Path.home()
@@ -31,6 +38,10 @@ DATA = HOME / ".local/share/memora/ai"
 MEMORY = DATA / "memory.md"
 MEMORA_PATH = os.environ.get("MEMORA_PATH", "/usr/share/memora")
 DEFAULT_MODEL = "claude-opus-5-5"
+# The choice offered in the window and in System Settings > Memora AI.
+MODELS = [("claude-fable-5-1", "Fable 5.1"), ("claude-opus-5-5", "Opus 5.5"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5")]
+EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+DEFAULT_EFFORT = "high"
 OUT_LIMIT = 20000
 
 
@@ -79,18 +90,51 @@ def system_facts():
     }
 
 
-def system_prompt():
+def on_screen():
+    """What the person has open right now, so "this window", "the browser" make sense."""
+    cs = sorted(clients(), key=lambda c: c.get("focusHistoryID", 99))
+    if not cs:
+        return "no windows open (the desktop)."
+    def name(c):
+        t = (c.get("title") or "").strip()
+        return f"{c.get('class') or '?'}" + (f" \u2014 \"{t[:80]}\"" if t else "")
+    out = f"in front: {name(cs[0])}"
+    if len(cs) > 1:
+        out += "; also open: " + "; ".join(name(c) for c in cs[1:12])
+    return out + "."
+
+
+CLAUDE_CODE_NOTES = """You run inside Claude Code on this computer, so your tools are Claude Code's (Bash, Read, Edit, Write, WebSearch, WebFetch...). Memora's own tools work through Bash:
+  memora-ai tool NAME 'JSON'      e.g. memora-ai tool browse '{{"search": "animals"}}'
+  memora-ai tools                 lists all of them with their inputs
+Use them for anything on the desktop: opening apps and web pages (browse, open), settings (system_setting), windows (windows, arrange_window), reminders, notes, media, weather, apps (install/uninstall), the screen (screenshot saves a picture you can Read; click, type_text, press_keys).
+- Questions for the person: write them in your answer and end your turn; they answer in the chat (do not use AskUserQuestion).
+- Commands that need administrator rights: write them with sudo; Memora shows its own password dialog.
+- Anything that changes the system waits for the person's OK in the chat; if they decline, accept it and offer an alternative.
+- Guides for common tasks are in {skills_dir}: read the one that fits before such a task:
+{guides}"""
+
+
+def system_prompt(claude_code=False):
     f = system_facts()
     guides = "\n".join(f"  - {n}: {w}" for n, (w, _) in skills().items()) or "  (none installed)"
     memory = MEMORY.read_text() if MEMORY.exists() else "(empty)"
-    return f"""You are Memora AI, the assistant built into Memora, a desktop operating system based on Arch Linux with the Hyprland compositor. You run on the person's own computer and can act on it with your tools.
+    screen = on_screen()
+    if claude_code:
+        style = CLAUDE_CODE_NOTES.format(skills_dir=SKILLS, guides=guides)
+        memory_note = "add to it with: memora-ai remember FACT"
+    else:
+        style = None
+        memory_note = "add to it with the remember tool when they tell you something worth keeping"
+    text = f"""You are Memora AI, the assistant built into Memora, a desktop operating system based on Arch Linux with the Hyprland compositor. You run on the person's own computer and can act on it with your tools.
 
 The computer: user {f['user']} (home {f['home']}), host {f['hostname']}, Memora {f['memora']}, kernel {f['kernel']}, CPU {f['cpu']}, memory {f['memory']}, graphics {f['gpu']}, disk (free/size) {f['disk']}, appearance {f['theme']}. Now: {f['time']}.
+On the screen: {screen}
 
 How Memora works: packages come from pacman (official Arch repositories); there is no AUR helper unless the person installed one. Settings live in System Settings (memora-settings PANE, panes: wifi, bluetooth, network, notifications, sound, appearance, wallpaper, dock, animations, displays, keyboard, mouse, battery, datetime, users, privacy, ai, update, about). Light/dark: memora-theme set light|dark. Updates: memora-update. Snapshots: snapper (one is taken before every pacman transaction). Hyprland is configured in Lua (~/.config/hypr/user.lua for personal changes). The shell (menu bar, Dock, Launchpad) is memora-shell. Developer toolkits: memora-dev.
 
 Working style:
-- Do what is asked with your tools rather than telling the person how to do it, unless they asked for instructions.
+{{STYLE}}- Do what is asked with your tools rather than telling the person how to do it, unless they asked for instructions.
 - Pick the most direct tool: a dedicated one (browse, open, system_setting, media, reminder, notes, apps, find_files, windows, arrange_window, weather, system_info…) beats a shell command, and a shell command beats clicking on the screen. Use the screen tools (screenshot, click, type_text, press_keys, scroll) only for work inside apps that has no other way.
 - Searching or showing something online: browse(search=…) or browse(url=…) opens the Browser right on it. Never open the Browser and type the search, and never type into this chat: you are the notch at the top of the screen, and keys you send go to the window you name with `window`.
 - Working in an app: open it, wait_for_window, screenshot, then click/type_text/press_keys with window=…, and check with a screenshot. While you do this the chat folds out of the way by itself.
@@ -100,9 +144,17 @@ Working style:
 - Risky actions are confirmed by the person before they run; if one is declined, accept it and offer an alternative. Never try to get around a declined action.
 - Keep answers short and plain. Answer in the language the person writes in. Use Markdown only where it helps (code blocks for commands and files).
 
-What you know about this person (their memory file; add to it with the remember tool when they tell you something worth keeping):
+What you know about this person (their memory file; {memory_note}):
 {memory}
 """
+    if style is None:
+        return text.replace("{STYLE}", "")
+    # Claude Code: its own notes instead of the ones about this agent's tools.
+    head, rest = text.split("{STYLE}", 1)
+    cut = rest.index("\nWhat you know")
+    bullets = ("\n" + rest[:cut]).split("\n- ")
+    keep = [b.strip() for b in bullets if b.startswith(("Keep answers short", "Do what is asked"))]
+    return head + style + "\n- " + "\n- ".join(keep) + "\n" + rest[cut:]
 
 
 # ------------------------------------------------------------------ risk ----
@@ -930,6 +982,134 @@ def describe(name, data):
     }.get(name, lambda d: name)(data or {})
 
 
+def effort_of(cfg):
+    e = (cfg.get("effort") or DEFAULT_EFFORT).lower()
+    return e if e in EFFORTS else DEFAULT_EFFORT
+
+
+def describe_cc(name, data):
+    """A line for a Claude Code tool call in the chat."""
+    if name == "Bash":
+        cmd = data.get("command", "")
+        m = re.match(r"\s*memora-ai\s+tool\s+(\w+)\s+'(.*)'\s*$", cmd, re.S)
+        if m:
+            try:
+                return describe(m.group(1), json.loads(m.group(2)))
+            except ValueError:
+                pass
+        return data.get("description") or ("Running " + cmd[:70])
+    path = (data.get("file_path") or data.get("path") or "").replace(str(HOME), "~")
+    return {"Read": f"Reading {path}", "Write": f"Writing {path}", "Edit": f"Editing {path}", "MultiEdit": f"Editing {path}",
+            "Glob": f"Looking for {data.get('pattern', 'files')}", "Grep": f"Searching for {data.get('pattern', '')}",
+            "WebSearch": f"Searching the web for {data.get('query', '')}", "WebFetch": f"Reading {data.get('url', 'a page')}",
+            "TodoWrite": "Planning"}.get(name, name)
+
+
+class PermitServer:
+    """A Unix socket for permit.py (Claude Code's permission prompts) and for
+    `memora-ai tool` run by Claude Code (its confirmations and hands)."""
+
+    def __init__(self, agent):
+        import socket
+        self.agent = agent
+        run = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+        self.path = os.path.join(run, f"memora-ai-{os.getpid()}.sock")
+        try:
+            os.unlink(self.path)
+        except OSError:
+            pass
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.bind(self.path)
+        os.chmod(self.path, 0o600)
+        self.sock.listen(8)
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self):
+        while True:
+            conn, _ = self.sock.accept()
+            threading.Thread(target=self.handle, args=(conn,), daemon=True).start()
+
+    def handle(self, conn):
+        with conn:
+            data = b""
+            while not data.endswith(b"\n"):
+                chunk = conn.recv(65536)
+                if not chunk:
+                    break
+                data += chunk
+            try:
+                req = json.loads(data or b"{}")
+            except ValueError:
+                return
+            ui = self.agent.ui
+            try:
+                if req.get("kind") == "confirm":
+                    out = {"ok": bool(ui.confirm(req.get("level", "risky"), req.get("title", ""), req.get("detail", ""), req.get("why", "")))}
+                elif req.get("kind") == "hands":
+                    getattr(ui, "hands", lambda on: None)(bool(req.get("on")))
+                    out = {}
+                else:
+                    out = self.agent.cc_permit(req)
+            except Exception as e:  # never leave Claude Code waiting
+                out = {"behavior": "deny", "message": f"{type(e).__name__}: {e}"} if "kind" not in req else {"ok": False}
+            try:
+                conn.sendall((json.dumps(out) + "\n").encode())
+            except OSError:
+                pass
+
+
+class BridgeUI:
+    """For `memora-ai tool` run by Claude Code: confirmations and folding the
+    chat go to the Memora AI window through its socket; the rest is quiet."""
+
+    def __init__(self):
+        self.path = os.environ.get("MEMORA_AI_PERMIT", "")
+
+    def ask(self, req):
+        import socket
+        if not self.path:
+            return {}
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.connect(self.path)
+                s.sendall((json.dumps(req) + "\n").encode())
+                data = b""
+                while not data.endswith(b"\n"):
+                    chunk = s.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+            return json.loads(data or b"{}")
+        except (OSError, ValueError):
+            return {}
+
+    def confirm(self, level, title, detail, why):
+        if not self.path:
+            return TerminalUI().confirm(level, title, detail, why)
+        return bool(self.ask({"kind": "confirm", "level": level, "title": title, "detail": detail, "why": why}).get("ok"))
+
+    def hands(self, on):
+        self.ask({"kind": "hands", "on": on})
+
+    def stopped(self):
+        return False
+
+    def text(self, t):
+        pass
+
+    def status(self, s):
+        pass
+
+    def tool_start(self, name, summary):
+        return 0
+
+    def tool_end(self, tid, ok):
+        pass
+
+    def error(self, msg):
+        sys.stderr.write(msg + "\n")
+
+
 # ------------------------------------------------------------- providers ----
 class Agent:
     def __init__(self, ui):
@@ -937,6 +1117,9 @@ class Agent:
         self.cfg = load_config()
         self.messages = []
         self.tools = Tools(ui)
+        self.cc_session = None     # Claude Code: this conversation's session (resumed every turn)
+        self.cc_started = False
+        self.permit = None         # the socket Claude Code's permission prompts come through
 
     def tool_specs(self):
         """Screen tools only when the person allows it (System Settings > Privacy & Security)."""
@@ -950,6 +1133,8 @@ class Agent:
 
     def reset(self):
         self.messages = []
+        self.cc_session = None
+        self.cc_started = False
 
     def turn(self, text):
         self.cfg = load_config()
@@ -990,7 +1175,8 @@ class Agent:
             client = anthropic.Anthropic(api_key=key)
             model = self.cfg.get("model") or DEFAULT_MODEL
             tools = self.tool_specs() + SERVER_TOOLS
-            extra = {"max_tokens": 32000, "thinking": {"type": "adaptive"}}
+            extra = {"max_tokens": 32000, "thinking": {"type": "adaptive"},
+                     "output_config": {"effort": effort_of(self.cfg)}}
         retries = 0
         while not self.ui.stopped():
             try:
@@ -1052,14 +1238,30 @@ class Agent:
                 results.append({"type": "tool_result", "tool_use_id": b.id, "content": content, "is_error": bool(err)})
             self.messages.append({"role": "user", "content": results})
 
-    # Claude Code answers with its own tools, in its own session.
+    # Claude Code answers with its own tools. One Claude Code session per
+    # conversation (--session-id, then --resume), so it remembers what was said;
+    # what would need permission comes to the window (permit.py -> PermitServer).
     def claude_code_turn(self, text):
         if not shutil.which("claude"):
             raise RuntimeError("Claude Code is not installed. Get it from the App Store (AI section).")
-        p = subprocess.Popen(["claude", "-p", "--output-format", "stream-json", "--verbose",
-                              "--append-system-prompt", system_prompt(), text],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=HOME)
-        answer = ""
+        if not self.permit:
+            self.permit = PermitServer(self)
+        if not self.cc_session:
+            self.cc_session, self.cc_started = str(uuid.uuid4()), False
+        mcp = {"mcpServers": {"memora": {"command": sys.executable, "args": [str(Path(__file__).with_name("permit.py"))],
+                                         "env": {"MEMORA_AI_PERMIT": self.permit.path}}}}
+        args = ["claude", "-p", "--output-format", "stream-json", "--verbose",
+                "--append-system-prompt", system_prompt(claude_code=True),
+                "--mcp-config", json.dumps(mcp),
+                "--permission-prompt-tool", "mcp__memora__approve",
+                "--disallowedTools", "AskUserQuestion",
+                "--effort", effort_of(self.cfg)]
+        if self.cfg.get("model"):
+            args += ["--model", self.cfg["model"]]
+        args += ["--resume", self.cc_session] if self.cc_started else ["--session-id", self.cc_session]
+        p = subprocess.Popen(args + ["--", text], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=HOME,
+                             env={**os.environ, "MEMORA_AI_PERMIT": self.permit.path})
+        answer, tids = "", {}
         for line in p.stdout:
             if self.ui.stopped():
                 p.terminate()
@@ -1068,26 +1270,96 @@ class Agent:
                 ev = json.loads(line)
             except ValueError:
                 continue
-            if ev.get("type") == "assistant":
+            kind = ev.get("type")
+            if kind == "system" and ev.get("session_id"):
+                self.cc_session, self.cc_started = ev["session_id"], True
+            elif kind == "assistant":
                 for c in ev.get("message", {}).get("content", []):
                     if c.get("type") == "text":
                         if c["text"].strip().lower().startswith("not logged in"):
                             p.terminate()
                             raise RuntimeError("Claude Code isn't signed in yet. Open System Settings > Memora AI and click Sign In.")
+                        if answer and not answer.endswith("\n"):
+                            self.ui.text("\n\n")
+                            answer += "\n\n"
                         self.ui.text(c["text"])
                         answer += c["text"]
                     elif c.get("type") == "tool_use":
-                        tid = self.ui.tool_start(c.get("name", ""), describe(c.get("name", ""), c.get("input", {})))
-                        self.ui.tool_end(tid, True)
+                        name = c.get("name", "")
+                        tids[c.get("id")] = self.ui.tool_start(name, describe_cc(name, c.get("input", {})))
+                    elif c.get("type") == "thinking":
+                        self.ui.status("Thinking…")
+            elif kind == "user":
+                # Tool results: mark the tool done (or failed).
+                for c in ev.get("message", {}).get("content", []) if isinstance(ev.get("message", {}).get("content"), list) else []:
+                    if c.get("type") == "tool_result" and c.get("tool_use_id") in tids:
+                        self.ui.tool_end(tids.pop(c["tool_use_id"]), not c.get("is_error"))
+        for tid in tids.values():
+            self.ui.tool_end(tid, True)
         p.wait()
+        err = (p.stderr.read() or "").strip()
         if p.returncode != 0 and not answer:
-            err = (p.stderr.read() or "").strip().splitlines()
-            msg = err[-1] if err else f"Claude Code stopped (code {p.returncode})."
+            if self.cc_started and "No conversation found" in err:
+                # The session is gone (Claude Code cleaned it up): start a new one.
+                self.cc_session = None
+                return self.claude_code_turn(text)
+            lines = err.splitlines()
+            msg = lines[-1] if lines else f"Claude Code stopped (code {p.returncode})."
             if "login" in msg.lower() or "auth" in msg.lower() or "api key" in msg.lower():
-                msg = "Claude Code isn't signed in yet. Open Terminal, type claude and sign in once."
+                msg = "Claude Code isn't signed in yet. Open System Settings > Memora AI and click Sign In."
             raise RuntimeError(msg)
+        self.cc_started = True
         self.messages.append({"role": "assistant", "content": answer or "(no answer)"})
         self.save()
+
+    def cc_permit(self, req):
+        """Claude Code asks whether a tool may run. Answers like this agent's own
+        tools: safe things run, risky ones wait for the person's OK."""
+        name, inp = req.get("tool_name", ""), req.get("input") or {}
+        allow = lambda i=inp: {"behavior": "allow", "updatedInput": i}
+        deny = lambda why: {"behavior": "deny", "message": why}
+        if name == "AskUserQuestion":
+            qs = inp.get("questions") or []
+            lines = []
+            for q in qs:
+                lines.append(f"**{q.get('question', '')}**")
+                for o in q.get("options") or []:
+                    lines.append(f"- {o.get('label', '')}" + (f" \u2014 {o['description']}" if o.get("description") else ""))
+            if lines:
+                self.ui.text("\n\n" + "\n".join(lines) + "\n")
+            return deny("The questions are now shown to the person in the chat. End your turn without doing anything else; they will answer in their next message.")
+        if name == "Bash":
+            cmd = inp.get("command", "")
+            level, why = classify_command(cmd)
+            if re.search(r"(^|[;&|(]\s*)sudo\s", cmd):
+                # Administrator commands go through polkit: Memora's password dialog.
+                inp = dict(inp, command="pkexec bash -c " + shlex.quote(re.sub(r"(^|(?<=[;&|(]))\s*sudo\s+(-\S+\s+)*", r"\1 ", cmd)))
+                level, why = (level if level == "critical" else "risky"), (why if level != "safe" else "runs as administrator")
+            if level == "safe":
+                return allow(inp)
+            reason = (req.get("input") or {}).get("description", "").strip()
+            if reason and reason[-1] not in ".!?":
+                reason += "."
+            ok = self.ui.confirm(level, "Run this command?", cmd, (reason + " " if reason else "") + f"It {why}.")
+            return allow(inp) if ok else deny("The person declined to run this command.")
+        if name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+            path = inp.get("file_path") or inp.get("notebook_path") or ""
+            exists = os.path.exists(path)
+            level, why = classify_path_write(path, exists)
+            if level == "safe":        # a new file in the home folder
+                return allow(inp)
+            if name == "Write":
+                preview = (inp.get("content") or "")[:600]
+            else:
+                edits = inp.get("edits") or [inp]
+                preview = "\n".join(f"- {e.get('old_string', '')[:200]}\n+ {e.get('new_string', '')[:200]}" for e in edits[:3])
+            title = ("Change " if exists else "Create ") + (path.replace(str(HOME), "~") or "a file") + "?"
+            ok = self.ui.confirm("critical" if level == "critical" else "risky", title, preview, why if why else "")
+            return allow(inp) if ok else deny("The person declined this change.")
+        if name in ("Read", "Glob", "Grep", "LS", "WebSearch", "WebFetch", "TodoWrite", "Task", "Agent", "ExitPlanMode", "ToolSearch", "Skill"):
+            return allow(inp)
+        ok = self.ui.confirm("risky", f"Allow {name}?", clip(json.dumps(inp, ensure_ascii=False, indent=1), 1200), "Memora AI wants to use this tool.")
+        return allow(inp) if ok else deny("The person declined.")
 
     # Ollama and OpenAI-compatible servers: plain chat.
     def openai_turn(self, provider):
@@ -1254,7 +1526,12 @@ def main():
         ui = WindowUI()
         agent = Agent(ui)
         p = agent.cfg.get("provider")
-        ui.send(type="ready", provider=p, model=agent.cfg.get("model") or ("deepseek-chat" if p == "deepseek" else DEFAULT_MODEL))
+        def ready():
+            c, p = agent.cfg, agent.cfg.get("provider") or "anthropic"
+            ui.send(type="ready", provider=p, model=c.get("model") or ("deepseek-chat" if p == "deepseek" else ("" if p == "claude-code" else DEFAULT_MODEL)),
+                    effort=effort_of(c), models=[{"id": i, "name": n} for i, n in MODELS], efforts=EFFORTS,
+                    canEffort=p in ("anthropic", "claude-code"), canModel=p in ("anthropic", "claude-code"))
+        ready()
         while True:
             m = ui.inbox.get()
             if m.get("type") == "quit":
@@ -1262,10 +1539,65 @@ def main():
             if m.get("type") == "new":
                 agent.reset()
                 continue
+            if m.get("type") == "settings":
+                # Model and effort, chosen in the window: kept in ai.json.
+                try:
+                    c = json.loads((CONF / "ai.json").read_text())
+                except (OSError, ValueError):
+                    c = {"provider": "anthropic"}
+                for k in ("model", "effort"):
+                    if k in m:
+                        c[k] = m[k]
+                try:
+                    CONF.mkdir(parents=True, exist_ok=True)
+                    (CONF / "ai.json").write_text(json.dumps(c, indent=2) + "\n")
+                except OSError:
+                    pass
+                agent.cfg = load_config()
+                ready()
+                continue
             if m.get("type") == "user":
                 ui.stop.clear()
                 agent.turn(m.get("text", ""))
                 ui.send(type="done")
+    elif mode == "tools":
+        for t in TOOLS:
+            props = t["input_schema"]["properties"]
+            req = set(t["input_schema"].get("required", []))
+            args = ", ".join(f"{k}{'' if k in req else '?'}: {v.get('type', 'any')}" + (f" {v['enum']}" if v.get("enum") else "") for k, v in props.items())
+            print(f"{t['name']}({args})\n    {t['description']}")
+    elif mode == "tool":
+        if len(sys.argv) < 3:
+            sys.exit("usage: memora-ai tool NAME 'JSON'")
+        name = sys.argv[2]
+        try:
+            data = json.loads(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].strip() else {}
+        except ValueError as e:
+            sys.exit(f"The input is not valid JSON: {e}")
+        if not any(t["name"] == name for t in TOOLS):
+            sys.exit(f"No tool called {name}. See: memora-ai tools")
+        problem = check_input(name, data)
+        if problem:
+            sys.exit(problem)
+        tools = Tools(BridgeUI())
+        tools.hands_on = False
+        try:
+            content, err = tools.run(name, data)
+        except Exception as e:
+            content, err = f"{type(e).__name__}: {e}", True
+        if isinstance(content, list):
+            # Pictures (a screenshot) go to a file Claude Code can Read.
+            out = []
+            for b in content:
+                if b.get("type") == "image":
+                    f = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / f"memora-ai-{int(time.time() * 1000)}.png"
+                    f.write_bytes(base64.b64decode(b["source"]["data"]))
+                    out.append(f"Screenshot saved: {f} (Read it to see the screen)")
+                elif b.get("type") == "text":
+                    out.append(b.get("text", ""))
+            content = "\n".join(out)
+        print(content if isinstance(content, str) else json.dumps(content, ensure_ascii=False))
+        sys.exit(1 if err else 0)
     elif mode == "ask":
         q = " ".join(sys.argv[2:])
         if not sys.stdin.isatty():

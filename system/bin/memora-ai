@@ -6,6 +6,7 @@
 #   memora-ai explain-last CMD      run CMD again and explain what went wrong
 #   memora-ai remember FACT         add to the memory file;  memora-ai memory  opens it
 #   memora-ai setup                 System Settings > Memora AI
+#   memora-ai tools                 Memora's tools; memora-ai tool NAME 'JSON' runs one
 dir="${MEMORA_PATH:-/usr/share/memora}"
 memory="$HOME/.local/share/memora/ai/memory.md"
 
@@ -19,6 +20,7 @@ window() {
 case "${1:-window}" in
   window) shift; window "$@" ;;
   ask) shift; exec python3 "$dir/ai/agent.py" ask "$@" ;;
+  tool|tools) exec python3 "$dir/ai/agent.py" "$@" ;;
   explain-clipboard) window "Explain this, briefly: $(wl-paste -n 2>/dev/null | head -c 6000)" ;;
   explain-last)
     shift; cmd="$*"

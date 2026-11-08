@@ -19,7 +19,15 @@ Scope {
   property bool expanded: false
   property bool busy: false
   property string status: ""
-  property string model: ""
+  property string model: ""          // shown in the header
+  property string modelId: ""
+  property string effort: ""
+  property var models: []             // [{ id, name }]
+  property var efforts: []
+  property bool canModel: false
+  property bool canEffort: false
+  property bool picking: false        // the model and effort chooser is open
+  property var pendingSettings: null
   property bool started: false
   // While the assistant works in apps (typing, clicking) it folds into its pill
   // and lets go of the keyboard, so keys reach the app; it opens again after.
@@ -29,12 +37,20 @@ Scope {
 
   function toggle() { expanded ? collapse() : expand() }
   function expand() { started = true; Shell.close(); expanded = true }
-  function collapse() { expanded = false }
+  function collapse() { expanded = false; picking = false }
   function send(obj) { agent.write(JSON.stringify(obj) + "\n") }
+  // Model and effort, from the header: the agent keeps them in ai.json.
+  function choose(o) {
+    if (o.model !== undefined) modelId = o.model
+    if (o.effort !== undefined) effort = o.effort
+    if (agent.running) send(Object.assign({ type: "settings" }, o))
+    else { pendingSettings = Object.assign(pendingSettings || {}, o); started = true }
+  }
+  function effortName(e) { return ({ low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" })[e] || e }
   function ask(text) {
     const t = (text || "").trim()
     if (!t || busy) return
-    started = true
+    started = true; picking = false
     items.append({ kind: "user", text: t, id: 0, ok: true, done: true, level: "", title: "", detail: "", why: "", answered: false })
     busy = true; status = "Thinking…"
     if (agent.running) send({ type: "user", text: t })
@@ -62,12 +78,23 @@ Scope {
     running: ai.started
     stdinEnabled: true
     command: ["python3", Theme.share + "/ai/agent.py", "serve"]
-    onRunningChanged: if (running && ai.pending) { ai.send({ type: "user", text: ai.pending }); ai.pending = "" }
+    onRunningChanged: {
+      if (running && ai.pendingSettings) { ai.send(Object.assign({ type: "settings" }, ai.pendingSettings)); ai.pendingSettings = null }
+      if (running && ai.pending) { ai.send({ type: "user", text: ai.pending }); ai.pending = "" }
+    }
     stdout: SplitParser {
       onRead: line => {
         let m; try { m = JSON.parse(line) } catch (e) { return }
         switch (m.type) {
-        case "ready": ai.model = m.provider === "anthropic" ? (m.model || "Claude") : (m.provider === "deepseek" ? "DeepSeek" : m.provider); break
+        case "ready": {
+          ai.models = m.models || []; ai.efforts = m.efforts || []
+          ai.canModel = !!m.canModel; ai.canEffort = !!m.canEffort
+          ai.modelId = m.model || ""; ai.effort = m.effort || ""
+          const known = ai.models.find(x => x.id === m.model)
+          ai.model = m.provider === "deepseek" ? "DeepSeek" : (m.provider === "ollama" || m.provider === "openai") ? (m.model || m.provider)
+            : (known ? known.name : (m.model || (m.provider === "claude-code" ? "Claude Code" : "Claude")))
+          break
+        }
         case "text": { const i = ai.lastAssistant(); items.setProperty(i, "text", items.get(i).text + m.delta); ai.status = "Writing…"; break }
         case "status": ai.status = m.text; break
         case "hands":
@@ -136,7 +163,7 @@ Scope {
       // Folded: a pill in the bar; working: wider, with what it is doing.
       readonly property real foldedW: ai.busy ? Math.min(460, statusText.implicitWidth + 86) : (ai.flash ? 210 : 132)
       readonly property real openW: Math.min(win.width - 40, 680)
-      readonly property real openH: Math.min(win.height - 40, items.count ? 600 : 250)
+      readonly property real openH: Math.min(win.height - 40, Math.max(items.count ? 600 : 250, ai.picking ? picker.height + 70 : 0))
 
       Item {
         id: island
@@ -204,10 +231,80 @@ Scope {
             spacing: 10
             Image { source: Quickshell.iconPath("memora-ai"); Layout.preferredWidth: 22; Layout.preferredHeight: 22; sourceSize: Qt.size(44, 44) }
             Txt { text: "Memora AI"; color: win.ink; font.weight: Font.Bold }
-            Txt { text: ai.model; color: win.faint; font.pixelSize: Theme.small; visible: text !== "" }
+            // Model · effort; a click opens the chooser.
+            Rectangle {
+              visible: ai.model !== ""
+              implicitWidth: chip.implicitWidth + 18; implicitHeight: 22; radius: 11
+              color: ai.picking || chipHover.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+              Txt {
+                id: chip; anchors.centerIn: parent
+                text: ai.model + (ai.canEffort && ai.effort ? " \u00b7 " + ai.effortName(ai.effort) : "") + ((ai.canModel || ai.canEffort) ? "  \u25BE" : "")
+                color: win.dim; font.pixelSize: Theme.small
+              }
+              HoverHandler { id: chipHover; cursorShape: (ai.canModel || ai.canEffort) ? Qt.PointingHandCursor : Qt.ArrowCursor }
+              TapHandler { onTapped: if (ai.canModel || ai.canEffort) ai.picking = !ai.picking }
+            }
             Item { Layout.fillWidth: true }
             Pill { visible: items.count > 0; text: "New Chat"; onClicked: ai.newChat() }
             Pill { text: "Close"; onClicked: ai.collapse() }
+          }
+
+          // The model and effort chooser, over the conversation.
+          Rectangle {
+            id: picker
+            visible: ai.picking
+            z: 50
+            anchors { left: parent.left; top: head.bottom; topMargin: 6 }
+            width: Math.min(parent.width, 420)
+            height: pickCol.implicitHeight + 24
+            radius: 16
+            color: "#151517"
+            border.color: win.line
+            ColumnLayout {
+              id: pickCol
+              anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
+              spacing: 6
+              Txt { visible: ai.canModel; text: "Model"; color: win.dim; font.pixelSize: Theme.small; font.weight: Font.Bold }
+              Repeater {
+                model: ai.canModel ? ai.models : []
+                delegate: Rectangle {
+                  required property var modelData
+                  Layout.fillWidth: true; implicitHeight: 30; radius: 8
+                  color: mh.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+                  Txt { x: 10; anchors.verticalCenter: parent.verticalCenter; text: modelData.name; color: win.ink }
+                  Txt {
+                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                    text: ({ "claude-fable-5-1": "most capable", "claude-opus-5-5": "deep work", "claude-sonnet-5-5": "fast and smart", "claude-haiku-5-5": "fastest" })[modelData.id] || ""
+                    color: win.faint; font.pixelSize: Theme.small
+                  }
+                  Sym { visible: ai.modelId === modelData.id; anchors { right: parent.right; rightMargin: 110; verticalCenter: parent.verticalCenter } name: "check"; width: 12; height: 12; color: Theme.accent }
+                  HoverHandler { id: mh; cursorShape: Qt.PointingHandCursor }
+                  TapHandler { onTapped: ai.choose({ model: modelData.id }) }
+                }
+              }
+              Txt { visible: ai.canEffort; Layout.topMargin: 6; text: "Effort \u2014 how hard it thinks before answering"; color: win.dim; font.pixelSize: Theme.small; font.weight: Font.Bold }
+              Row {
+                visible: ai.canEffort
+                spacing: 6
+                Repeater {
+                  model: ai.canEffort ? ai.efforts : []
+                  delegate: Rectangle {
+                    required property string modelData
+                    width: et2.implicitWidth + 20; height: 28; radius: 14
+                    color: ai.effort === modelData ? Theme.accent : (eh.hovered ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.07))
+                    Txt { id: et2; anchors.centerIn: parent; text: ai.effortName(modelData); color: "#ffffff"; font.pixelSize: Theme.small }
+                    HoverHandler { id: eh; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: ai.choose({ effort: modelData }) }
+                  }
+                }
+              }
+              Txt { Layout.fillWidth: true; Layout.topMargin: 4; wrapMode: Text.Wrap; text: "Applies from your next message. Higher effort: better answers to hard questions, but slower."; color: win.faint; font.pixelSize: Theme.small - 0.5 }
+            }
+          }
+          // A click outside the chooser closes it (one inside picks something).
+          TapHandler {
+            enabled: ai.picking
+            onTapped: ev => { const p = picker.mapFromItem(parent, ev.position.x, ev.position.y); if (!picker.contains(p)) ai.picking = false }
           }
 
           // Empty: suggestions
@@ -251,7 +348,7 @@ Scope {
               required property string why
               required property bool answered
               width: list.width
-              implicitHeight: kind === "user" ? ub.height : kind === "assistant" ? at.implicitHeight + 2
+              implicitHeight: kind === "user" ? ub.height : kind === "assistant" ? at.implicitHeight + (copyRow.visible ? 26 : 2)
                 : kind === "tool" ? 24 : kind === "confirm" ? cc.height : et.implicitHeight + 8
 
               Rectangle {
@@ -260,17 +357,42 @@ Scope {
                 anchors.right: parent.right
                 width: Math.min(ut.implicitWidth + 26, d.width * 0.75); height: ut.implicitHeight + 16
                 radius: 15; color: Theme.accent
-                Txt { id: ut; x: 13; y: 8; width: parent.width - 26; text: d.kind === "user" ? d.text : ""; color: "#ffffff"; wrapMode: Text.Wrap }
+                TextEdit {
+                  id: ut; x: 13; y: 8; width: parent.width - 26
+                  text: d.kind === "user" ? d.text : ""; color: "#ffffff"; wrapMode: Text.Wrap
+                  readOnly: true; selectByMouse: true; selectionColor: Qt.rgba(1, 1, 1, 0.35)
+                  font.family: Theme.font; font.pixelSize: Theme.fontSize
+                }
               }
-              Text {
+              // Answers can be selected (drag, then Ctrl+C) or copied whole.
+              TextEdit {
                 id: at
                 visible: d.kind === "assistant"
                 width: d.width - 20
                 text: d.kind === "assistant" ? d.text : ""
-                textFormat: Text.MarkdownText; wrapMode: Text.Wrap
-                color: win.ink; linkColor: Theme.accent
+                textFormat: TextEdit.MarkdownText; wrapMode: TextEdit.Wrap
+                readOnly: true; selectByMouse: true; persistentSelection: false
+                selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45); selectedTextColor: "#ffffff"
+                color: win.ink
                 font.family: Theme.font; font.pixelSize: Theme.fontSize
                 onLinkActivated: link => Qt.openUrlExternally(link)
+                HoverHandler { cursorShape: at.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor }
+              }
+              Row {
+                id: copyRow
+                visible: d.kind === "assistant" && d.text !== "" && !(ai.busy && d.index === items.count - 1)
+                anchors { top: at.bottom; topMargin: 4; left: parent.left }
+                spacing: 6
+                Rectangle {
+                  property bool copied: false
+                  width: cpt.implicitWidth + 30; height: 20; radius: 10
+                  color: cph.hovered ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.05)
+                  Sym { id: cps; x: 8; anchors.verticalCenter: parent.verticalCenter; name: parent.copied ? "check" : "copy"; width: 10; height: 10; color: win.dim }
+                  Txt { id: cpt; anchors { left: cps.right; leftMargin: 5; verticalCenter: parent.verticalCenter } text: parent.copied ? "Copied" : "Copy"; color: win.dim; font.pixelSize: Theme.small - 1 }
+                  HoverHandler { id: cph; cursorShape: Qt.PointingHandCursor }
+                  TapHandler { onTapped: { Quickshell.clipboardText = (at.selectedText || d.text); parent.copied = true; copiedReset.restart() } }
+                  Timer { id: copiedReset; interval: 1500; onTriggered: parent.copied = false }
+                }
               }
               Row {
                 visible: d.kind === "tool"

@@ -77,7 +77,8 @@ if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
 fi
 pacman -Sy --noconfirm >/dev/null
 gpu="$(lspci -nn | grep -iE 'vga|3d|display' || true)"
-gfx=(mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader vulkan-mesa-layers)
+# steam-devices: permissions for game controllers (Steam from the App Store asks for it).
+gfx=(mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader vulkan-mesa-layers steam-devices)
 igpu=0
 grep -qE 'AMD|ATI|Radeon' <<<"$gpu" && { gfx+=(vulkan-radeon lib32-vulkan-radeon libva-mesa-driver); igpu=1; }
 grep -qi intel <<<"$gpu" && { gfx+=(vulkan-intel lib32-vulkan-intel intel-media-driver); igpu=1; }

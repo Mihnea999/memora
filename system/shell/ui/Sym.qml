@@ -191,6 +191,13 @@ Canvas {
       ctx.beginPath(); ctx.moveTo(3, 8.4); ctx.lineTo(6.6, 12); ctx.lineTo(13.2, 4.4); ctx.stroke()
       break
     }
+    case "copy": {   // two overlapping pages
+      ctx.lineWidth = 1.5
+      rr(ctx, 5.5, 5.5, 8.5, 8.5, 1.8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(10.5, 3.6); ctx.lineTo(10.5, 3.4); ctx.quadraticCurveTo(10.5, 2, 9.1, 2); ctx.lineTo(3.4, 2)
+      ctx.quadraticCurveTo(2, 2, 2, 3.4); ctx.lineTo(2, 9.1); ctx.quadraticCurveTo(2, 10.5, 3.4, 10.5); ctx.lineTo(3.6, 10.5); ctx.stroke()
+      break
+    }
     case "plus": {
       ctx.lineWidth = 1.7
       ctx.beginPath(); ctx.moveTo(8, 2.5); ctx.lineTo(8, 13.5); ctx.moveTo(2.5, 8); ctx.lineTo(13.5, 8); ctx.stroke()
