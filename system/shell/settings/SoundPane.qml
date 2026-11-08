@@ -26,7 +26,7 @@ Kit.Page {
       label: "Output volume"; badge: "sound"; badgeColor: "#ff4fa0"; last: true
       RowLayout {
         spacing: 10
-        Slider { implicitWidth: 220; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.setVolume(v) }
+        Slider { implicitWidth: 220; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.changeVolume(v) }
         Kit.Switch { checked: !Sys.muted; onToggled: Sys.toggleMute() }
       }
     }
@@ -36,7 +36,7 @@ Kit.Page {
     footer: "The alert sound plays with notifications and reminders."
     Kit.Row {
       label: "Alert volume"; badge: "sound"; badgeColor: "#ff9f0a"
-      Slider { implicitWidth: 220; sym: "sound"; value: Prefs.alertVolume; onMoved: v => { Prefs.set("alertVolume", Math.round(v * 100) / 100); volPreview.restart() } }
+      Slider { implicitWidth: 220; sym: Prefs.alertVolume > 0 ? "sound" : "sound-off"; value: Prefs.alertVolume; onMoved: v => { Prefs.set("alertVolume", Math.round(v * 100) / 100); volPreview.restart() } }
     }
     Kit.Row {
       label: "Play sound on startup"

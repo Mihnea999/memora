@@ -18,6 +18,13 @@ Singleton {
   readonly property bool muted: sink && sink.audio ? sink.audio.muted : false
   function setVolume(v) { if (sink && sink.audio) { sink.audio.muted = false; sink.audio.volume = Math.max(0, Math.min(1, v)) } }
   function toggleMute() { if (sink && sink.audio) sink.audio.muted = !sink.audio.muted }
+  // Changed by hand (keys, sliders, scrolling): like a Mac, a short pop at the
+  // new level once it stops changing, so holding a key or dragging plays it once.
+  function changeVolume(v) { setVolume(v); popLater.restart() }
+  property Timer popLater: Timer {
+    interval: 180
+    onTriggered: if (!sys.muted && sys.volume > 0) Quickshell.execDetached(["memora-sound", "volume"])
+  }
 
   // ---- brightness (brightnessctl; absent on desktops and VMs)
   property bool hasBacklight: false

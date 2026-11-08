@@ -241,7 +241,7 @@ PopupWindow {
           anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; verticalCenter: parent.verticalCenter }
           sym: Sys.muted ? "sound-off" : "sound"
           value: Sys.muted ? 0 : Sys.volume
-          onMoved: v => Sys.setVolume(v)
+          onMoved: v => Sys.changeVolume(v)
         }
       }
       Sep {}

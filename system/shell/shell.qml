@@ -26,13 +26,24 @@ import qs.desktops
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
 ShellRoot {
+  id: root
   Component.onCompleted: Shell.main = true   // this process holds Keep Awake's inhibitor
 
   // A chime when a charger is plugged in (laptops), like a Mac.
   Connections {
     target: UPower
-    function onOnBatteryChanged() { if (!UPower.onBattery) Quickshell.execDetached(["memora-sound", "power"]) }
+    function onOnBatteryChanged() {
+      // Only a real change from battery to charger on a laptop, not UPower
+      // reporting its state while the desktop starts.
+      const was = root.onBattery
+      root.onBattery = UPower.onBattery
+      const laptop = UPower.displayDevice && UPower.displayDevice.isLaptopBattery
+      if (was && !UPower.onBattery && laptop && Date.now() - root.started > 5000)
+        Quickshell.execDetached(["memora-sound", "power"])
+    }
   }
+  property bool onBattery: UPower.onBattery
+  readonly property real started: Date.now()
   Variants { model: Quickshell.screens; Wallpaper {} }
   Variants { model: Quickshell.screens; MenuBar {} }
   Variants { model: Quickshell.screens; Dock {} }

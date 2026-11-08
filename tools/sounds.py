@@ -117,33 +117,79 @@ def reverb(x, wet=0.25, room=0.82, tail=1.2):
     return [a + b * wet / 4 for a, b in zip(x, wetsig)]
 
 
-def finish(x, peak=0.7, fade=0.02):
-    # trim the silent tail, fade the end, normalise
+def loudness(x):
+    """Loudest 100 ms (RMS, dB), with the low end weighted down as the ear hears it."""
+    w = highpass(x, 150)
+    n = int(0.1 * SR)
+    sq = [v * v for v in w]
+    acc = sum(sq[:n])
+    best = acc
+    for i in range(n, len(sq)):
+        acc += sq[i] - sq[i - n]
+        best = max(best, acc)
+    return 10 * math.log10(max(best / n, 1e-12))
+
+
+def finish(x, level=-17.0, ceiling=0.89, fade_in=0.0015, fade_out=0.02):
+    """Remove any DC, trim the silent tail, fade both ends (no clicks), then
+    bring every sound to the same loudness (level, dB) without peaks over -1 dBFS."""
+    x = highpass(x, 12)
     m = max(abs(v) for v in x) or 1
     end = len(x)
     while end > 0 and abs(x[end - 1]) < m * 0.001:
         end -= 1
     x = x[:end]
-    nf = int(fade * SR)
-    for i in range(min(nf, len(x))):
-        x[len(x) - 1 - i] *= i / nf
-    return [v * peak / m for v in x]
+    ni, no = int(fade_in * SR), int(fade_out * SR)
+    for i in range(min(ni, len(x))):
+        x[i] *= i / ni
+    for i in range(min(no, len(x))):
+        x[len(x) - 1 - i] *= i / no
+    gain = 10 ** ((level - loudness(x)) / 20)
+    peak = max(abs(v) for v in x) * gain
+    if peak > ceiling:
+        gain *= ceiling / peak
+    return [v * gain for v in x]
 
 
-def save(name, x, peak=0.7):
-    x = finish(x, peak)
-    os.makedirs(OUT, exist_ok=True)
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        tmp = f.name
-    with wave.open(tmp, "wb") as w:
+def write_wav(path, x):
+    with wave.open(path, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(SR)
-        w.writeframes(b"".join(struct.pack("<h", int(max(-1, min(1, v)) * 32767)) for v in x))
+        w.writeframes(b"".join(struct.pack("<h", int(round(max(-1, min(1, v)) * 32767))) for v in x))
+
+
+def momentary_max(path):
+    """The loudest momentary loudness (EBU R128, 400 ms), as ffmpeg measures it."""
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-loglevel", "verbose", "-i", path,
+                        "-af", "apad=pad_dur=0.5,ebur128", "-f", "null", "-"], capture_output=True, text=True)
+    vals = [float(v) for v in __import__("re").findall(r"\bM:\s*(-?[0-9.]+)", r.stderr)]
+    return max(vals) if vals else -70.0
+
+
+def save(name, x, level=-17.0, ceiling=0.89):
+    """Every sound at the same loudness: `level` is its loudest moment (LUFS).
+    Sharp sounds that would peak over -1 dBFS are rounded off gently (tanh)."""
+    x = finish(x, level)
+    os.makedirs(OUT, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        tmp = f.name
+    for _ in range(4):
+        write_wav(tmp, x)
+        err = level - momentary_max(tmp)
+        if abs(err) < 0.3:
+            break
+        g = 10 ** (err / 20)
+        x = [v * g for v in x]
+        if max(abs(v) for v in x) > ceiling:
+            x = [ceiling * math.tanh(v / ceiling) for v in x]
+    write_wav(tmp, x)
+    got = momentary_max(tmp)
     dst = os.path.join(OUT, name + ".oga")
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", tmp, "-c:a", "libvorbis", "-q:a", "6", dst], check=True)
     os.unlink(tmp)
-    print(f"{name}.oga  {len(x) / SR:.2f}s")
+    print(f"{name}.oga  {len(x) / SR:.2f}s  {got:.1f} LUFS (target {level})  peak {max(abs(v) for v in x):.2f}")
+
 
 
 GLASS = [(1, 1, 0.5), (2.76, 0.35, 0.18), (5.40, 0.15, 0.08), (8.93, 0.06, 0.04)]
@@ -189,17 +235,17 @@ def system():
             harm = [(h, 1 / h ** 1.3, 3.6 / (1 + 0.35 * h)) for h in range(1, 9)]
             mix(s, bell(f * (1 + det / 1200), 4.5, harm, attack=0.06), 0.004 * k, 0.5 / (1 + 0.15 * k))
     s = lowpass(s, 3200)
-    save("startup", reverb(s, 0.35, room=0.86, tail=1.8), peak=0.6)
+    save("startup", reverb(s, 0.35, room=0.86, tail=1.8), level=-18)
 
     # Volume: a short, soft pop
     v = mix(sweep(1500, 950, 0.07, 0.018, attack=0.0008, curve=0.008), bandpass(noise(0.01, 0.002), 2000, 8000), 0, 0.15)
-    save("volume", reverb(v, 0.12, tail=0.25), peak=0.55)
+    save("volume", reverb(v, 0.12, tail=0.25), level=-21)
 
     # Screenshot: a camera shutter (click, clack)
     def click(lo, hi, dec):
         return mix(bandpass(noise(0.05, dec), lo, hi), bell(lo * 1.6, 0.05, [(1, 0.4, dec)]))
     sh = mix(click(1800, 7000, 0.006), click(1200, 5000, 0.009), 0.085, 0.8)
-    save("screenshot", reverb(sh, 0.15, tail=0.3))
+    save("screenshot", reverb(sh, 0.15, tail=0.3), level=-19)
 
     # Trash: paper being crumpled and dropped in
     tr = silence(0.55)
@@ -209,19 +255,19 @@ def system():
         mix(tr, bandpass(noise(0.04, dec), random.uniform(800, 2500), random.uniform(4000, 9000)), t, random.uniform(0.3, 1.0) * (1 - t))
         t += random.uniform(0.012, 0.04)
     mix(tr, lowpass(noise(0.12, 0.03), 900), 0.42, 0.8)
-    save("trash", reverb(tr, 0.15, tail=0.4))
+    save("trash", reverb(tr, 0.15, tail=0.4), level=-19)
 
     # Power: plugged into a charger, a soft glassy rise
     pw = mix(bell(1046.5, 0.8, CHIME, attack=0.004), bell(1568, 1.0, CHIME, attack=0.004), 0.09, 0.85)
-    save("power", reverb(pw, 0.3), peak=0.55)
+    save("power", reverb(pw, 0.3), level=-19)
 
     # Error: a low, muted knock (wrong password, something not allowed)
     e = mix(bell(196, 0.4, [(1, 1, 0.09), (1.5, 0.5, 0.06), (2.02, 0.3, 0.04)], attack=0.003), lowpass(noise(0.02, 0.004), 1200), 0, 0.3)
-    save("error", reverb(e, 0.15, tail=0.3))
+    save("error", reverb(e, 0.15, tail=0.3), level=-19)
 
     # Done: something finished (a download, an update), two quick ascending notes
     dn = mix(bell(1174.7, 0.6, CHIME), bell(1760, 0.8, CHIME), 0.07, 0.8)
-    save("done", reverb(dn, 0.25), peak=0.55)
+    save("done", reverb(dn, 0.25), level=-19)
 
 
 if __name__ == "__main__":

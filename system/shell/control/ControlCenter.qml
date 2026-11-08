@@ -165,7 +165,7 @@ PanelWindow {
         Layout.fillWidth: true
         Layout.preferredHeight: 70
         Txt { text: "Sound"; font.weight: Font.Bold; x: 12; y: 10 }
-        Slider { x: 12; y: 32; width: parent.width - 24; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.setVolume(v) }
+        Slider { x: 12; y: 32; width: parent.width - 24; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.changeVolume(v) }
       }
 
       Module {

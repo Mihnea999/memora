@@ -27,9 +27,12 @@ Singleton {
       ns.history = [n].concat(ns.history).slice(0, 60)
       if (!Shell.focusMode || n.urgency === NotificationUrgency.Critical) {
         ns.popups = ns.popups.concat([n])
-        // The alert sound, unless the app plays its own or asked for silence.
+        // The alert sound, unless the app asked for silence ("suppress-sound") or
+        // the notification is low priority (background news). An app's own
+        // "sound-name"/"sound-file" asks for a sound: the alert sound plays.
         const h = n.hints || {}
-        if (!h["suppress-sound"] && !h["sound-file"] && !h["sound-name"]) ns.chime()
+        const quiet = h["suppress-sound"] === true || h["suppress-sound"] === 1 || h["suppress-sound"] === "true"
+        if (!quiet && n.urgency !== NotificationUrgency.Low) ns.chime()
       }
       n.closed.connect(() => {
         ns.history = ns.history.filter(x => x !== n)

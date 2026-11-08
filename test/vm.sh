@@ -26,7 +26,9 @@ common=(-machine q35,accel=kvm -cpu host -smp 6 -m 8G
 
 # Sound card: Intel HD Audio, played through the host's PipeWire.
 # AUDIODEV="wav,path=/abs/out.wav" records what the VM plays instead (for tests).
-audio=(-audiodev "${AUDIODEV:-pipewire},id=snd0" -device ich9-intel-hda -device hda-duplex,audiodev=snd0)
+# (a file has no microphone side, so then the card is output only)
+codec=hda-duplex; [[ ${AUDIODEV:-} == wav* ]] && codec=hda-output
+audio=(-audiodev "${AUDIODEV:-pipewire},id=snd0" -device ich9-intel-hda -device "$codec,audiodev=snd0")
 
 # Live source tree inside the VM (fstab of test installs mounts these when present).
 mkdir -p share

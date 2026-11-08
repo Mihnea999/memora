@@ -45,7 +45,7 @@ Singleton {
   property string alertSound: "glint"  // glint | drop | chime | bell | pebble | bubble | breeze | pluck (system/sounds)
   property real alertVolume: 0.7       // alert and sound-effect volume, relative to the output volume
   property bool startupSound: true     // a chord when the desktop starts
-  property bool uiSounds: true         // screenshot, emptying the Trash, charger, wrong password…
+  property bool uiSounds: true         // screenshot, emptying the Trash, plugging in a charger
   property bool volumeFeedback: true   // a pop after changing the volume with the keys
   property bool updateCheck: true      // look for updates in the background and say when there are some
   // Desktops and windows

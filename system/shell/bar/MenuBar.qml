@@ -155,7 +155,7 @@ PanelWindow {
       tip: "Sound"
       Sym { anchors.centerIn: parent; name: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; level: Sys.volume; width: 16; height: 16 }
       menu: "sound"
-      onScrolled: up => Sys.setVolume(Sys.volume + (up ? 0.05 : -0.05))
+      onScrolled: up => Sys.changeVolume(Sys.volume + (up ? 0.05 : -0.05))
     }
 
     BarButton {
