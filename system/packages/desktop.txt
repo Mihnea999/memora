@@ -48,3 +48,4 @@ libnotify
 ydotool
 adw-gtk-theme
 flatpak
+python-gobject

@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""memora-flatpak install REMOTE APP | update [APP] | uninstall APP
+
+What the App Store runs to install, update and remove apps (the user's own
+Flatpak installation). Unlike the flatpak command, it reports how far along it
+is even without a terminal: lines "PROGRESS 0-100" for the whole job (every
+runtime and extension it needs included), then exits 0 when done.
+"""
+import signal
+import sys
+
+import gi
+
+gi.require_version("Flatpak", "1.0")
+from gi.repository import Flatpak, GLib  # noqa: E402
+
+signal.signal(signal.SIGTERM, signal.SIG_DFL)   # the App Store's Stop button
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+
+def say(*a):
+    print(*a, flush=True)
+
+
+def app_ref(inst, remote, app):
+    """The full ref (app/ID/arch/branch) of an app on a remote."""
+    arch = Flatpak.get_default_arch()
+    for branch in (None, "stable", "master"):
+        try:
+            return inst.fetch_remote_ref_sync(remote, Flatpak.RefKind.APP, app, arch, branch, None).format_ref()
+        except GLib.Error:
+            continue
+    return f"app/{app}/{arch}/stable"
+
+
+def installed_ref(inst, app):
+    for r in inst.list_installed_refs_by_kind(Flatpak.RefKind.APP, None):
+        if r.get_name() == app:
+            return r.format_ref()
+    return None
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] not in ("install", "update", "uninstall"):
+        sys.exit(__doc__)
+    kind, args = sys.argv[1], sys.argv[2:]
+    inst = Flatpak.Installation.new_user(None)
+    t = Flatpak.Transaction.new_for_installation(inst, None)
+    t.set_no_interaction(True)
+
+    if kind == "install":
+        if len(args) < 2:
+            sys.exit("usage: memora-flatpak install REMOTE APP")
+        t.add_install(args[0], app_ref(inst, args[0], args[1]), None)
+    elif kind == "update":
+        if args:
+            ref = installed_ref(inst, args[0])
+            if not ref:
+                sys.exit(f"{args[0]} is not installed.")
+            t.add_update(ref, None, None)
+        else:
+            for r in inst.list_installed_refs_for_update(None):
+                t.add_update(r.format_ref(), None, None)
+    else:
+        ref = installed_ref(inst, args[0]) if args else None
+        if not ref:
+            sys.exit(f"{args[0] if args else 'The app'} is not installed.")
+        t.add_uninstall(ref)
+
+    state = {"ops": 1, "done": 0, "last": -1}
+
+    def report(frac):
+        pct = int(max(0, min(100, frac * 100)))
+        if pct != state["last"]:
+            state["last"] = pct
+            say(f"PROGRESS {pct}")
+
+    def on_ready(tr):
+        state["ops"] = max(1, len(tr.get_operations()))
+        report(0)
+        return True
+
+    def on_new_operation(tr, op, progress):
+        say("STEP", op.get_operation_type().value_nick, op.get_ref())
+        progress.set_update_frequency(200)
+        progress.connect("changed", lambda p: report((state["done"] + p.get_progress() / 100) / state["ops"]))
+
+    def on_done(tr, op, commit, result):
+        state["done"] += 1
+        report(state["done"] / state["ops"])
+
+    def on_error(tr, op, err, details):
+        say("ERROR", err.message)
+        return False   # stop
+
+    t.connect("ready", on_ready)
+    t.connect("new-operation", on_new_operation)
+    t.connect("operation-done", on_done)
+    t.connect("operation-error", on_error)
+    t.connect("choose-remote-for-ref", lambda tr, ref, runtime, remotes: 0)
+    t.connect("add-new-remote", lambda *a: False)
+
+    if t.is_empty():
+        say("PROGRESS 100")
+        return
+    try:
+        t.run(None)
+    except GLib.Error as e:
+        if "already installed" in e.message.lower():
+            say("PROGRESS 100")
+            return
+        sys.exit(e.message)
+    report(1)
+
+
+if __name__ == "__main__":
+    main()

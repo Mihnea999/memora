@@ -88,19 +88,20 @@ ShellRoot {
     property string appId
     property string kind
     command: appId.startsWith("cli.") ? ["memora-store-cli", kind, appId]
+      // memora-flatpak reports "PROGRESS n" for the whole job (flatpak itself
+      // shows no progress without a terminal).
       : kind === "install"
-      ? ["flatpak", "install", "--user", "-y", "--noninteractive", (app.entry(appId) || {}).remote || "flathub", appId]
+      ? ["memora-flatpak", "install", (app.entry(appId) || {}).remote || "flathub", appId]
       : kind === "update"
-      ? (appId === "*" ? ["flatpak", "update", "--user", "-y", "--noninteractive"] : ["flatpak", "update", "--user", "-y", "--noninteractive", appId])
-      : ["flatpak", "uninstall", "--user", "-y", "--noninteractive", appId]
+      ? (appId === "*" ? ["memora-flatpak", "update"] : ["memora-flatpak", "update", appId])
+      : ["memora-flatpak", "uninstall", appId]
     property bool cancelled: false
     running: true
     stdout: SplitParser {
-      splitMarker: ""
-      onRead: data => {
-        // flatpak prints "… 42%" while downloading.
-        const m = data.match(/(\d{1,3})%/g)
-        if (m) app.setProgress(appId, parseInt(m[m.length - 1]) / 100)
+      onRead: line => {
+        let m = line.match(/^PROGRESS (\d{1,3})/)
+        if (!m) m = line.match(/(\d{1,3})%\s*$/)          // memora-store-cli
+        if (m) app.setProgress(appId, Math.min(100, parseInt(m[1])) / 100)
       }
     }
     onExited: code => {
@@ -114,7 +115,8 @@ ShellRoot {
       destroy()
     }
   } }
-  function setProgress(id, p) { const j = Object.assign({}, jobs); if (j[id]) { j[id].progress = p; jobs = j } }
+  // A new job object each time: the ring only notices a different object.
+  function setProgress(id, p) { if (!jobs[id] || jobs[id].progress === p) return; const j = Object.assign({}, jobs); j[id] = Object.assign({}, j[id], { progress: p }); jobs = j }
   function start(id, kind) {
     if (jobs[id]) return
     const j = Object.assign({}, jobs); j[id] = { kind: kind, progress: 0 }; jobs = j
@@ -493,24 +495,44 @@ ShellRoot {
         Txt { id: gt; anchors.centerIn: parent; text: gbtn.update ? "Update" : (gbtn.have ? "Open" : "Get"); font.weight: Font.Bold; color: gbtn.light ? "#1c1c1e" : Theme.accent }
         TapHandler { id: pt; enabled: app.ready || gbtn.have; onTapped: gbtn.update ? app.start(gbtn.appId, "update") : (gbtn.have ? app.open(gbtn.appId) : app.start(gbtn.appId, "install")) }
       }
-      // Progress ring while it downloads.
-      Canvas {
+      // Progress ring while it downloads, as on a Mac: a grey track that fills
+      // with the accent colour from the top, and a stop square that stays still
+      // in the middle. Until the size is known, a short arc goes round instead.
+      Item {
         anchors.fill: parent
         visible: !!gbtn.job
-        property real p: gbtn.job ? gbtn.job.progress : 0
-        onPChanged: requestPaint()
-        onVisibleChanged: requestPaint()
-        RotationAnimation on rotation { running: !!gbtn.job && gbtn.job.progress === 0; from: 0; to: 360; duration: 1000; loops: Animation.Infinite }
-        onPaint: {
-          const c = getContext("2d"); c.reset()
-          const r = width / 2 - 2
-          c.lineWidth = 2.5
-          c.strokeStyle = Theme.separator
-          c.beginPath(); c.arc(width / 2, height / 2, r, 0, Math.PI * 2); c.stroke()
-          c.strokeStyle = Theme.accent
-          c.beginPath(); c.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.08, p)); c.stroke()
-          c.fillStyle = Theme.accent
-          c.fillRect(width / 2 - 3.5, height / 2 - 3.5, 7, 7)
+        readonly property real p: gbtn.job ? gbtn.job.progress : 0
+        readonly property bool waiting: !!gbtn.job && p <= 0
+        Canvas {
+          id: track
+          anchors.fill: parent
+          onPaint: {
+            const c = getContext("2d"); c.reset()
+            c.lineWidth = 2.5; c.strokeStyle = Theme.separator
+            c.beginPath(); c.arc(width / 2, height / 2, width / 2 - 2, 0, Math.PI * 2); c.stroke()
+          }
+          Component.onCompleted: requestPaint()
+        }
+        Canvas {
+          id: arc
+          anchors.fill: parent
+          property real p: parent.p
+          property bool waiting: parent.waiting
+          onPChanged: requestPaint()
+          onWaitingChanged: { requestPaint(); if (!waiting) rotation = 0 }
+          onVisibleChanged: requestPaint()
+          RotationAnimation on rotation { running: arc.waiting && arc.visible; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
+          onPaint: {
+            const c = getContext("2d"); c.reset()
+            c.lineWidth = 2.5; c.lineCap = "round"; c.strokeStyle = Theme.accent
+            const a = waiting ? 0.22 : Math.max(0.02, Math.min(1, p))
+            c.beginPath(); c.arc(width / 2, height / 2, width / 2 - 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * a); c.stroke()
+          }
+        }
+        Rectangle {
+          anchors.centerIn: parent
+          width: 8; height: 8; radius: 1.5
+          color: Theme.accent
         }
         // The square in the middle stops the download.
         TapHandler { enabled: !!gbtn.job && gbtn.job.kind === "install"; onTapped: app.cancel(gbtn.appId) }
