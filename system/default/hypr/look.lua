@@ -41,6 +41,9 @@ hl.config({
     key_press_enables_dpms = true,
     animate_mouse_windowdragging = true,
     animate_manual_resizes = true,
+    -- The session sets XDG_CURRENT_DESKTOP=Hyprland:GNOME on purpose (apps then
+    -- use the system keyring), so Hyprland needn't warn about it.
+    disable_xdg_env_checks = true,
   },
   cursor = { hide_on_key_press = true },
   ecosystem = { no_update_news = true, no_donation_nag = true },
