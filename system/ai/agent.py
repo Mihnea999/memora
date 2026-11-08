@@ -275,6 +275,9 @@ TOOLS = [
          {"action": {"type": "string", "enum": ["set", "list", "cancel"]}, "text": S, "minutes": I, "at": S, "id": S}, ["action"]),
     tool("notes", "The Notes app: create a note (title and text; lines starting with '☐ ' are checklist items), list recent notes, search them, or read one by id.",
          {"action": {"type": "string", "enum": ["create", "list", "search", "read"]}, "title": S, "text": S, "query": S, "id": S}, ["action"]),
+    tool("widget", "Desktop widgets of your own: small glass cards on the desktop picture. create (or update) one from QML you write (read the widgets guide first: skill('widgets')), remove one, list them, or show one's QML. After create it says whether it loaded or the error to fix.",
+         {"action": {"type": "string", "enum": ["create", "remove", "list", "show"]}, "name": S,
+          "size": {"type": "string", "enum": ["small", "medium"]}, "qml": S}, ["action"]),
     tool("power", "Lock the screen, sleep, restart, shut down or log out. Restart, shut down and log out show their own question on screen.",
          {"action": {"type": "string", "enum": ["lock", "sleep", "restart", "shutdown", "logout"]}}, ["action"]),
     tool("system_info", "Facts about the computer now: battery, network, storage, memory, cpu, processes (the busiest), displays, audio, or all.",
@@ -860,6 +863,57 @@ class Tools:
         NOTES.write_text(json.dumps(j))
         return f"Note \"{title or text[:30]}\" saved in Notes.", False
 
+    # ---- desktop widgets (shell/widgets/Widgets.qml shows them)
+    def t_widget(self, action, name="", size="small", qml=""):
+        wdir = CONF / "widgets"
+        layout_file = CONF / "widgets.json"
+        try:
+            layout = json.loads(layout_file.read_text())
+        except (OSError, ValueError):
+            layout = None   # the shell writes its defaults on first start
+        mine = [o for o in (layout or []) if o.get("type") == "custom"]
+        if action == "list":
+            return "\n".join(f"{o.get('file')} ({o.get('size', 'small')})" for o in mine) or "No widgets of your own yet.", False
+        name = re.sub(r"[^a-z0-9-]+", "-", (name or "").lower()).strip("-")[:40]
+        if not name:
+            return "Give the widget a name (letters, digits, dashes).", True
+        f = wdir / f"{name}.qml"
+        if action == "show":
+            return (f.read_text() if f.exists() else f"No widget called {name}."), not f.exists()
+        if action == "remove":
+            if layout is not None:
+                layout_file.write_text(json.dumps([o for o in layout if not (o.get("type") == "custom" and o.get("file") == name)], indent=1) + "\n")
+            for p in (f, wdir / f"{name}.status"):
+                p.unlink(missing_ok=True)
+            return f"Removed the {name} widget.", False
+        if not qml.strip():
+            return "Write the widget's QML in `qml`.", True
+        wdir.mkdir(parents=True, exist_ok=True)
+        st = wdir / f"{name}.status"
+        before = st.stat().st_mtime if st.exists() else 0
+        f.write_text(qml)
+        size = size if size in ("small", "medium") else "small"
+        if layout is None:
+            layout = [{"type": "weather", "size": "medium", "x": 24, "y": 48}, {"type": "clock", "size": "small", "x": 24, "y": 232},
+                      {"type": "calendar", "size": "small", "x": 208, "y": 232}, {"type": "music", "size": "medium", "x": 24, "y": 416}]
+        entry = next((o for o in layout if o.get("type") == "custom" and o.get("file") == name), None)
+        if entry is None:
+            layout.append({"type": "custom", "file": name, "size": size})   # the desktop finds it a free spot
+        elif entry.get("size") != size:
+            entry["size"] = size
+        layout_file.write_text(json.dumps(layout, indent=1) + "\n")
+        # The desktop loads it and writes NAME.status: "ok", or "error" and why.
+        for _ in range(30):
+            time.sleep(0.2)
+            if st.exists() and st.stat().st_mtime > before:
+                break
+        if not (st.exists() and st.stat().st_mtime > before):
+            return f"Saved {f}. The desktop has not reported back yet (is the desktop running?); look with a screenshot.", False
+        result = st.read_text().strip()
+        if result.startswith("error"):
+            return f"The widget did not load. Fix the QML and create it again:\n{result.partition(chr(10))[2].strip()}", True
+        return f"The {name} widget is on the desktop ({size}). Take a screenshot to check how it looks.", False
+
     # ---- the computer
     def t_power(self, action):
         if action == "lock":
@@ -971,6 +1025,7 @@ def describe(name, data):
         "find_files": lambda d: "Looking for " + (d.get("name") or d.get("text") or "files"),
         "reminder": lambda d: "Reminder: " + (d.get("text") or d.get("action", "")),
         "notes": lambda d: "Notes: " + (d.get("title") or d.get("query") or d.get("action", "")),
+        "widget": lambda d: {"create": "Making the widget ", "remove": "Removing the widget ", "list": "Looking at widgets", "show": "Reading the widget "}.get(d.get("action"), "Widget ") + (d.get("name") or ""),
         "power": lambda d: d.get("action", "").capitalize(),
         "system_info": lambda d: "Checking " + d.get("what", "the computer"),
         "download": lambda d: "Downloading " + d.get("url", ""),

@@ -10,6 +10,8 @@ import qs.ui
 // windows. Right-click the desktop and choose Edit Widgets to move them
 // (drag), remove them (−) or add new ones from the gallery. The layout is
 // kept in ~/.config/memora/widgets.json.
+// Widgets of your own (Memora AI makes them): type "custom", file NAME, which
+// is ~/.config/memora/widgets/NAME.qml. Entries without x/y get a free spot.
 Item {
   id: root
   anchors.fill: parent
@@ -40,7 +42,7 @@ Item {
     printErrors: false
     watchChanges: true
     onFileChanged: reload()
-    onLoaded: { try { root.layout = JSON.parse(text()); Qt.callLater(root.snapAll) } catch (e) { root.layout = root.defaults } }
+    onLoaded: { try { root.layout = JSON.parse(text()); Qt.callLater(root.placeNew); Qt.callLater(root.snapAll) } catch (e) { root.layout = root.defaults } }
     onLoadFailed: root.layout = root.defaults
   }
   function save(l) { layout = l; store.setText(JSON.stringify(l, null, 1) + "\n") }
@@ -96,6 +98,20 @@ Item {
     save(l)
   }
   function remove(i) { const l = layout.slice(); l.splice(i, 1); save(l) }
+  // New entries (written by Memora AI) have no place yet: give each a free one.
+  function placeNew() {
+    if (width <= 0 || !layout.some(o => typeof o.x !== "number")) return
+    let l = layout.filter(o => typeof o.x === "number")
+    const fresh = layout.filter(o => typeof o.x !== "number")
+    layout = l
+    fresh.forEach(o => {
+      const k = nearest(0, 0, o.size === "medium" ? 2 : 1, -1)
+      if (!k) return
+      l = l.concat([Object.assign({}, o, { x: ox + k.c * step, y: oy + k.r * step })])
+      layout = l
+    })
+    save(l)
+  }
   function add(type, size) {
     const span = size === "medium" ? 2 : 1
     const k = nearest(0, 0, span, -1)
@@ -231,8 +247,9 @@ Item {
         Behavior on scale { NumberAnimation { duration: Theme.fast } }
         Loader {
           anchors { fill: parent; margins: 16 }
-          sourceComponent: ({ clock: clockC, weather: weatherC, calendar: calendarC, system: systemC, music: musicC, notes: notesC })[w.modelData.type] || null
+          sourceComponent: ({ clock: clockC, weather: weatherC, calendar: calendarC, system: systemC, music: musicC, notes: notesC, custom: customC })[w.modelData.type] || null
           property bool medium: w.medium
+          property string file: w.modelData.file || ""
         }
       }
       // Remove, while editing.
@@ -262,6 +279,69 @@ Item {
   }
 
   // ---- widget faces ------------------------------------------------------------
+  // A widget of your own: ~/.config/memora/widgets/NAME.qml, reloaded when the
+  // file changes. Its root may declare `property var memora`, which gets
+  // { dark, text, dim, accent, font, small, large, medium }. Whether it loaded
+  // is written next to it in NAME.status ("ok" or the error), for Memora AI.
+  Component {
+    id: customC
+    Item {
+      id: cw
+      readonly property string file: parent ? parent.file : ""
+      readonly property bool medium: parent ? parent.medium : false
+      readonly property string path: Quickshell.env("HOME") + "/.config/memora/widgets/" + file + ".qml"
+      // Loaded from a copy with a new name each time it changes: QML keeps
+      // what it loaded once per name (and a "?v=" on the name spoils its errors).
+      property int ver: 0
+      property string loadPath: ""
+      readonly property string cacheDir: Quickshell.env("HOME") + "/.cache/memora/widgets"
+      function refresh() {
+        if (!file) return
+        ver++
+        copier.dest = cacheDir + "/" + file + "-" + ver + ".qml"
+        // (old copies go after a while, not now: the one showing may still be read)
+        copier.command = ["bash", "-c", "mkdir -p \"$3\" && find \"$3\" -name \"$4-*.qml\" -mmin +10 -delete; cp -- \"$1\" \"$2\"", "_", path, copier.dest, cacheDir, file]
+        copier.running = true
+      }
+      Process { id: copier; property string dest; onExited: code => { if (code === 0) cw.loadPath = dest } }
+      FileView { path: cw.file ? cw.path : ""; watchChanges: true; printErrors: false; onFileChanged: cw.refresh() }
+      Component.onCompleted: refresh()
+      FileView { id: statusFile; path: cw.file ? cw.path.replace(/\.qml$/, ".status") : ""; printErrors: false }
+      Loader {
+        id: ld
+        anchors.fill: parent
+        source: cw.loadPath ? "file://" + cw.loadPath : ""
+        // Reported for every new copy (an error again after a fix is not a "change").
+        onStatusChanged: report()
+        onSourceChanged: Qt.callLater(report)
+        property string reported: ""
+        function report() {
+          if (status !== Loader.Error && status !== Loader.Ready) return
+          const key = source + status
+          if (key === reported) return
+          reported = key
+          if (status === Loader.Error) {
+            const c = Qt.createComponent(source)
+            // (the copy's number makes each report differ, so it is written every time)
+            statusFile.setText("error " + cw.ver + "\n" + (c.errorString() || "The widget could not be loaded.").split(cw.loadPath).join(cw.path) + "\n")
+          } else
+            statusFile.setText("ok " + cw.ver + "\n")
+        }
+        onLoaded: if (item && "memora" in item) item.memora = Qt.binding(() => ({
+          dark: Theme.dark, text: Theme.text, dim: Theme.textDim, accent: Theme.accent,
+          font: Theme.font, small: Theme.small, large: Theme.large, medium: cw.medium }))
+      }
+      Column {
+        visible: ld.status === Loader.Error
+        anchors.centerIn: parent
+        width: parent.width
+        spacing: 4
+        Sym { anchors.horizontalCenter: parent.horizontalCenter; name: "info"; width: 20; height: 20; color: root.dim }
+        Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; text: "This widget has a problem. Ask Memora AI to fix it."; color: root.dim; font.pixelSize: Theme.small }
+      }
+    }
+  }
+
   readonly property color ink: Theme.text
   readonly property color dim: Theme.textDim
 
