@@ -24,6 +24,10 @@ common=(-machine q35,accel=kvm -cpu host -smp 6 -m 8G
   -netdev user,id=net0 -device virtio-net-pci,netdev=net0,romfile=
   -monitor "unix:$mon,server,nowait")
 
+# Sound card: Intel HD Audio, played through the host's PipeWire.
+# AUDIODEV="wav,path=/abs/out.wav" records what the VM plays instead (for tests).
+audio=(-audiodev "${AUDIODEV:-pipewire},id=snd0" -device ich9-intel-hda -device hda-duplex,audiodev=snd0)
+
 # Live source tree inside the VM (fstab of test installs mounts these when present).
 mkdir -p share
 live=(-virtfs "local,path=$(cd .. && pwd)/system,mount_tag=memora,security_model=none,readonly=on"
@@ -48,7 +52,7 @@ case "${1:-}" in
     ;;
   boot)  # headless; with VM=dev it also runs system/ live from this checkout
     share=(); [[ $name == dev && ${LIVE:-1} == 1 ]] && share=("${live[@]}")
-    qemu-system-x86_64 "${common[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2" -device virtio-blk-pci,drive=hd,bootindex=0 \
+    qemu-system-x86_64 "${common[@]}" "${audio[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2" -device virtio-blk-pci,drive=hd,bootindex=0 \
       ${GPU:--device virtio-vga-gl,xres=1920,yres=1080 -display egl-headless,rendernode=/dev/dri/renderD128} \
       -vnc ":${VNC:-5}" -serial "file:${pre}boot.log" &
     echo "VM started (VNC localhost:5905). Screenshot: test/vm.sh shot out.png"
@@ -80,12 +84,12 @@ case "${1:-}" in
     # runs system/ live from this checkout, and test/share is writable inside it.
     [[ -f $disk ]] || { echo "No installed disk. Run: test/vm.sh install"; exit 1; }
     share=(); [[ $1 == dev ]] && share=("${live[@]}")
-    qemu-system-x86_64 "${common[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2,cache=unsafe,aio=io_uring" -device virtio-blk-pci,drive=hd,bootindex=0 \
+    qemu-system-x86_64 "${common[@]}" "${audio[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2,cache=unsafe,aio=io_uring" -device virtio-blk-pci,drive=hd,bootindex=0 \
       -device virtio-vga-gl,hostmem=1G,blob=true,xres=1920,yres=1080 -object memory-backend-memfd,id=mem,size=8G,share=on -machine memory-backend=mem \
       -display sdl,gl=on -serial "file:${pre}boot.log" ;;
   live)
     cp -n "$ovmf_vars" "${pre}vars.fd" 2>/dev/null || true
-    qemu-system-x86_64 "${common[@]}" -cdrom "$iso" -drive "file=$disk,if=virtio,format=qcow2" \
+    qemu-system-x86_64 "${common[@]}" "${audio[@]}" -cdrom "$iso" -drive "file=$disk,if=virtio,format=qcow2" \
       -device virtio-vga-gl -display gtk,gl=on ;;
   *) sed -n '2,8p' "$0"; exit 1 ;;
 esac

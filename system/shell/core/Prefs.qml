@@ -41,6 +41,12 @@ Singleton {
   property real awakeUntil: 0          // Keep Awake: 0 off, -1 until turned off, else a time (ms since 1970)
   property bool awakeFullscreen: true  // stay awake while an app (a film, a game) is full screen
   property bool awakeLid: false        // with Keep Awake on, closing the lid doesn't put it to sleep
+  // Sound
+  property string alertSound: "glint"  // glint | drop | chime | bell | pebble | bubble | breeze | pluck (system/sounds)
+  property real alertVolume: 0.7       // alert and sound-effect volume, relative to the output volume
+  property bool startupSound: true     // a chord when the desktop starts
+  property bool uiSounds: true         // screenshot, emptying the Trash, charger, wrong password…
+  property bool volumeFeedback: true   // a pop after changing the volume with the keys
   property bool updateCheck: true      // look for updates in the background and say when there are some
   // Desktops and windows
   property int desktops: 2             // how many desktops there are (more appear when needed)
@@ -50,7 +56,7 @@ Singleton {
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockDots", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
-    "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "updateCheck", "desktops", "snapAssist", "snapLayouts"]
+    "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "alertSound", "alertVolume", "startupSound", "uiSounds", "volumeFeedback", "updateCheck", "desktops", "snapAssist", "snapLayouts"]
 
   // A duration, scaled by the speed setting; 0 when animations are off.
   function motion(ms) { return animations ? Math.round(ms / Math.max(0.25, animationSpeed)) : 0 }

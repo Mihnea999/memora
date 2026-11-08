@@ -134,13 +134,28 @@ PanelWindow {
         level: UPower.displayDevice ? UPower.displayDevice.percentage : 1
         charging: UPower.displayDevice && UPower.displayDevice.state === UPowerDeviceState.Charging
       }
-      onClicked: Shell.toggle("control")
+      menu: "battery"
+    }
+
+    BarButton {
+      visible: Sys.btAvailable
+      tip: "Bluetooth"
+      Sym { anchors.centerIn: parent; name: "bluetooth"; width: 15; height: 15; opacity: Sys.btOn ? 1 : 0.45 }
+      menu: "bluetooth"
     }
 
     BarButton {
       tip: Net.label
       Sym { anchors.centerIn: parent; name: Net.online ? "wifi" : "wifi-off"; level: Net.strength; width: 17; height: 17 }
-      onClicked: Shell.toggle("control")
+      menu: "wifi"
+    }
+
+    BarButton {
+      visible: !!Sys.sink
+      tip: "Sound"
+      Sym { anchors.centerIn: parent; name: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; level: Sys.volume; width: 16; height: 16 }
+      menu: "sound"
+      onScrolled: up => Sys.setVolume(Sys.volume + (up ? 0.05 : -0.05))
     }
 
     BarButton {
@@ -235,12 +250,33 @@ PanelWindow {
     }
   }
 
+  // Opens (or closes) a status item's menu under it (bar/StatusMenu.qml).
+  property real hoverSwitched: 0
+  function statusMenu(kind, item, byHover) {
+    if (byHover) hoverSwitched = Date.now()
+    else if (Shell.open === "status" && Shell.menu === kind && Shell.menuScreen === bar.modelData.name) {
+      if (Date.now() - hoverSwitched > 400) Shell.close()   // not the click that pointing there just opened
+      return
+    }
+    Shell.menu = kind
+    Shell.menuX = item.mapToItem(null, 0, 0).x - 6
+    Shell.menuScreen = bar.modelData.name
+    Shell.open = "status"
+  }
+  StatusMenu { bar: bar }
+
   component BarButton: Item {
     id: btn
     property string tip: ""
-    property bool highlighted: false
+    property string menu: ""            // a status menu: wifi, bluetooth, battery, sound
+    property bool highlighted: menu !== "" && Shell.open === "status" && Shell.menu === menu && Shell.menuScreen === bar.modelData.name
     signal clicked()
     signal rightClicked()
+    signal scrolled(bool up)
+    onClicked: if (menu !== "") bar.statusMenu(menu, btn)
+    WheelHandler { onWheel: ev => btn.scrolled(ev.angleDelta.y > 0) }
+    // While another status menu is open, pointing at this one switches to it.
+    HoverHandler { onHoveredChanged: if (hovered && btn.menu !== "" && Shell.open === "status" && Shell.menuScreen === bar.modelData.name && Shell.menu !== btn.menu) bar.statusMenu(btn.menu, btn, true) }
     implicitWidth: 30
     implicitHeight: 24
     Rectangle {

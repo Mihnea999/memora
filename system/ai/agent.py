@@ -772,8 +772,8 @@ class Tools:
         if secs < 5:
             return "Give minutes or a time in the future.", True
         unit = f"memora-reminder-{time.time_ns() // 1_000_000}"
-        sound = "pw-play /usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga 2>/dev/null || pw-play /usr/share/sounds/freedesktop/stereo/complete.oga 2>/dev/null"
-        cmd = f"notify-send -u critical -a Reminders -i alarm-symbolic 'Reminder' {shlex.quote(text)}; {sound}; true"
+        # The banner plays the alert sound chosen in System Settings > Sound.
+        cmd = f"notify-send -u critical -a Reminders -i alarm-symbolic 'Reminder' {shlex.quote(text)}; true"
         r = sh(["systemd-run", "--user", f"--unit={unit}", f"--description={text[:120]}", f"--on-active={secs}s",
                 "--timer-property=AccuracySec=1s", "bash", "-c", cmd])
         when = time.strftime("%a %d %b %H:%M", time.localtime(time.time() + secs))

@@ -1,2 +1,3 @@
 module qs.bar
 MenuBar 1.0 MenuBar.qml
+StatusMenu 1.0 StatusMenu.qml

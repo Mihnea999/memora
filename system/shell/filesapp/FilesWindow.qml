@@ -77,17 +77,17 @@ FloatingWindow {
       confirm.ask({
         title: items.length === 1 ? "Delete “" + items[0].split("/").pop() + "” immediately?" : "Delete " + items.length + " items immediately?",
         message: "You can't undo this action.", action: "Delete",
-        onAccept: () => { sh("rm -rf -- " + items.map(q).join(" ")); selected = ({}) }
+        onAccept: () => { sh("rm -rf -- " + items.map(q).join(" ") + "; memora-sound trash"); selected = ({}) }
       })
       return
     }
-    sh("gio trash -- " + items.map(q).join(" "))
+    sh("gio trash -- " + items.map(q).join(" ") + " && memora-sound trash")
     selected = ({})
   }
   function emptyTrash() {
     confirm.ask({
       title: "Empty the Trash?", message: "Everything in the Trash will be deleted. You can't undo this action.", action: "Empty Trash",
-      onAccept: () => sh("gio trash --empty")
+      onAccept: () => sh("gio trash --empty; memora-sound trash")
     })
   }
   function copy(cut) { app.clip = selection.slice(); app.clipCut = cut }
@@ -104,7 +104,7 @@ FloatingWindow {
   }
   function moveInto(dir) {
     if (!dragging.length || dragging.indexOf(dir) >= 0) return
-    sh((dir === trashDir ? "gio trash -- " : "mv -n -- ") + dragging.map(q).join(" ") + (dir === trashDir ? "" : " " + q(dir + "/")))
+    sh((dir === trashDir ? "gio trash -- " : "mv -n -- ") + dragging.map(q).join(" ") + (dir === trashDir ? " && memora-sound trash" : " " + q(dir + "/")))
   }
   property var dragging: []
 

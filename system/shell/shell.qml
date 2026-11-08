@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Services.UPower
 import qs.core
 import qs.bar
 import qs.dock
@@ -26,6 +27,12 @@ import qs.desktops
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
 ShellRoot {
   Component.onCompleted: Shell.main = true   // this process holds Keep Awake's inhibitor
+
+  // A chime when a charger is plugged in (laptops), like a Mac.
+  Connections {
+    target: UPower
+    function onOnBatteryChanged() { if (!UPower.onBattery) Quickshell.execDetached(["memora-sound", "power"]) }
+  }
   Variants { model: Quickshell.screens; Wallpaper {} }
   Variants { model: Quickshell.screens; MenuBar {} }
   Variants { model: Quickshell.screens; Dock {} }

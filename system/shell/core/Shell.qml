@@ -36,7 +36,7 @@ Singleton {
       if (o) ask({ title: "Restart into " + o.name + "?", message: "The computer starts " + o.name + " once; next time it starts Memora again. If you do nothing, it will restart in %s seconds.", action: "Restart", sym: "restart", countdown: true, onAccept: () => run("systemctl reboot --boot-loader-entry=" + o.entry) })
     }
     else if (what === "logout") ask({ title: "Log out of Memora?", message: "Open apps will be closed. If you do nothing, you will be logged out in %s seconds.", action: "Log Out", sym: "logout", countdown: true, onAccept: () => run("uwsm stop || hyprctl dispatch exit") })
-    else if (what === "trash") ask({ title: "Empty the Trash?", message: "Everything in the Trash will be deleted. You can't undo this action.", action: "Empty Trash", sym: "close", danger: true, onAccept: () => run("gio trash --empty") })
+    else if (what === "trash") ask({ title: "Empty the Trash?", message: "Everything in the Trash will be deleted. You can't undo this action.", action: "Empty Trash", sym: "close", danger: true, onAccept: () => run("gio trash --empty; memora-sound trash") })
   }
 
   // Other systems on this computer (memora-bootsync): [{ name, entry }], for

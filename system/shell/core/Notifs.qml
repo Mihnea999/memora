@@ -25,12 +25,25 @@ Singleton {
       n.tracked = true
       ns.times[n.id] = Date.now()
       ns.history = [n].concat(ns.history).slice(0, 60)
-      if (!Shell.focusMode || n.urgency === NotificationUrgency.Critical) ns.popups = ns.popups.concat([n])
+      if (!Shell.focusMode || n.urgency === NotificationUrgency.Critical) {
+        ns.popups = ns.popups.concat([n])
+        // The alert sound, unless the app plays its own or asked for silence.
+        const h = n.hints || {}
+        if (!h["suppress-sound"] && !h["sound-file"] && !h["sound-name"]) ns.chime()
+      }
       n.closed.connect(() => {
         ns.history = ns.history.filter(x => x !== n)
         ns.popups = ns.popups.filter(x => x !== n)
       })
     }
+  }
+
+  // One sound for a burst of notifications.
+  property real lastSound: 0
+  function chime() {
+    if (Date.now() - lastSound < 800) return
+    lastSound = Date.now()
+    Quickshell.execDetached(["memora-sound", "alert"])
   }
 
   function hide(n) { popups = popups.filter(x => x !== n) }

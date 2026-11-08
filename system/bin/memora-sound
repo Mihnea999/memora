@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# memora-sound NAME — plays a Memora sound, if System Settings > Sound allows it.
+#   alert        the alert sound chosen in Sound (notifications, reminders)
+#   startup      when the desktop starts           ("Play sound on startup")
+#   volume       after the volume keys              ("Play feedback when volume is changed")
+#   screenshot, trash, power, error, done           ("Play user interface sound effects")
+#   preview NAME plays an alert sound (glint, drop, …) whatever the settings
+# The files are in $MEMORA_PATH/sounds (made by tools/sounds.py).
+dir="${MEMORA_PATH:-/usr/share/memora}/sounds"
+prefs="$HOME/.config/memora/shell.json"
+read -r alert vol startup ui feedback < <(jq -r '[(.alertSound // "glint"), (.alertVolume // 0.7),
+  (if has("startupSound") then .startupSound else true end), (if has("uiSounds") then .uiSounds else true end),
+  (if has("volumeFeedback") then .volumeFeedback else true end)] | @tsv' "$prefs" 2>/dev/null) ||
+  { alert=glint vol=0.7 startup=true ui=true feedback=true; }
+: "${alert:=glint}" "${vol:=0.7}"
+
+play() { [[ -f $dir/$1.oga ]] && exec pw-play --volume "$2" "$dir/$1.oga" 2>/dev/null; }
+case "${1:-}" in
+  alert) play "alert-$alert" "$vol" ;;
+  preview) play "alert-${2:-$alert}" "$vol" ;;
+  startup) [[ $startup == true ]] && play startup 0.8 ;;
+  volume) [[ $feedback == true ]] && play volume 1 ;;
+  screenshot|trash|power|error|done) [[ $ui == true ]] && play "$1" "$vol" ;;
+  *) sed -n '2,8p' "$0"; exit 2 ;;
+esac
+exit 0

@@ -16,7 +16,10 @@ Singleton {
 
   function volume(dir) {
     if (dir === "mute") Sys.toggleMute()
-    else Sys.setVolume(Sys.volume + (dir === "up" ? 0.05 : -0.05))
+    else {
+      Sys.setVolume(Sys.volume + (dir === "up" ? 0.05 : -0.05))
+      Quickshell.execDetached(["memora-sound", "volume"])  // like a Mac: a pop at the new level
+    }
     show("volume", Sys.volume, Sys.muted)
   }
   function brightness(dir) {

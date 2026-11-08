@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.core
 import qs.ui
 import qs.settings
@@ -19,6 +20,14 @@ Kit.Page {
   Kit.Cmd { id: act; onDone: out => { p.status = out.trim().split("\n").pop(); p.joining = ""; Net.refresh(); refresh() } }
   function refresh() { scan.exec(["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list"]) }
   Component.onCompleted: refresh()
+  // The Wi-Fi menu in the menu bar asks here for a network's password.
+  FileView {
+    path: Quickshell.env("HOME") + "/.cache/memora/wifi-join"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { const s = text().trim(); if (s) { p.joining = s; Quickshell.execDetached(["rm", "-f", path]) } }
+  }
   Timer { interval: 8000; running: true; repeat: true; onTriggered: p.refresh() }
 
   Kit.Group {
