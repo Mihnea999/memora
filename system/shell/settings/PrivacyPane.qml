@@ -59,21 +59,13 @@ Kit.Page {
 
   Kit.Group {
     header: "Lock Screen"
-    footer: "The screen also locks when the computer goes to sleep or the lid closes, and your password is needed to get back in."
+    footer: "The screen also locks when the computer goes to sleep or the lid closes, and your password is needed to get back in. To keep the screen on, use Keep Awake (Control Center, or Battery & Energy)."
     Kit.Row {
-      label: "Lock after inactivity"
+      label: "Lock after inactivity"; last: true
       Kit.Choice {
         value: Prefs.lockAfter
-        options: [{ text: "2 min", value: 2 }, { text: "5 min", value: 5 }, { text: "15 min", value: 15 }, { text: "Never", value: 0 }]
+        options: [{ text: "2 min", value: 2 }, { text: "5 min", value: 5 }, { text: "15 min", value: 15 }, { text: "1 hour", value: 60 }, { text: "Never", value: 0 }]
         onPicked: v => Prefs.set("lockAfter", v)
-      }
-    }
-    Kit.Row {
-      label: "Sleep after inactivity"; last: true
-      Kit.Choice {
-        value: Prefs.sleepAfter
-        options: [{ text: "15 min", value: 15 }, { text: "30 min", value: 30 }, { text: "1 hour", value: 60 }, { text: "Never", value: 0 }]
-        onPicked: v => Prefs.set("sleepAfter", v)
       }
     }
   }

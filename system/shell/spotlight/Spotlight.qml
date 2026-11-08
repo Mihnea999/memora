@@ -56,7 +56,7 @@ PanelWindow {
   readonly property var settingsPages: [
     ["Wi-Fi", "wifi"], ["Bluetooth", "bluetooth"], ["Sound", "sound"], ["Displays", "displays"],
     ["Appearance", "appearance"], ["Wallpaper", "wallpaper"], ["Dock & Menu Bar", "dock"], ["Windows & Desktops", "windows"], ["Animations", "animations"],
-    ["Keyboard", "keyboard"], ["Mouse & Trackpad", "mouse"], ["Battery", "battery"],
+    ["Keyboard", "keyboard"], ["Mouse & Trackpad", "mouse"], ["Battery & Energy", "battery"], ["Keep Awake", "battery"],
     ["Date & Time", "datetime"], ["Users", "users"], ["Privacy & Security", "privacy"], ["Memora AI", "ai"], ["Software Update", "update"], ["About", "about"]
   ]
 
@@ -80,9 +80,9 @@ PanelWindow {
     const out = []
     const c = calc(q)
     if (c !== null) out.push({ kind: "calc", title: c, sub: q + " =", icon: "org.gnome.Calculator", run: () => Apps.run("printf %s '" + c + "' | wl-copy") })
-    const apps = Apps.all.filter(e => e.name.toLowerCase().indexOf(lq) >= 0 || (e.keywords || []).some(k => k.toLowerCase().indexOf(lq) >= 0) || (e.genericName || "").toLowerCase().indexOf(lq) >= 0)
+    const apps = Apps.all.filter(e => (Apps.displayName(e) + " " + e.name).toLowerCase().indexOf(lq) >= 0 || (e.keywords || []).some(k => k.toLowerCase().indexOf(lq) >= 0) || (e.genericName || "").toLowerCase().indexOf(lq) >= 0)
     apps.sort((a, b) => (a.name.toLowerCase().startsWith(lq) ? 0 : 1) - (b.name.toLowerCase().startsWith(lq) ? 0 : 1))
-    apps.slice(0, 6).forEach(e => out.push({ kind: "app", title: e.name, sub: e.comment || e.genericName || "Application", icon: e.id, run: () => Apps.launch(e.id) }))
+    apps.slice(0, 6).forEach(e => out.push({ kind: "app", title: Apps.displayName(e), sub: e.comment || e.genericName || "Application", icon: e.id, run: () => Apps.launch(e.id) }))
     settingsPages.filter(p => p[0].toLowerCase().indexOf(lq) >= 0).slice(0, 3).forEach(p =>
       out.push({ kind: "setting", title: p[0], sub: "System Settings", icon: "memora-settings", run: () => Apps.run("memora-settings " + p[1]) }))
     files.slice(0, 6).forEach(f => out.push({ kind: "file", title: f.split("/").pop(), sub: f.replace(Quickshell.env("HOME"), "~"), iconName: "folder", run: () => Apps.run("xdg-open '" + f.replace(/'/g, "'\\''") + "'") }))

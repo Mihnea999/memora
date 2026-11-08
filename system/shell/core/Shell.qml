@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 
 // Which shell surface is open. Only one at a time, like a desktop: opening the
 // Control Center closes a menu, opening Launchpad closes Spotlight, and so on.
@@ -49,4 +50,45 @@ Singleton {
 
   // Do-not-disturb, shared by Control Center and notifications.
   property bool focusMode: false
+
+  // ---- Keep Awake ------------------------------------------------------------
+  // The screen stays on, doesn't lock and the computer doesn't sleep: while Keep
+  // Awake is on (for a while or until turned off), or while an app is full screen
+  // on a screen (a film, a game, a presentation). A systemd "idle" inhibitor
+  // does it (hypridle obeys it); Sleep from the menu still works. With "lid"
+  // on, closing the lid doesn't put the computer to sleep either.
+  property real now: Date.now()
+  Timer { interval: 15000; repeat: true; running: Prefs.awakeUntil > 0; triggeredOnStart: true
+    onTriggered: { s.now = Date.now(); if (Prefs.awakeUntil > 0 && s.now >= Prefs.awakeUntil) Prefs.set("awakeUntil", 0) } }
+  readonly property bool keepAwake: Prefs.awakeUntil === -1 || (Prefs.awakeUntil > 0 && Prefs.awakeUntil > now)
+  // minutes: 0 off, -1 until turned off.
+  property real awakeSetAt: 0      // when a timed Keep Awake was started (which chip is lit)
+  function setAwake(minutes) {
+    now = Date.now(); awakeSetAt = now
+    Prefs.set("awakeUntil", minutes === 0 ? 0 : (minutes < 0 ? -1 : now + minutes * 60000))
+  }
+  // "On", "Until 15:30"
+  readonly property string awakeLabel: !keepAwake ? "Off" : (Prefs.awakeUntil === -1 ? "On"
+    : "Until " + Qt.formatTime(new Date(Prefs.awakeUntil), Prefs.clock24 ? "HH:mm" : "h:mm AP"))
+
+  // An app is full screen (not just maximized) on a desktop that is showing.
+  readonly property bool fullscreenApp: {
+    const shown = Hyprland.monitors.values.map(m => m.activeWorkspace ? m.activeWorkspace.id : -1)
+    return Hyprland.toplevels.values.some(w => {
+      const o = w.lastIpcObject
+      return o && o.fullscreen === 2 && o.workspace && shown.indexOf(o.workspace.id) >= 0
+    })
+  }
+  readonly property bool inhibiting: keepAwake || (Prefs.awakeFullscreen && fullscreenApp)
+  property bool main: false        // set by the desktop shell (shell.qml); apps only read this singleton
+  Process {
+    running: s.main && s.inhibiting
+    command: ["systemd-inhibit", "--who=Memora", "--mode=block",
+      "--what=" + (s.keepAwake && Prefs.awakeLid ? "idle:handle-lid-switch" : "idle"),
+      "--why=" + (s.keepAwake ? "Keep Awake is on" : "An app is full screen"), "sleep", "infinity"]
+  }
+  Connections {
+    target: Hyprland
+    function onRawEvent(ev) { if (ev.name === "fullscreen") Hyprland.refreshToplevels() }
+  }
 }

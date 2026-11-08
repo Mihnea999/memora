@@ -30,7 +30,7 @@ ShellRoot {
     { id: "displays", title: "Displays", sym: "display", color: "#2f7bff", group: 3 },
     { id: "keyboard", title: "Keyboard", sym: "keyboard", color: "#8a8d96", group: 4 },
     { id: "mouse", title: "Mouse & Trackpad", sym: "mouse", color: "#8a8d96", group: 4 },
-    { id: "battery", title: "Battery", sym: "battery", color: "#34c759", group: 4 },
+    { id: "battery", title: "Battery & Energy", sym: "battery", color: "#34c759", group: 4 },
     { id: "datetime", title: "Date & Time", sym: "clock", color: "#8a8d96", group: 5 },
     { id: "users", title: "Users", sym: "user", color: "#2f7bff", group: 5 },
     { id: "privacy", title: "Privacy & Security", sym: "shield", color: "#34c759", group: 5 },

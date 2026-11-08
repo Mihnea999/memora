@@ -111,6 +111,14 @@ PanelWindow {
       }
     }
 
+    // Keep Awake is on: a cup; click to turn it off.
+    BarButton {
+      visible: Shell.keepAwake
+      tip: "Keep Awake: " + Shell.awakeLabel.toLowerCase() + " · click to turn off"
+      Sym { anchors.centerIn: parent; name: "cup"; width: 16; height: 16 }
+      onClicked: Shell.setAwake(0)
+    }
+
     BarButton {
       tip: "Memora AI (Super+A)"
       Sym { anchors.centerIn: parent; name: "ai"; width: 15; height: 15 }

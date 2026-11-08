@@ -3,7 +3,7 @@ import qs.core
 
 // Memora's line symbols, drawn in code so they stay sharp at any scale and take
 // the current ink. name: wifi, wifi-off, battery, control, search, moon, sound,
-// sound-off, bluetooth, sun, ai, power, restart, sleep, lock, logout, chevron,
+// sound-off, bluetooth, sun, ai, power, restart, sleep, lock, cup, logout, chevron,
 // check, plus, close, gear, user, arrow.
 Canvas {
   id: c
@@ -159,6 +159,15 @@ Canvas {
       ctx.lineWidth = 1.6
       ctx.beginPath(); ctx.arc(8, 6.2, 3.2, Math.PI, 0); ctx.lineTo(11.2, 7.4); ctx.moveTo(4.8, 7.4); ctx.lineTo(4.8, 6.2); ctx.stroke()
       rr(ctx, 3, 7.2, 10, 7.4, 2); ctx.fill()
+      break
+    }
+    case "cup": {   // Keep Awake: a cup of coffee
+      ctx.lineWidth = 1.6
+      ctx.beginPath(); ctx.moveTo(2.6, 6.4); ctx.lineTo(11.4, 6.4); ctx.lineTo(10.6, 12.2)
+      ctx.quadraticCurveTo(10.3, 14.2, 8.4, 14.2); ctx.lineTo(5.6, 14.2); ctx.quadraticCurveTo(3.7, 14.2, 3.4, 12.2); ctx.closePath(); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(11.3, 7.8); ctx.quadraticCurveTo(14.4, 7.6, 14, 10); ctx.quadraticCurveTo(13.6, 11.8, 10.9, 11.4); ctx.stroke()
+      ctx.lineWidth = 1.3
+      ctx.beginPath(); ctx.moveTo(5.4, 4.6); ctx.quadraticCurveTo(4.4, 3.4, 5.4, 2.2); ctx.moveTo(8.4, 4.6); ctx.quadraticCurveTo(7.4, 3.4, 8.4, 2.2); ctx.stroke()
       break
     }
     case "logout": {

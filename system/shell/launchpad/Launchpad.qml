@@ -53,14 +53,14 @@ PanelWindow {
     const q = query.toLowerCase().trim()
     if (q) {
       const score = e => {
-        const n = e.name.toLowerCase()
+        const n = Apps.displayName(e).toLowerCase() + " " + e.name.toLowerCase()
         if (n.startsWith(q)) return 0
         if (n.split(/\s+/).some(w => w.startsWith(q))) return 1
         if (n.indexOf(q) >= 0) return 2
         if ((e.genericName || "").toLowerCase().indexOf(q) >= 0 || (e.keywords || []).some(k => k.toLowerCase().startsWith(q))) return 3
         return 9
       }
-      return library.map(e => ({ e: e, s: score(e) })).filter(x => x.s < 9).sort((a, b) => a.s - b.s || a.e.name.localeCompare(b.e.name)).map(x => x.e)
+      return library.map(e => ({ e: e, s: score(e) })).filter(x => x.s < 9).sort((a, b) => a.s - b.s || Apps.displayName(a.e).localeCompare(Apps.displayName(b.e))).map(x => x.e)
     }
     if (group === "all") return library
     return library.filter(e => groupOf(e) === group)
@@ -95,6 +95,16 @@ PanelWindow {
   property bool pinnedFlash: false
   Timer { id: flashOff; interval: 900; onTriggered: lp.pinnedFlash = false }
   property string menuApp: ""
+  // The app's menu; each action keeps the app it was made for (the menu closes first).
+  function menuItems(id) {
+    return [
+      { text: "Open", action: () => lp.open_(id) },
+      { separator: true },
+      Apps.pinned.indexOf(id) >= 0
+        ? { text: "Remove from Dock", action: () => Apps.unpin(id) }
+        : { text: "Keep in Dock", action: () => Apps.pin(id) }
+    ].concat(Apps.removable(id) ? [{ separator: true }, { text: "Uninstall…", action: () => Apps.uninstall(id) }] : [])
+  }
   property point menuPos: Qt.point(0, 0)
 
   // A soft veil over the desktop; click it to close.
@@ -264,7 +274,7 @@ PanelWindow {
       maximumLineCount: 2
       elide: Text.ElideRight
       lineHeight: 0.95
-      text: t.entry.name
+      text: Apps.displayName(t.entry)
       font.pixelSize: Theme.small + 0.5
     }
     HoverHandler { id: th; cursorShape: Qt.PointingHandCursor }
@@ -308,13 +318,7 @@ PanelWindow {
     visible: lp.menuApp !== ""
     x: Math.min(lp.menuPos.x, lp.width - width - 10); y: Math.min(lp.menuPos.y, lp.height - height - 10)
     width: implicitWidth; height: implicitHeight
-    items: lp.menuApp === "" ? [] : [
-      { text: "Open", action: () => lp.open_(lp.menuApp) },
-      { separator: true },
-      Apps.pinned.indexOf(lp.menuApp) >= 0
-        ? { text: "Remove from Dock", action: () => Apps.unpin(lp.menuApp) }
-        : { text: "Keep in Dock", action: () => Apps.pin(lp.menuApp) }
-    ]
+    items: lp.menuApp === "" ? [] : lp.menuItems(lp.menuApp)
     onPicked: item => { const run = item.action; Qt.callLater(() => { run(); lp.menuApp = "" }) }
   }
 }

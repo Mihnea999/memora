@@ -59,9 +59,14 @@ Singleton {
   function run(cmd) { Quickshell.execDetached(["bash", "-c", cmd]) }
 
   // ---- visible applications (Launchpad, Spotlight) --------------------------
+  // Apps Memora has its own version of: kept installed (files open in them, the
+  // Trash uses Nautilus) but not listed twice in Launchpad and Spotlight.
+  readonly property var duplicates: ["org.gnome.Nautilus", "org.gnome.Loupe", "mpv", "org.gnome.Ptyxis"]
+  // The name an app goes by in Memora (Ghostty is "Terminal").
+  function displayName(e) { return !e.id.startsWith("memora-") && names[e.id] ? names[e.id] : e.name }
   readonly property var all: {
-    const list = DesktopEntries.applications.values.filter(e => !e.noDisplay)
-    list.sort((a, b) => a.name.localeCompare(b.name))
+    const list = DesktopEntries.applications.values.filter(e => !e.noDisplay && duplicates.indexOf(e.id) < 0)
+    list.sort((a, b) => displayName(a).localeCompare(displayName(b)))
     return list
   }
 
@@ -186,6 +191,23 @@ Singleton {
   }
 
   function quit(appId) { windowsOf(appId).forEach(w => close(w)) }
+
+  // Apps from the App Store (Flathub) can be uninstalled from their menu.
+  function removable(appId) {
+    const e = entry(appId)
+    return !!(e && /\bflatpak\b.*\brun\b/.test(e.execString || "") && appId.indexOf(".") > 0)
+  }
+  function uninstall(appId) {
+    if (!removable(appId)) return
+    const name = nameFor(appId), id = appId.replace(/\.desktop$/, "")
+    Shell.ask({ title: "Uninstall " + name + "?", sym: "close", danger: true, action: "Uninstall",
+      message: name + " will be removed from this computer. Your documents stay, and so do its settings, in case you get it again from the App Store.",
+      onAccept: () => {
+        quit(appId)
+        run("if flatpak uninstall --user -y --noninteractive '" + id + "' || pkexec flatpak uninstall --system -y --noninteractive '" + id + "'; then notify-send -a 'App Store' '" + name.replace(/'/g, "") + " was uninstalled'; else notify-send -a 'App Store' 'Couldn'\\''t uninstall " + name.replace(/'/g, "") + "'; fi")
+        unpin(appId)
+      } })
+  }
 
   // Send a shortcut to the focused window (menu bar items).
   function keys(combo) {

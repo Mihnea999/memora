@@ -25,6 +25,7 @@ import qs.desktops
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
 ShellRoot {
+  Component.onCompleted: Shell.main = true   // this process holds Keep Awake's inhibitor
   Variants { model: Quickshell.screens; Wallpaper {} }
   Variants { model: Quickshell.screens; MenuBar {} }
   Variants { model: Quickshell.screens; Dock {} }

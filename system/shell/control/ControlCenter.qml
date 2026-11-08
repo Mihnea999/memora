@@ -112,6 +112,47 @@ PanelWindow {
         }
       }
 
+      // Keep Awake: the screen stays on and doesn't lock.
+      Module {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 52
+        Rectangle {
+          id: awakeDot
+          x: 11; width: 30; height: 30; radius: 15
+          anchors.verticalCenter: parent.verticalCenter
+          color: Shell.keepAwake ? Theme.accent : (Theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.08))
+          Behavior on color { ColorAnimation { duration: Theme.fast } }
+          Sym { anchors.centerIn: parent; name: "cup"; width: 16; height: 16; color: Shell.keepAwake ? "#ffffff" : Theme.text }
+          TapHandler { onTapped: Shell.setAwake(Shell.keepAwake ? 0 : -1) }
+        }
+        Column {
+          anchors { left: awakeDot.right; leftMargin: 9; verticalCenter: parent.verticalCenter }
+          Txt { text: "Keep Awake"; font.weight: Font.Bold; font.pixelSize: Theme.small + 0.5 }
+          Txt { text: Shell.awakeLabel; color: Theme.textDim; font.pixelSize: Theme.small - 0.5 }
+          TapHandler { onTapped: Shell.setAwake(Shell.keepAwake ? 0 : -1) }
+        }
+        Row {
+          anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+          spacing: 4
+          Repeater {
+            // For a while, or until turned off.
+            model: [[60, "1 h"], [120, "2 h"], [480, "8 h"], [-1, "∞"]]
+            delegate: Rectangle {
+              required property var modelData
+              readonly property bool here: Shell.keepAwake && (modelData[0] === -1 ? Prefs.awakeUntil === -1
+                : Prefs.awakeUntil > 0 && Math.abs(Prefs.awakeUntil - Shell.awakeSetAt - modelData[0] * 60000) < 1000)
+              width: 34; height: 24; radius: 12
+              color: here ? Theme.accent : (ah.hovered ? Theme.hover : (Theme.dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)))
+              Behavior on color { ColorAnimation { duration: Theme.fast } }
+              Txt { anchors.centerIn: parent; text: modelData[1]; font.pixelSize: Theme.small - 0.5; font.weight: Font.Medium; color: parent.here ? "#ffffff" : Theme.text }
+              HoverHandler { id: ah }
+              TapHandler { onTapped: Shell.setAwake(parent.here ? 0 : modelData[0]) }
+              Tip { text: modelData[0] === -1 ? "Until you turn it off" : "For " + modelData[1].replace(" h", modelData[0] === 60 ? " hour" : " hours") }
+            }
+          }
+        }
+      }
+
       Module {
         visible: Sys.hasBacklight
         Layout.fillWidth: true

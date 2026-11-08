@@ -33,6 +33,12 @@ Singleton {
   // Privacy & Security
   property int lockAfter: 5            // minutes of inactivity before the screen locks; 0 never
   property int sleepAfter: 30          // minutes before the computer sleeps; 0 never
+  // Battery & Energy
+  property int displayOffAfter: 10     // minutes before the screen turns off; 0 never
+  property bool sleepOnPower: true     // also sleep when idle while plugged in
+  property real awakeUntil: 0          // Keep Awake: 0 off, -1 until turned off, else a time (ms since 1970)
+  property bool awakeFullscreen: true  // stay awake while an app (a film, a game) is full screen
+  property bool awakeLid: false        // with Keep Awake on, closing the lid doesn't put it to sleep
   property bool updateCheck: true      // look for updates in the background and say when there are some
   // Desktops and windows
   property int desktops: 2             // how many desktops there are (more appear when needed)
@@ -42,7 +48,7 @@ Singleton {
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
-    "lockAfter", "sleepAfter", "updateCheck", "desktops", "snapAssist", "snapLayouts"]
+    "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "updateCheck", "desktops", "snapAssist", "snapLayouts"]
 
   // A duration, scaled by the speed setting; 0 when animations are off.
   function motion(ms) { return animations ? Math.round(ms / Math.max(0.25, animationSpeed)) : 0 }
@@ -64,7 +70,7 @@ Singleton {
     p[key] = value
     if (["animations", "animationSpeed", "windowStyle"].indexOf(key) >= 0) writeMotion()
     if (["blur", "vibrancy", "reduceTransparency"].indexOf(key) >= 0) writeGlass()
-    if (["lockAfter", "sleepAfter"].indexOf(key) >= 0) writeIdle()
+    if (["lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower"].indexOf(key) >= 0) writeIdle()
     const j = {}
     keys.forEach(k => j[k] = p[k])
     file.setText(JSON.stringify(j, null, 2) + "\n")
@@ -85,16 +91,20 @@ Singleton {
     reloadLater.restart()
   }
 
-  // Locking and sleeping when idle (hypridle).
+  // Locking, turning the screen off and sleeping when idle (hypridle). Keep
+  // Awake and full-screen apps hold a systemd "idle" inhibitor (core/Shell.qml),
+  // which hypridle obeys, so none of these fire while they are on.
   property FileView idleFile: FileView { path: Quickshell.env("HOME") + "/.config/hypr/hypridle.conf"; printErrors: false }
   function writeIdle() {
-    let t = "# Written by System Settings > Privacy & Security.\n"
-    t += "general {\n  lock_cmd = memora-lock\n  before_sleep_cmd = memora-lock\n  after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'\n}\n"
-    if (lockAfter > 0) {
-      t += "\nlistener {\n  timeout = " + lockAfter * 60 + "\n  on-timeout = memora-lock\n}\n"
-      t += "\nlistener {\n  timeout = " + (lockAfter * 60 + 30) + "\n  on-timeout = hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'\n  on-resume = hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'\n}\n"
+    let t = "# Written by System Settings (Lock Screen, Battery & Energy).\n"
+    t += "general {\n  lock_cmd = memora-lock\n  before_sleep_cmd = memora-lock\n  after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'\n  ignore_systemd_inhibit = false\n  ignore_dbus_inhibit = false\n}\n"
+    if (lockAfter > 0) t += "\nlistener {\n  timeout = " + lockAfter * 60 + "\n  on-timeout = memora-lock\n}\n"
+    if (displayOffAfter > 0) {
+      // Just after locking when both are the same, so the lock screen is what wakes up.
+      const off = displayOffAfter * 60 + (displayOffAfter === lockAfter ? 30 : 0)
+      t += "\nlistener {\n  timeout = " + off + "\n  on-timeout = hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'\n  on-resume = hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'\n}\n"
     }
-    if (sleepAfter > 0) t += "\nlistener {\n  timeout = " + sleepAfter * 60 + "\n  on-timeout = systemctl suspend\n}\n"
+    if (sleepAfter > 0) t += "\nlistener {\n  timeout = " + sleepAfter * 60 + "\n  on-timeout = " + (sleepOnPower ? "systemctl suspend" : "memora-power idle-sleep") + "\n}\n"
     idleFile.setText(t)
     restartIdle.restart()
   }

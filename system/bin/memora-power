@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 # memora-power shutdown|restart|logout|sleep — asks first (on screen), then does it.
 # Without an argument (Ctrl+Alt+Delete) it asks about shutting down.
+# idle-sleep: sleep after inactivity, unless the computer is plugged in
+# (System Settings > Battery & Energy > "Sleep when plugged in" off).
 case "${1:-shutdown}" in
   sleep) exec systemctl suspend ;;
+  idle-sleep)
+    for s in /sys/class/power_supply/*; do
+      [[ $(cat "$s/type" 2>/dev/null) == Mains && $(cat "$s/online" 2>/dev/null) == 1 ]] && exit 0
+    done
+    exec systemctl suspend ;;
   shutdown|restart|logout) exec qs -p "${MEMORA_PATH:-/usr/share/memora}/shell" ipc call shell power "${1:-shutdown}" ;;
   *) echo "usage: memora-power shutdown|restart|logout|sleep"; exit 2 ;;
 esac

@@ -17,7 +17,12 @@ ShellRoot {
   property string iconDir: ""
   property var catalog: ({ featured: [], categories: [], apps: [] })
   property var installed: ({})          // id -> true
-  property var jobs: ({})               // id -> { kind: "install"|"remove", progress: 0..1 }
+  property var extra: ({})              // apps from Flathub outside the hand-picked list: id -> { id, name, summary, category }
+  property var updates: []              // ids with an update waiting
+  property var found: []                // ids found on Flathub for the search (not in the hand-picked list)
+  property bool searching: false
+  property var jobs: ({})               // id -> { kind: "install"|"remove"|"update", progress: 0..1 }
+  property var procs: ({})              // id -> its running Process (to cancel a download)
   property string section: "Discover"
   property string query: ""
   property string detail: ""            // app id shown in detail
@@ -38,10 +43,46 @@ ShellRoot {
   }
   Process {
     id: lister
-    command: ["bash", "-c", "flatpak list --user --app --columns=application; memora-store-cli list"]
-    stdout: StdioCollector { onStreamFinished: { const m = {}; text.split("\n").forEach(l => { if (l.trim()) m[l.trim()] = true }); app.installed = m } }
+    command: ["bash", "-c", "flatpak list --user --app --columns=application,name,description; memora-store-cli list"]
+    stdout: StdioCollector { onStreamFinished: {
+      const m = {}, x = Object.assign({}, app.extra)
+      text.split("\n").forEach(l => {
+        const f = l.split("\t"), id = f[0].trim()
+        if (!id) return
+        m[id] = true
+        if (f.length > 1 && !app.catalog.apps.find(a => a.id === id) && !x[id])
+          x[id] = { id: id, name: f[1] || id, summary: f[2] || "", category: "Flathub", description: f[2] || "" }
+      })
+      app.extra = x; app.installed = m
+    } }
   }
-  function refresh() { lister.running = true }
+  // Updates waiting on Flathub for apps installed here.
+  Process {
+    id: updLister
+    command: ["bash", "-c", "flatpak remote-ls --user --updates --app --columns=application 2>/dev/null"]
+    stdout: StdioCollector { onStreamFinished: app.updates = text.split("\n").map(l => l.trim()).filter(l => l && l !== "Application ID") }
+  }
+  function refresh() { lister.running = true; if (ready) updLister.running = true }
+
+  // Search all of Flathub, beyond the hand-picked apps.
+  Timer { id: searchLater; interval: 450; onTriggered: if (app.query.length >= 2 && app.ready) { searcher.running = false; searcher.running = true } }
+  onQueryChanged: { found = []; searching = query.length >= 2 && ready; searchLater.restart() }
+  Process {
+    id: searcher
+    command: ["flatpak", "search", "--columns=application,name,description,remotes", app.query]
+    stdout: StdioCollector { onStreamFinished: {
+      const x = Object.assign({}, app.extra), ids = []
+      text.split("\n").forEach(l => {
+        const f = l.split("\t"), id = (f[0] || "").trim()
+        // Apps only: not plugins, manuals, codecs and the like.
+        if (/\.(Plugin|Extension|Manual|Docs|Codecs|Locale|Debug|BaseApp)(\.|$)/i.test(id)) return
+        if (!id || (f[3] || "").indexOf("flathub") < 0 || app.catalog.apps.find(a => a.id === id) || ids.indexOf(id) >= 0) return
+        if (!x[id]) x[id] = { id: id, name: f[1] || id, summary: f[2] || "", category: "Flathub", description: f[2] || "" }
+        ids.push(id)
+      })
+      app.extra = x; app.found = ids.slice(0, 24); app.searching = false
+    } }
+  }
 
   Component { id: jobProc; Process {
     property string appId
@@ -49,7 +90,10 @@ ShellRoot {
     command: appId.startsWith("cli.") ? ["memora-store-cli", kind, appId]
       : kind === "install"
       ? ["flatpak", "install", "--user", "-y", "--noninteractive", (app.entry(appId) || {}).remote || "flathub", appId]
+      : kind === "update"
+      ? (appId === "*" ? ["flatpak", "update", "--user", "-y", "--noninteractive"] : ["flatpak", "update", "--user", "-y", "--noninteractive", appId])
       : ["flatpak", "uninstall", "--user", "-y", "--noninteractive", appId]
+    property bool cancelled: false
     running: true
     stdout: SplitParser {
       splitMarker: ""
@@ -61,8 +105,11 @@ ShellRoot {
     }
     onExited: code => {
       const j = Object.assign({}, app.jobs); delete j[appId]; app.jobs = j
+      const pr = Object.assign({}, app.procs); delete pr[appId]; app.procs = pr
       app.refresh()
-      if (code !== 0) app.status = (kind === "install" ? "Couldn't install " : "Couldn't remove ") + app.nameOf(appId) + "."
+      if (cancelled) app.status = ""
+      else if (code !== 0) app.status = ({ install: "Couldn't install ", update: "Couldn't update ", remove: "Couldn't remove " })[kind] + (appId === "*" ? "the apps" : app.nameOf(appId)) + "."
+      else if (kind === "update") Quickshell.execDetached(["notify-send", "-a", "App Store", appId === "*" ? "Apps updated" : app.nameOf(appId) + " is up to date", "The new versions open next time you start them."])
       else if (kind === "install") Quickshell.execDetached(["notify-send", "-a", "App Store", app.nameOf(appId) + " is ready", appId.startsWith("cli.") ? "Open it from the App Store, or type its name in Terminal." : "Find it in Apps."])
       destroy()
     }
@@ -72,17 +119,26 @@ ShellRoot {
     if (jobs[id]) return
     const j = Object.assign({}, jobs); j[id] = { kind: kind, progress: 0 }; jobs = j
     status = ""
-    jobProc.createObject(app, { appId: id, kind: kind })
+    const pr = Object.assign({}, procs); pr[id] = jobProc.createObject(app, { appId: id, kind: kind }); procs = pr
+  }
+  // Stop a download that is under way (tap its ring).
+  function cancel(id) {
+    const pr = procs[id]
+    if (!pr || jobs[id].kind === "remove") return
+    pr.cancelled = true
+    pr.signal(15)
+    Quickshell.execDetached(["notify-send", "-a", "App Store", "Download stopped", nameOf(id) + " wasn't installed."])
   }
   function open(id) { Quickshell.execDetached(id.startsWith("cli.") ? ["memora-store-cli", "open", id] : ["flatpak", "run", id]) }
-  function entry(id) { return catalog.apps.find(x => x.id === id) || null }
-  function nameOf(id) { const a = catalog.apps.find(x => x.id === id); return a ? a.name : id }
+  function entry(id) { return catalog.apps.find(x => x.id === id) || extra[id] || null }
+  function nameOf(id) { const a = entry(id); return a ? a.name : id }
   function iconOf(id) { const e = entry(id); return iconDir && id && !id.startsWith("cli.") && !(e && e.remote) ? "file://" + iconDir + id + ".png" : "" }
 
   readonly property var shown: {
     const q = query.toLowerCase()
     if (q) return catalog.apps.filter(a => (a.name + " " + a.summary + " " + a.category).toLowerCase().indexOf(q) >= 0)
-    if (section === "Installed") return catalog.apps.filter(a => installed[a.id])
+    if (section === "Installed") return catalog.apps.filter(a => installed[a.id]).concat(Object.keys(installed).filter(id => !catalog.apps.find(a => a.id === id) && extra[id]).map(id => extra[id]))
+    if (section === "Updates") return updates.map(id => entry(id) || { id: id, name: nameOf(id), summary: "", category: "" })
     if (section === "Discover") return catalog.apps
     return catalog.apps.filter(a => a.category === section)
   }
@@ -131,19 +187,26 @@ ShellRoot {
         anchors { left: parent.left; right: parent.right; top: search.bottom; topMargin: 12 }
         spacing: 1
         Repeater {
-          model: ["Discover"].concat(app.catalog.categories).concat(["Installed"])
+          model: ["Discover"].concat(app.catalog.categories).concat(["Installed", "Updates"])
           delegate: Item {
             required property string modelData
             required property int index
             readonly property bool here: app.section === modelData && !app.query
             width: parent.width; height: 32 + (modelData === "Installed" ? 10 : 0)
+            // How many updates are waiting.
+            Rectangle {
+              visible: modelData === "Updates" && app.updates.length > 0
+              anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+              width: Math.max(20, un.implicitWidth + 10); height: 18; radius: 9; color: Theme.red
+              Txt { id: un; anchors.centerIn: parent; text: app.updates.length; color: "#ffffff"; font.pixelSize: Theme.small - 1; font.weight: Font.Bold }
+            }
             Rectangle {
               y: modelData === "Installed" ? 10 : 0
               x: 6; width: parent.width - 12; height: 32; radius: 8
               color: parent.here ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.35 : 0.18) : (nh.hovered ? Theme.hover : "transparent")
               Behavior on color { ColorAnimation { duration: Theme.fast } }
               Sym { id: ns; x: 10; anchors.verticalCenter: parent.verticalCenter; width: 14; height: 14; color: parent.parent.here ? Theme.accent : Theme.textDim
-                    name: ({ Discover: "sparkle", AI: "ai", Electronics: "gear", "Virtual Machines": "display", ArtCraft: "palette", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow" })[modelData] || "plus" }
+                    name: ({ Discover: "sparkle", AI: "ai", Electronics: "gear", "Virtual Machines": "display", ArtCraft: "palette", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow", Updates: "download" })[modelData] || "plus" }
               Txt { anchors { left: ns.right; leftMargin: 10; verticalCenter: parent.verticalCenter } text: modelData; font.weight: parent.parent.here ? Font.Bold : Font.Normal }
             }
             HoverHandler { id: nh }
@@ -182,7 +245,20 @@ ShellRoot {
           id: col
           x: 28; width: flick.width - 56
           spacing: 18
-          Txt { text: app.query ? "Results" : app.section; font.pixelSize: 26; font.weight: Font.Bold }
+          RowLayout {
+            Layout.fillWidth: true
+            Txt { text: app.query ? "Results" : app.section; font.pixelSize: 26; font.weight: Font.Bold; Layout.fillWidth: true }
+            // Updates: all at once.
+            Rectangle {
+              visible: app.section === "Updates" && !app.query && app.updates.length > 0 && !app.jobs["*"]
+              width: ua.implicitWidth + 30; height: 30; radius: 15
+              color: uh.hovered ? Qt.darker(Theme.accent, 1.1) : Theme.accent
+              Txt { id: ua; anchors.centerIn: parent; text: "Update All"; color: "#ffffff"; font.weight: Font.Bold }
+              HoverHandler { id: uh }
+              TapHandler { onTapped: app.start("*", "update") }
+            }
+            Txt { visible: !!app.jobs["*"]; text: "Updating…"; color: Theme.textDim }
+          }
           Txt { visible: app.status !== ""; text: app.status; color: Theme.textDim }
 
           // Featured: three large cards on Discover.
@@ -240,7 +316,26 @@ ShellRoot {
                   delegate: Card { required property var modelData; a: modelData; Layout.fillWidth: true }
                 }
               }
-              Txt { visible: modelData === "" && app.shown.length === 0; text: app.section === "Installed" ? "Apps you get here will show up here." : "Nothing matches."; color: Theme.textDim }
+              Txt { visible: modelData === "" && app.shown.length === 0 && !(app.query && (app.found.length || app.searching))
+                text: app.query ? "Nothing matches." : ({ Installed: "Apps you get here will show up here.", Updates: app.ready ? "All your apps are up to date." : "Updates show up here once Flathub can be reached." })[app.section] || "Nothing here yet."
+                color: Theme.textDim }
+              // The rest of Flathub, for a search.
+              ColumnLayout {
+                visible: modelData === "" && !!app.query && (app.found.length > 0 || app.searching)
+                Layout.fillWidth: true
+                Layout.topMargin: 10
+                spacing: 10
+                Txt { text: app.searching ? "Searching Flathub…" : "More on Flathub"; font.pixelSize: Theme.large + 2; font.weight: Font.Bold }
+                GridLayout {
+                  Layout.fillWidth: true
+                  columns: Math.max(1, Math.floor(col.width / 300))
+                  columnSpacing: 14; rowSpacing: 4
+                  Repeater {
+                    model: app.found.map(id => app.extra[id]).filter(a => !!a)
+                    delegate: Card { required property var modelData; a: modelData; Layout.fillWidth: true }
+                  }
+                }
+              }
             }
           }
         }
@@ -251,7 +346,7 @@ ShellRoot {
         id: page
         anchors.fill: parent
         visible: app.detail !== ""
-        readonly property var a: app.catalog.apps.find(x => x.id === app.detail) || ({ name: "", summary: "", description: "", category: "" })
+        readonly property var a: app.entry(app.detail) || ({ name: "", summary: "", description: "", category: "" })
         opacity: visible ? 1 : 0
         transform: Translate { x: page.visible ? 0 : 40; Behavior on x { NumberAnimation { duration: Theme.slow; easing.type: Easing.OutQuint } } }
         Behavior on opacity { NumberAnimation { duration: Theme.normal } }
@@ -278,6 +373,14 @@ ShellRoot {
                 Layout.topMargin: 8
                 spacing: 10
                 GetButton { appId: app.detail; big: true }
+                Rectangle {
+                  visible: app.updates.indexOf(app.detail) >= 0 && !app.jobs[app.detail]
+                  width: upt.implicitWidth + 26; height: 32; radius: 16
+                  color: uph.hovered ? Theme.pressed : Theme.hover
+                  Txt { id: upt; anchors.centerIn: parent; text: "Update"; color: Theme.accent; font.weight: Font.Bold }
+                  HoverHandler { id: uph }
+                  TapHandler { onTapped: app.start(app.detail, "update") }
+                }
                 Rectangle {
                   visible: !!app.installed[app.detail] && !app.jobs[app.detail]
                   width: rt.implicitWidth + 26; height: 32; radius: 16
@@ -361,10 +464,11 @@ ShellRoot {
         Txt { width: parent.width; text: card.a.name; font.weight: Font.Bold }
         Txt { width: parent.width; text: card.a.summary; color: Theme.textDim; font.pixelSize: Theme.small }
       }
-      GetButton { id: gb; appId: card.a.id; anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter } }
+      GetButton { id: gb; appId: card.a.id; update: app.section === "Updates" && !app.query && app.updates.indexOf(card.a.id) >= 0; anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter } }
       Rectangle { anchors { left: ci.right; leftMargin: 12; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.separator; opacity: 0.6 }
       HoverHandler { id: ch }
-      TapHandler { onTapped: app.detail = card.a.id }
+      // Not when the tap was on its Get/Open button.
+      TapHandler { onTapped: ev => { const q = gb.mapFromItem(card, ev.position.x, ev.position.y); if (!gb.contains(q)) app.detail = card.a.id } }
     }
 
     // Get / progress ring / Open, in one pill.
@@ -373,7 +477,8 @@ ShellRoot {
       property string appId
       property bool big: false
       property bool light: false
-      readonly property var job: app.jobs[appId]
+      property bool update: false           // "Update" instead of "Open"
+      readonly property var job: app.jobs[appId] || (update && app.jobs["*"] ? app.jobs["*"] : undefined)
       readonly property bool have: !!app.installed[appId]
       width: job ? height : pill.width
       height: big ? 32 : 28
@@ -385,8 +490,8 @@ ShellRoot {
         color: gbtn.light ? Qt.rgba(1, 1, 1, 0.92) : (gbtn.have ? Theme.hover : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16))
         scale: pt.pressed ? 0.94 : 1
         Behavior on scale { NumberAnimation { duration: Theme.fast } }
-        Txt { id: gt; anchors.centerIn: parent; text: gbtn.have ? "Open" : "Get"; font.weight: Font.Bold; color: gbtn.light ? "#1c1c1e" : Theme.accent }
-        TapHandler { id: pt; enabled: app.ready || gbtn.have; onTapped: gbtn.have ? app.open(gbtn.appId) : app.start(gbtn.appId, "install") }
+        Txt { id: gt; anchors.centerIn: parent; text: gbtn.update ? "Update" : (gbtn.have ? "Open" : "Get"); font.weight: Font.Bold; color: gbtn.light ? "#1c1c1e" : Theme.accent }
+        TapHandler { id: pt; enabled: app.ready || gbtn.have; onTapped: gbtn.update ? app.start(gbtn.appId, "update") : (gbtn.have ? app.open(gbtn.appId) : app.start(gbtn.appId, "install")) }
       }
       // Progress ring while it downloads.
       Canvas {
@@ -407,6 +512,9 @@ ShellRoot {
           c.fillStyle = Theme.accent
           c.fillRect(width / 2 - 3.5, height / 2 - 3.5, 7, 7)
         }
+        // The square in the middle stops the download.
+        TapHandler { enabled: !!gbtn.job && gbtn.job.kind === "install"; onTapped: app.cancel(gbtn.appId) }
+        HoverHandler { enabled: !!gbtn.job && gbtn.job.kind === "install"; cursorShape: Qt.PointingHandCursor }
       }
     }
   }

@@ -271,6 +271,7 @@ PanelWindow {
       items.push({ text: ws.length ? "New Window" : "Open", action: () => Apps.launch(e.id) })
       items.push({ separator: true })
       items.push(pinned ? { text: "Remove from Dock", action: () => Apps.unpin(e.id) } : { text: "Keep in Dock", action: () => Apps.pin(e.id) })
+      if (Apps.removable(e.id)) items.push({ text: "Uninstall…", action: () => Apps.uninstall(e.id) })
     }
     if (ws.length) {
       items.push({ text: "Show All Windows", action: () => ws.forEach(w => Apps.isMinimized(w) ? Apps.restore(w) : null) })
