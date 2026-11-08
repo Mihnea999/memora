@@ -7,3 +7,9 @@ qt6-wayland
 qt6-svg
 mesa
 ttf-jetbrains-mono-nerd
+ntfs-3g
+parted
+gptfdisk
+dosfstools
+e2fsprogs
+ntfsprogs

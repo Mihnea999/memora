@@ -193,6 +193,19 @@ Restart=on-failure
 WantedBy=multi-user.target
 UNIT
 systemctl enable memora-ydotoold.service
+# Keeps Windows and other systems in the startup menu.
+cat > /etc/systemd/system/memora-bootsync.service <<'UNIT'
+[Unit]
+Description=Keep other systems in the startup menu
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/memora-bootsync
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 # Plain-words password prompts for the changes System Settings makes.
 install -Dm644 $MEMORA_PATH/polkit/org.memora.admin.policy /usr/share/polkit-1/actions/org.memora.admin.policy
 # Look for updates in the background and say when there are some.
@@ -295,7 +308,12 @@ EOF
 mkinitcpio -P
 
 step "Bootloader"
+# Next to another system the menu lives on its EFI partition (/efi) and the
+# kernels on Memora's own boot partition (/boot); otherwise both are /boot.
 bootctl install
+loader=/boot/loader
+mountpoint -q /efi && loader=/efi/loader
+mkdir -p "$loader" /boot/loader/entries /etc/memora
 cmdline="rw rootflags=subvol=@ quiet splash loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0"
 if [[ $MEMORA_ENCRYPT == 1 ]]; then
   cmdline="rd.luks.name=$MEMORA_LUKS_UUID=cryptroot rd.luks.options=discard root=/dev/mapper/cryptroot $cmdline"
@@ -305,23 +323,39 @@ fi
 ucode=""
 [[ -f /boot/intel-ucode.img ]] && ucode+="initrd  /intel-ucode.img"$'\n'
 [[ -f /boot/amd-ucode.img ]] && ucode+="initrd  /amd-ucode.img"$'\n'
-cat > /boot/loader/loader.conf <<'EOF'
-default memora.conf
-timeout 2
-console-mode max
-editor no
-EOF
 cat > /boot/loader/entries/memora.conf <<EOF
 title   Memora
+sort-key 00-memora
 linux   /vmlinuz-linux
 ${ucode}initrd  /initramfs-linux.img
 options $cmdline
 EOF
-cat > /boot/loader/entries/memora-fallback.conf <<EOF
+# Arch no longer builds a fallback image by default; offer it only when there is one.
+[[ -f /boot/initramfs-linux-fallback.img ]] && cat > /boot/loader/entries/memora-fallback.conf <<EOF
 title   Memora (fallback initramfs)
+sort-key 99-memora
 linux   /vmlinuz-linux
 ${ucode}initrd  /initramfs-linux-fallback.img
 options ${cmdline/ quiet splash/}
+EOF
+# Other systems on this computer (Windows, other Linux) join the menu, which
+# then stays up for a few seconds so there's time to pick one.
+# (Checked again at every start, so a system installed later shows up too.)
+others="$(memora-bootsync || true)"
+systemctl enable memora-bootsync.service
+timeout=2
+if [[ -n $others ]]; then
+  timeout=5
+  # Windows keeps the hardware clock in local time; agree with it, or the
+  # clock is off by hours after switching.
+  if grep -q '^Windows|' /etc/memora/other-systems; then printf '0.0 0 0.0\n0\nLOCAL\n' > /etc/adjtime; fi
+fi
+cat > "$loader/loader.conf" <<EOF
+default memora.conf
+timeout $timeout
+console-mode max
+editor no
+auto-entries no
 EOF
 systemctl enable systemd-boot-update.service
 

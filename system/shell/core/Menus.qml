@@ -108,6 +108,7 @@ Singleton {
       sep(),
       { text: "Sleep", action: () => Apps.run("systemctl suspend") },
       { text: "Restart…", action: () => Shell.power("restart") },
+      ...Shell.otherSystems.map(o => ({ text: "Restart into " + o.name + "…", action: () => Shell.power("restart:" + o.entry) })),
       { text: "Shut Down…", action: () => Shell.power("shutdown") },
       sep(),
       { text: "Lock Screen", keys: "Super L", action: () => Apps.run("memora-lock") },

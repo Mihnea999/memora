@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # QEMU test harness for Memora.
 #   test/vm.sh install   unattended install of out/*.iso onto test/disk.qcow2
+#                        (KEEP=1 EXTRA=memora.alongside: next to what is on the disk)
 #   test/vm.sh boot      boot the installed disk (headless, VNC :5 / screenshots)
 #   test/vm.sh shot FILE take a screenshot of the running VM
 #   test/vm.sh run       boot the installed disk in a fast GPU window (user memora / memora)
@@ -31,7 +32,9 @@ live=(-virtfs "local,path=$(cd .. && pwd)/system,mount_tag=memora,security_model
 case "${1:-}" in
   install)
     [[ -n $iso ]] || { echo "No ISO in out/. Run ./build.sh"; exit 1; }
-    rm -f "$disk" "${pre}vars.fd"; qemu-img create -q -f qcow2 "$disk" 40G; cp "$ovmf_vars" "${pre}vars.fd"
+    # KEEP=1 installs onto the disk as it is (e.g. one with Windows on it, EXTRA=memora.alongside).
+    [[ ${KEEP:-0} == 1 ]] || { rm -f "$disk"; qemu-img create -q -f qcow2 "$disk" 40G; }
+    rm -f "${pre}vars.fd"; cp "$ovmf_vars" "${pre}vars.fd"
     label="$(isoinfo -d -i "$iso" 2>/dev/null | awk -F': ' '/Volume id/ {print $2}' || true)"
     [[ -n $label ]] || label="$(blkid -s LABEL -o value "$iso")"
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT

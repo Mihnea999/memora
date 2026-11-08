@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# memora-disks [DISK] — what the installer needs to know about each disk, as JSON.
+#
+# For every disk (except the USB stick Memora runs from):
+#   path model size tran pttype
+#   systems   operating systems found on it ("Windows", "Ubuntu", …)
+#   esp       its EFI system partition, if any (the one with the most systems on it)
+#   free      the largest unpartitioned space, in bytes
+#   shrink    the partition that can best make room for Memora:
+#             { part fstype size min room state } — room is what can be taken
+#             while leaving the other system space to breathe; state is ok,
+#             hibernated (Windows Fast Startup), dirty, locked (BitLocker) or error
+#   parts     every partition { path fstype size label kind } for the disk map
+set -uo pipefail
+
+live="$(lsblk -no PKNAME "$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null)" 2>/dev/null | head -1)"
+ESP_TYPE=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+GiB=$((1024 * 1024 * 1024))
+tmp="$(mktemp -d)"; trap 'umount -q "$tmp" 2>/dev/null; rmdir "$tmp"' EXIT
+
+# Pretty names for the folders operating systems leave in EFI/.
+efi_name() {
+  case "${1,,}" in
+    microsoft) echo Windows ;; ubuntu) echo Ubuntu ;; fedora) echo Fedora ;; debian) echo Debian ;;
+    opensuse|opensuse-secureboot) echo openSUSE ;; manjaro) echo Manjaro ;; pop) echo "Pop!_OS" ;;
+    linuxmint|mint) echo "Linux Mint" ;; arch|arch-limine|grub|endeavouros) echo "Arch Linux" ;;
+    centos) echo CentOS ;; redhat) echo "Red Hat" ;; elementary) echo elementary ;; zorin) echo "Zorin OS" ;;
+    nixos) echo NixOS ;; kali) echo Kali ;; omarchy) echo Omarchy ;;
+    boot|systemd|linux|memora|tools|dell|hp|lenovo|asus|acer|msi|apple|refind|shellx64|.*) ;;
+    *) echo "$1" ;;
+  esac
+}
+
+esp_systems() { # systems on an ESP, one per line
+  mount -o ro "$1" "$tmp" 2>/dev/null || return 0
+  if [[ -d $tmp/EFI ]]; then
+    for d in "$tmp"/EFI/*/; do
+      d="$(basename "$d")"
+      [[ ${d,,} == microsoft && ! -f $tmp/EFI/$d/Boot/bootmgfw.efi ]] && continue
+      efi_name "$d"
+    done
+    # systemd-boot entries of other Linux systems.
+    for e in "$tmp"/loader/entries/*.conf; do
+      [[ -f $e ]] || continue
+      t="$(sed -n 's/^title[[:space:]]*//p' "$e" | head -1)"
+      [[ -n $t && $t != Memora* ]] && echo "${t%% (*}"
+    done
+  fi
+  umount -q "$tmp"
+}
+
+ntfs_info() { # size → "min state"
+  local out min
+  out="$(LC_ALL=C ntfsresize --info --no-progress-bar "$1" 2>&1)"
+  if grep -qi hibernat <<<"$out"; then echo "0 hibernated"
+  elif grep -qiE 'scheduled for check|dirty|chkdsk' <<<"$out"; then echo "0 dirty"
+  elif min="$(sed -nE 's/.*You might resize at ([0-9]+) bytes.*/\1/p' <<<"$out" | head -1)" && [[ -n $min ]]; then echo "$min ok"
+  else echo "0 error"; fi
+}
+
+ext4_info() {
+  local bs blocks
+  bs="$(LC_ALL=C dumpe2fs -h "$1" 2>/dev/null | awk -F: '/^Block size/ {gsub(/ /,"",$2); print $2}')"
+  blocks="$(LC_ALL=C resize2fs -P "$1" 2>/dev/null | awk -F: '/minimum size/ {gsub(/ /,"",$2); print $2}')"
+  if [[ -n $bs && -n $blocks ]]; then echo "$((bs * blocks)) ok"; else echo "0 error"; fi
+}
+
+largest_free() { # bytes of the biggest unpartitioned stretch (≥ 1 MiB aligned use)
+  local disk=$1 size=$2 pt=$3
+  [[ -z $pt ]] && { echo "$size"; return; }
+  LC_ALL=C parted -m -s "$disk" unit B print free 2>/dev/null |
+    awk -F: '$5 ~ /^free/ { s = $4; sub(/B$/, "", s); if (s + 0 > m) m = s + 0 } END { printf "%d\n", m + 0 }'
+}
+
+disk_json() {
+  local disk=$1 size model tran pt
+  IFS=$'\x1f' read -r size tran pt model < <(lsblk -Jdbo SIZE,TRAN,PTTYPE,MODEL "$disk" |
+    jq -r '.blockdevices[0] | [(.size | tostring), .tran // "", .pttype // "", .model // ""] | join("\u001f")')
+  model="${model%"${model##*[![:space:]]}"}"
+  [[ -n $model ]] || model="$(basename "$disk")"
+  local systems=() esp="" esp_n=0 parts="[]" best="null" best_room=0 problem="null"
+  while IFS=$'\x1f' read -r p ptype fstype psize label; do
+    [[ -n $p ]] || continue
+    local kind=other
+    if [[ $ptype == "$ESP_TYPE" ]]; then
+      kind=esp
+      mapfile -t found < <(esp_systems "$p")
+      systems+=("${found[@]}")
+      if [[ -z $esp ]] || (( ${#found[@]} > esp_n )); then esp=$p; esp_n=${#found[@]}; fi
+    elif [[ $fstype == ntfs ]]; then kind=windows
+    elif [[ $fstype == BitLocker ]]; then kind=windows
+    elif [[ $fstype =~ ^(ext4|btrfs|xfs|crypto_LUKS)$ ]]; then kind=linux
+    elif [[ $fstype == swap ]]; then kind=swap
+    fi
+    # Partitions that could make room: NTFS and ext4 with something to give.
+    if [[ $fstype == ntfs || $fstype == ext4 || $fstype == BitLocker ]] && (( psize >= 30 * GiB )); then
+      local min state
+      case $fstype in
+        ntfs) read -r min state < <(ntfs_info "$p") ;;
+        ext4) read -r min state < <(ext4_info "$p") ;;
+        BitLocker) min=0; state=locked ;;
+      esac
+      local keep=$((10 * GiB)); [[ $fstype == ntfs ]] && keep=$((20 * GiB))
+      (( psize / 10 > keep )) && keep=$((psize / 10))
+      local room=0; [[ $state == ok ]] && room=$(( (psize - min - keep) / (1024 * 1024) * 1024 * 1024 ))
+      (( room < 0 )) && room=0
+      local cand; cand="$(jq -nc --arg part "$p" --arg fstype "$fstype" --argjson size "$psize" \
+        --argjson min "$min" --argjson room "$room" --arg state "$state" --arg label "$label" \
+        '{part:$part, fstype:$fstype, size:$size, min:$min, room:$room, state:$state, label:$label}')"
+      if [[ $state == ok ]]; then
+        (( room > best_room )) && { best=$cand; best_room=$room; }
+      elif [[ $problem == null ]]; then problem=$cand; fi
+    fi
+    parts="$(jq -c --arg path "$p" --arg fstype "$fstype" --argjson size "$psize" --arg label "$label" --arg kind "$kind" \
+      '. + [{path:$path, fstype:$fstype, size:$size, label:$label, kind:$kind}]' <<<"$parts")"
+  done < <(lsblk -Jbpo PATH,PARTTYPE,FSTYPE,SIZE,LABEL,TYPE "$disk" |
+    jq -r '.blockdevices[] | select(.type == "part") | [.path, .parttype // "", .fstype // "", (.size | tostring), .label // ""] | join("\u001f")')
+  # A problem partition only matters when nothing else can make room.
+  [[ $best == null ]] && best=$problem
+  local free; free="$(largest_free "$disk" "$size" "$pt")"
+  printf '%s\n' "${systems[@]}" | awk 'NF && !seen[$0]++' | jq -R . | jq -sc . > "$tmp.sys"
+  jq -nc --arg path "$disk" --arg model "$model" --argjson size "$size" --arg tran "$tran" --arg pt "$pt" \
+    --slurpfile systems "$tmp.sys" --arg esp "$esp" --argjson free "${free:-0}" --argjson shrink "$best" --argjson parts "$parts" \
+    '{path:$path, model:$model, size:$size, tran:$tran, pttype:$pt, systems:$systems[0], esp:$esp, free:$free, shrink:$shrink, parts:$parts}'
+  rm -f "$tmp.sys"
+}
+
+if [[ -n ${1:-} ]]; then
+  disk_json "$1" | jq -sc .
+else
+  lsblk -dpno NAME,TYPE | awk '$2 == "disk" { print $1 }' | grep -vE '^/dev/(loop|sr|zram|fd)' |
+    { if [[ -n $live ]]; then grep -vx "/dev/$live"; else cat; fi } |
+    while read -r d; do disk_json "$d"; done | jq -sc .
+fi

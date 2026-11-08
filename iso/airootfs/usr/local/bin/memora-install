@@ -9,6 +9,8 @@ set -Eeuo pipefail
 PAYLOAD=/opt/memora
 LOG=/var/log/memora-install.log
 TARGET=/mnt
+MiB=$((1024 * 1024)); GiB=$((1024 * MiB))
+MODE=erase; SIZE=0; ESP_PART=""
 AUTO=0; grep -qw memora.auto /proc/cmdline && AUTO=1
 # Graphical installer: `memora-install --answers FILE` takes every answer from
 # FILE (shell variables) and reports progress as "@step N TOTAL text" lines.
@@ -22,17 +24,20 @@ accent=255
 STEP=0
 title() { if [[ $GUI == 1 ]]; then STEP=$((STEP + 1)); echo "@step $STEP 3 $*"; else gum style --foreground "$accent" --bold "$*"; fi; }
 info() { [[ $GUI == 1 ]] && echo "$*" || gum style --foreground 245 "$*"; }
-fail() { [[ $GUI == 1 ]] && echo "@error $*" || gum style --foreground 203 --bold "$*"; }
+REPORTED=0
+fail() { REPORTED=1; log "$*"; [[ $GUI == 1 ]] && echo "@error $*" || gum style --foreground 203 --bold "$*"; }
 
 on_error() {
   local line=$1
   log "error at line $line"
   echo
-  fail "Installation failed (line $line). Full log: $LOG"
-  tail -n 15 "$LOG" 2>/dev/null || true
+  if [[ $REPORTED == 0 ]]; then
+    fail "Installation failed (line $line). Full log: $LOG"
+    [[ $GUI == 1 ]] && echo "@error Installation failed. Details are in $LOG"
+  fi
+  [[ $GUI == 1 ]] || tail -n 15 "$LOG" 2>/dev/null || true
   cleanup
   if [[ $AUTO == 1 ]]; then sleep 5; poweroff; fi
-  [[ $GUI == 1 ]] && echo "@error Installation failed. Details are in $LOG"
   exit 1
 }
 trap 'on_error $LINENO' ERR
@@ -138,6 +143,7 @@ questions() {
     source "$ANSWERS"
     shred -u "$ANSWERS" 2>/dev/null || rm -f "$ANSWERS"
     [[ -b $DISK ]] || { fail "The chosen disk is gone."; exit 1; }
+    MODE=${MODE:-erase}; SIZE=${SIZE:-0}
     [[ $USERNAME =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { fail "Invalid username."; exit 1; }
     [[ $HOSTNAME_ =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$ ]] || HOSTNAME_=memora
     loadkeys "$KEYMAP" 2>/dev/null || true
@@ -148,6 +154,9 @@ questions() {
     FULLNAME="Memora"; USERNAME=memora; PASSWORD=memora; HOSTNAME_=memora
     TIMEZONE=UTC; LOCALE=en_US.UTF-8; THEME=dark; TOOLKITS=""
     ENCRYPT=0; if grep -qw memora.encrypt /proc/cmdline; then ENCRYPT=1; fi
+    # memora.alongside: keep what is on the disk and make 32 GiB of room.
+    MODE=erase; SIZE=0
+    if grep -qw memora.alongside /proc/cmdline; then MODE=alongside; SIZE=$((32 * GiB)); fi
     return
   fi
 
@@ -176,7 +185,7 @@ questions() {
   LOCALE="$(printf '%s\n' en_US.UTF-8 en_GB.UTF-8 ro_RO.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 es_ES.UTF-8 it_IT.UTF-8 |
     gum choose --header "Language and formats")"
 
-  pick_disk
+  pick_disk; MODE=erase
   if gum confirm --default=yes "Encrypt the disk? (recommended; you type the password at boot)"; then ENCRYPT=1; else ENCRYPT=0; fi
 
   title "Look"
@@ -212,17 +221,99 @@ confirm() {
 part() { [[ $1 =~ [0-9]$ ]] && echo "${1}p$2" || echo "${1}$2"; }
 
 prepare_disk() {
-  title "Preparing $DISK"
-  log "disk $DISK encrypt=$ENCRYPT"
+  log "disk $DISK mode=$MODE size=$SIZE encrypt=$ENCRYPT"
   cleanup
+  if [[ $MODE == alongside ]]; then make_room; else erase_disk; fi
+  format_root
+  mount_all
+}
+
+# The whole disk for Memora: a 2 GiB EFI partition and the rest.
+erase_disk() {
+  title "Preparing $DISK"
   wipefs -af "$DISK" >> "$LOG" 2>&1
   sgdisk --zap-all "$DISK" >> "$LOG" 2>&1
   sgdisk -n1:0:+2G -t1:ef00 -c1:MEMORA_EFI -n2:0:0 -t2:8309 -c2:MEMORA "$DISK" >> "$LOG" 2>&1
   [[ $ENCRYPT == 1 ]] || sgdisk -t2:8300 "$DISK" >> "$LOG" 2>&1
-  partprobe "$DISK" 2>/dev/null || true; udevadm settle
-  EFI_PART="$(part "$DISK" 1)"; ROOT_PART="$(part "$DISK" 2)"
+  settle
+  BOOT_PART="$(part "$DISK" 1)"; ROOT_PART="$(part "$DISK" 2)"
+  mkfs.fat -F32 -n MEMORA_EFI "$BOOT_PART" >> "$LOG" 2>&1
+}
 
-  mkfs.fat -F32 -n MEMORA_EFI "$EFI_PART" >> "$LOG" 2>&1
+settle() { partprobe "$DISK" 2>/dev/null || true; udevadm settle; sleep 1; }
+
+# Next to what is already there: in free space, or in room made by shrinking
+# the partition memora-disks picked (NTFS or ext4). Kernels go on a small
+# partition of Memora's own (XBOOTLDR); the boot menu goes on the existing EFI
+# partition, where it also finds Windows.
+make_room() {
+  title "Making room on $DISK"
+  local info; info="$(memora-disks "$DISK" | jq -c '.[0]')"
+  log "disk: $info"
+  [[ $(jq -r .pttype <<<"$info") == gpt ]] || { fail "This disk uses the older MBR layout, so Memora can't be installed next to what's on it."; false; }
+  local free need ss al
+  free=$(jq .free <<<"$info"); ESP_PART=$(jq -r .esp <<<"$info")
+  need=$(( SIZE / MiB * MiB ))
+  (( need >= 20 * GiB )) || { fail "Memora needs at least 20 GB."; false; }
+  ss=$(blockdev --getss "$DISK"); al=$(( MiB / ss ))
+
+  if (( free < need )); then
+    local sp fstype psize state room
+    IFS=$'\x1f' read -r sp fstype psize state room < <(jq -r '.shrink // {} | [.part // "", .fstype // "", (.size // 0 | tostring), .state // "", (.room // 0 | tostring)] | join("\u001f")' <<<"$info")
+    [[ -n $sp ]] || { fail "There isn't enough free space on this disk."; false; }
+    case $state in
+      ok) ;;
+      hibernated) fail "Windows didn't shut down completely (Fast Startup). Start Windows, hold Shift while you click Shut Down, then try again."; false ;;
+      dirty) fail "Windows needs to check its disk first. Start Windows, restart it once, shut it down, then try again."; false ;;
+      locked) fail "Windows is encrypted with BitLocker, so it can't be resized from here. In Windows, open Disk Management, right-click C: and choose Shrink Volume (30 GB or more), then start the installer again."; false ;;
+      *) fail "$sp can't be resized safely."; false ;;
+    esac
+    # A rounding difference (the installer counts whole gigabytes) is fine.
+    (( need > room && need - room < 2 * GiB )) && need=$room
+    (( need <= room )) || { fail "There's only room for $((room / 1000000000)) GB next to the other system."; false; }
+    local newsize=$(( (psize - need) / MiB * MiB ))
+    info "Resizing $sp to $((newsize / GiB)) GB"
+    log "shrink $sp ($fstype) $psize -> $newsize"
+    case $fstype in
+      ntfs)
+        ntfsresize --no-action --no-progress-bar --size "$newsize" "$sp" >> "$LOG" 2>&1
+        printf 'y\n' | ntfsresize --no-progress-bar --size "$newsize" "$sp" >> "$LOG" 2>&1 ;;
+      ext4)
+        e2fsck -f -y "$sp" >> "$LOG" 2>&1 || (( $? < 4 ))
+        resize2fs "$sp" "$(( newsize / 1024 ))K" >> "$LOG" 2>&1 ;;
+      *) false ;;
+    esac
+    local n; n="$(lsblk -no PARTN "$sp" | tr -d ' ')"
+    echo ",$(( newsize / ss ))" | sfdisk --no-reread --no-tell-kernel --wipe never --wipe-partitions never -q -N "$n" "$DISK" >> "$LOG" 2>&1
+    settle
+  fi
+
+  # The biggest free stretch is the one to use (the new one, after shrinking).
+  local start end
+  read -r start end < <(LC_ALL=C parted -m -s "$DISK" unit s print free |
+    awk -F: '$5 ~ /^free/ { s = $2; e = $3; sub(/s$/, "", s); sub(/s$/, "", e); if (e - s > m) { m = e - s; bs = s; be = e } } END { print bs, be }')
+  start=$(( (start + al - 1) / al * al ))
+  local limit=$(( start + need / ss - 1 )); (( limit > end )) && limit=$end
+  (( (limit - start) * ss >= 20 * GiB )) || { fail "There isn't enough free space on this disk."; false; }
+
+  local used nb nr i=1
+  used=" $(lsblk -lno PARTN "$DISK" | tr '\n' ' ') "
+  while [[ $used == *" $i "* ]]; do i=$((i + 1)); done; nb=$i; i=$((i + 1))
+  while [[ $used == *" $i "* ]]; do i=$((i + 1)); done; nr=$i
+  local bend=$(( start + 2 * GiB / ss - 1 ))
+  if [[ -n $ESP_PART ]]; then
+    sgdisk -n "$nb:$start:$bend" -t "$nb:ea00" -c "$nb:MEMORA_BOOT" "$DISK" >> "$LOG" 2>&1
+  else
+    sgdisk -n "$nb:$start:$bend" -t "$nb:ef00" -c "$nb:MEMORA_EFI" "$DISK" >> "$LOG" 2>&1
+  fi
+  sgdisk -n "$nr:$(( bend + 1 )):$limit" -t "$nr:$([[ $ENCRYPT == 1 ]] && echo 8309 || echo 8300)" -c "$nr:MEMORA" "$DISK" >> "$LOG" 2>&1
+  settle
+  BOOT_PART="$(part "$DISK" "$nb")"; ROOT_PART="$(part "$DISK" "$nr")"
+  log "boot $BOOT_PART root $ROOT_PART esp ${ESP_PART:-none}"
+  mkfs.fat -F32 -n MEMORA_BOOT "$BOOT_PART" >> "$LOG" 2>&1
+}
+
+format_root() {
   local dev=$ROOT_PART
   if [[ $ENCRYPT == 1 ]]; then
     printf '%s' "$PASSWORD" | cryptsetup luksFormat --type luks2 --batch-mode --pbkdf argon2id \
@@ -233,7 +324,11 @@ prepare_disk() {
   fi
   mkfs.btrfs -f -L memora "$dev" >> "$LOG" 2>&1
   ROOT_UUID="$(blkid -s UUID -o value "$dev")"
+  ROOT_DEV=$dev
+}
 
+mount_all() {
+  local dev=$ROOT_DEV
   mount "$dev" "$TARGET"
   for sv in @ @home @log @pkg @snapshots; do btrfs subvolume create "$TARGET/$sv" >> "$LOG"; done
   umount "$TARGET"
@@ -244,7 +339,12 @@ prepare_disk() {
   mount -o "$o,subvol=@log" "$dev" "$TARGET/var/log"
   mount -o "$o,subvol=@pkg" "$dev" "$TARGET/var/cache/pacman/pkg"
   mount -o "$o,subvol=@snapshots" "$dev" "$TARGET/.snapshots"
-  mount -o umask=0077 "$EFI_PART" "$TARGET/boot"
+  mount -o umask=0077 "$BOOT_PART" "$TARGET/boot"
+  # Next to another system: its EFI partition holds the boot menu.
+  if [[ -n $ESP_PART ]]; then
+    mkdir -p "$TARGET/efi"
+    mount -o umask=0077 "$ESP_PART" "$TARGET/efi"
+  fi
 }
 
 package_list() {

@@ -17,6 +17,11 @@ ShellRoot {
   property bool online: false
   property var disks: []
   property string disk: ""
+  property bool probing: true
+  // "alongside" keeps what's on the disk and makes room; "erase" takes it all.
+  property string mode: "erase"
+  property real size: 0                 // bytes for Memora when alongside
+  readonly property real minSize: 30 * 1073741824
   property bool encrypt: true
   property string fullName: ""
   property string userName: ""
@@ -51,8 +56,40 @@ ShellRoot {
   readonly property string passError: password && password.length < 4 ? "At least 4 characters" : (password2 && password !== password2 ? "The passwords don't match" : "")
   readonly property bool youOk: fullName.trim() !== "" && userName !== "" && !userError && password.length >= 4 && password === password2 && /^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/.test(hostName)
   readonly property var chosenDisk: disks.find(d => d.path === disk) || null
+  // What else lives on a disk, in words ("Windows", "Windows and Ubuntu").
+  function others(d) { return d && d.systems.length ? d.systems.join(" and ") : "" }
+  // How much Memora may take next to what's there.
+  function room(d) { return d ? Math.max(d.free, d.shrink && d.shrink.state === "ok" ? d.shrink.room : 0) : 0 }
+  function canAlongside(d) { return d && d.pttype === "gpt" && d.parts.length > 0 && room(d) >= minSize }
+  // Why it can't, in plain words (empty when it can, or when there's nothing to keep).
+  function alongsideProblem(d) {
+    if (!d || d.parts.length === 0 || canAlongside(d)) return ""
+    const what = others(d) || "what's on it"
+    if (d.pttype !== "gpt") return "This disk uses the older MBR layout, so Memora can't go next to " + what + "."
+    const st = d.shrink ? d.shrink.state : ""
+    if (st === "hibernated") return "Windows is still asleep (Fast Startup). Start Windows, hold Shift while you click Shut Down, then start the installer again."
+    if (st === "dirty") return "Windows needs to check its disk. Start Windows, restart it once, shut it down, then start the installer again."
+    if (st === "locked") return "Windows is encrypted with BitLocker, so it can't be resized from here. In Windows, open Disk Management, right-click C: and choose Shrink Volume (30 GB or more), then start the installer again."
+    return "There isn't enough room next to " + what + ". Memora needs 30 GB."
+  }
+  // A sensible split: all the free space, or half of what the other system can give.
+  function defaultSize(d) {
+    if (!canAlongside(d)) return 0
+    if (d.free >= minSize) return d.free
+    const sh = d.shrink
+    return Math.max(minSize, Math.min(room(d), Math.round((sh.size - sh.min) / 2)))
+  }
+  function pickDisk(path) {
+    disk = path
+    const d = chosenDisk
+    mode = canAlongside(d) ? "alongside" : "erase"
+    size = defaultSize(d)
+  }
+  // The partition that shrinks, and to what size (alongside, without enough free space).
+  readonly property real otherAfter: chosenDisk && mode === "alongside" && chosenDisk.free < size && chosenDisk.shrink ? chosenDisk.shrink.size - size : 0
   readonly property var summary: [
-    ["Disk", chosenDisk ? chosenDisk.model + " (" + gb(chosenDisk.size) + ")" : ""],
+    ["Disk", chosenDisk ? (mode === "alongside" ? gb(size) + " on " : "All of ") + chosenDisk.model + " (" + gb(chosenDisk.size) + ")" : ""],
+    ["Next to", mode === "alongside" ? (others(chosenDisk) || "your files") + (otherAfter > 0 ? " (resized to " + gb(otherAfter) + ")" : "") : "Nothing (the disk is erased)"],
     ["Encryption", encrypt ? "On" : "Off"],
     ["Account", fullName.trim() + " (" + userName + ")"],
     ["Computer", hostName],
@@ -63,7 +100,7 @@ ShellRoot {
 
   function canGo(p) {
     if (p === 1) return online
-    if (p === 2) return disk !== ""
+    if (p === 2) return !probing && disk !== "" && (mode === "erase" || size >= minSize)
     if (p === 3) return youOk
     return true
   }
@@ -92,20 +129,32 @@ ShellRoot {
   Process {
     id: diskList
     running: true
-    // Every disk except the USB stick Memora runs from.
-    command: ["bash", "-c", "live=$(lsblk -no PKNAME \"$(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null)\" 2>/dev/null | head -1); lsblk -dbpno NAME,SIZE,TRAN,MODEL,TYPE | awk -v live=\"/dev/$live\" '$NF==\"disk\" && $1!=live && $1 !~ /\\/dev\\/(loop|sr|zram|fd)/'"]
+    // Every disk except the USB stick, with what's on it (memora-disks).
+    command: ["memora-disks"]
+    onRunningChanged: if (running) app.probing = true
     stdout: StdioCollector {
       onStreamFinished: {
-        app.disks = text.split("\n").filter(l => l.trim()).map(l => {
-          const f = l.trim().split(/\s+/)
-          const model = f.slice(3, f.length - 1).join(" ")
-          return { path: f[0], size: Number(f[1]), tran: f[2] === "disk" ? "" : f[2], model: model || f[0].split("/").pop() }
-        })
-        if (app.disks.length === 1) app.disk = app.disks[0].path
+        let list = []
+        try { list = JSON.parse(text) } catch (e) {}
+        app.disks = list
+        app.probing = false
+        // Keep the choice when looking again; otherwise suggest the disk that
+        // already has a system (to go next to it), or the only one.
+        const keep = list.find(d => d.path === app.disk)
+        const pick = keep || (list.length === 1 ? list[0] : list.find(d => app.canAlongside(d)))
+        if (pick) app.pickDisk(pick.path)
       }
     }
   }
   function gb(b) { return b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : Math.round(b / 1e9) + " GB" }
+
+  // On battery? Installing takes a while.
+  property bool onBattery: false
+  Process {
+    running: true
+    command: ["bash", "-c", "cat /sys/class/power_supply/BAT*/status 2>/dev/null | grep -qx Discharging && echo yes"]
+    stdout: StdioCollector { onStreamFinished: app.onBattery = text.trim() === "yes" }
+  }
 
   property var zones: []
   Process {
@@ -177,8 +226,8 @@ ShellRoot {
   function install() {
     page = 7; error = ""; progress = 0.01; step = "Starting"
     writeAnswers.command = ["bash", "-c",
-      "umask 077; { printf 'DISK=%q\\nUSERNAME=%q\\nFULLNAME=%q\\nPASSWORD=%q\\nHOSTNAME_=%q\\nTIMEZONE=%q\\nLOCALE=%q\\nKEYMAP=%q\\nXKB=%q\\nTHEME=%q\\nTOOLKITS=%q\\nENCRYPT=%q\\n' \"$@\"; } > /tmp/memora-answers",
-      "_", disk, userName, fullName.trim(), password, hostName, timezone, locale, keyboard.keymap, keyboard.xkb, look, toolkits.join(" "), encrypt ? "1" : "0"]
+      "umask 077; { printf 'DISK=%q\\nUSERNAME=%q\\nFULLNAME=%q\\nPASSWORD=%q\\nHOSTNAME_=%q\\nTIMEZONE=%q\\nLOCALE=%q\\nKEYMAP=%q\\nXKB=%q\\nTHEME=%q\\nTOOLKITS=%q\\nENCRYPT=%q\\nMODE=%q\\nSIZE=%q\\n' \"$@\"; } > /tmp/memora-answers",
+      "_", disk, userName, fullName.trim(), password, hostName, timezone, locale, keyboard.keymap, keyboard.xkb, look, toolkits.join(" "), encrypt ? "1" : "0", mode, mode === "alongside" ? String(Math.floor(size)) : "0"]
     writeAnswers.running = true
     password = ""; password2 = ""
   }
@@ -203,7 +252,7 @@ ShellRoot {
       id: card
       anchors.centerIn: parent
       width: Math.min(parent.width - 48, 780)
-      height: Math.min(parent.height - 48, 580)
+      height: Math.min(parent.height - 48, 620)
       radius: 26
       fill: Theme.dark ? Qt.rgba(0.09, 0.09, 0.11, 0.82) : Qt.rgba(0.98, 0.98, 0.99, 0.86)
       shadowSize: 50
@@ -240,6 +289,10 @@ ShellRoot {
             Image { Layout.alignment: Qt.AlignHCenter; source: "file://" + Theme.share + "/themes/" + Theme.mode + "/logo.png"; Layout.preferredWidth: 104; Layout.preferredHeight: 104; sourceSize: Qt.size(208, 208) }
             Txt { Layout.alignment: Qt.AlignHCenter; text: "Install Memora"; font.pixelSize: 30; font.weight: Font.Bold }
             Txt { Layout.alignment: Qt.AlignHCenter; text: "A calm, beautiful desktop. It takes about ten minutes."; color: Theme.textDim }
+            Txt {
+              Layout.alignment: Qt.AlignHCenter; visible: app.onBattery
+              text: "Plug in the charger: installing takes a while."; color: "#f07322"; font.pixelSize: Theme.small + 0.5
+            }
             Item { Layout.preferredHeight: 18 }
             GridLayout {
               Layout.alignment: Qt.AlignHCenter
@@ -304,39 +357,143 @@ ShellRoot {
           ColumnLayout {
             anchors.fill: parent
             spacing: 12
-            Heading { title: "Where should Memora go?"; sub: "Everything on the disk you pick will be erased." }
-            Repeater {
-              model: app.disks
-              delegate: Rectangle {
-                required property var modelData
-                readonly property bool on: app.disk === modelData.path
-                Layout.fillWidth: true
-                implicitHeight: 64; radius: 12
-                color: on ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : (dh.hovered ? Theme.hover : Theme.field)
-                border.width: on ? 2 : 1; border.color: on ? Theme.accent : Theme.separator
-                Rectangle {
-                  x: 14; anchors.verticalCenter: parent.verticalCenter
-                  width: 36; height: 36; radius: 9; color: "#8a8d96"
-                  Sym { anchors.centerIn: parent; name: "display"; width: 18; height: 18; color: "#ffffff" }
+            Heading {
+              title: "Where should Memora go?"
+              sub: app.probing ? "Looking at your disks…" : (app.disks.length > 1 ? "Pick a disk, then how to use it." : "Choose how to use this disk.")
+            }
+            // The disks, side by side.
+            Flow {
+              Layout.fillWidth: true
+              spacing: 10
+              visible: !app.probing
+              Repeater {
+                model: app.disks
+                delegate: Rectangle {
+                  required property var modelData
+                  readonly property bool on: app.disk === modelData.path
+                  width: app.disks.length === 1 ? stage.width : (stage.width - 10 * (Math.min(app.disks.length, 3) - 1)) / Math.min(app.disks.length, 3)
+                  height: 58; radius: 12
+                  color: on ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14) : (dh.hovered ? Theme.hover : Theme.field)
+                  border.width: on ? 2 : 1; border.color: on ? Theme.accent : Theme.separator
+                  Behavior on color { ColorAnimation { duration: Theme.fast } }
+                  Rectangle {
+                    x: 12; anchors.verticalCenter: parent.verticalCenter
+                    width: 34; height: 34; radius: 9; color: modelData.systems.length ? "#3b82f6" : "#8a8d96"
+                    Sym { anchors.centerIn: parent; name: "display"; width: 17; height: 17; color: "#ffffff" }
+                  }
+                  Column {
+                    x: 56; width: parent.width - 66; anchors.verticalCenter: parent.verticalCenter
+                    Txt { width: parent.width; text: modelData.model; font.weight: Font.Bold; elide: Text.ElideRight }
+                    Txt {
+                      width: parent.width; elide: Text.ElideRight
+                      text: app.gb(modelData.size) + " · " + (modelData.systems.length ? modelData.systems.join(", ") : (modelData.parts.length ? "Files" : "Empty"))
+                      color: Theme.textDim; font.pixelSize: Theme.small
+                    }
+                  }
+                  HoverHandler { id: dh; cursorShape: Qt.PointingHandCursor }
+                  TapHandler { onTapped: app.pickDisk(modelData.path) }
                 }
-                Column {
-                  x: 62; anchors.verticalCenter: parent.verticalCenter
-                  Txt { text: modelData.model; font.weight: Font.Bold }
-                  Txt { text: app.gb(modelData.size) + (modelData.tran ? " · " + modelData.tran.toUpperCase() : "") + " · " + modelData.path; color: Theme.textDim; font.pixelSize: Theme.small }
-                }
-                HoverHandler { id: dh }
-                TapHandler { onTapped: app.disk = modelData.path }
               }
             }
-            Txt { visible: app.disks.length === 0; text: "No disk found to install on."; color: Theme.red }
+            Txt { visible: !app.probing && app.disks.length === 0; text: "No disk found to install on."; color: Theme.red }
+
+            // How to use it.
+            Choice {
+              visible: app.chosenDisk !== null && app.chosenDisk.parts.length > 0
+              on: app.mode === "alongside"
+              enabled: app.canAlongside(app.chosenDisk)
+              title: app.others(app.chosenDisk) ? "Install next to " + app.others(app.chosenDisk) : "Use the free space"
+              detail: enabled ? (app.others(app.chosenDisk) ? "Keep " + app.others(app.chosenDisk) + " and your files. Pick a system each time the computer starts."
+                                                            : "Keep the files on this disk; Memora takes the space you give it.")
+                              : app.alongsideProblem(app.chosenDisk)
+              onPicked: { app.mode = "alongside"; if (app.size < app.minSize) app.size = app.defaultSize(app.chosenDisk) }
+            }
+            Choice {
+              visible: app.chosenDisk !== null
+              on: app.mode === "erase"
+              title: app.chosenDisk && app.chosenDisk.parts.length ? "Erase the disk and install Memora" : "Install Memora on this disk"
+              detail: !app.chosenDisk ? "" : (app.others(app.chosenDisk) ? app.others(app.chosenDisk) + " and everything else on this disk will be removed."
+                                     : (app.chosenDisk.parts.length ? "Everything on this disk will be removed." : "Memora uses the whole disk."))
+              onPicked: app.mode = "erase"
+            }
+
+            // Next to another system: share the disk by dragging the line.
+            Item {
+              Layout.fillWidth: true
+              implicitHeight: 70
+              visible: app.mode === "alongside" && app.chosenDisk !== null
+              readonly property var d: app.chosenDisk
+              readonly property real total: d ? d.size : 1
+              readonly property real hi: app.room(d)
+              Rectangle {
+                id: bar
+                width: parent.width; height: 40; radius: 10
+                color: Theme.field; border.color: Theme.separator
+                clip: true
+                // Memora's share sits on the right.
+                Rectangle {
+                  id: mem
+                  anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+                  width: Math.max(80, parent.width * app.size / parent.parent.total)
+                  radius: 10
+                  gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Qt.lighter(Theme.accent, 1.15) }
+                    GradientStop { position: 1; color: Theme.accent }
+                  }
+                  Txt { anchors.centerIn: parent; text: "Memora"; color: "#ffffff"; font.weight: Font.Bold; font.pixelSize: Theme.small + 0.5 }
+                }
+                Txt {
+                  anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                  width: bar.width - mem.width - 28; elide: Text.ElideRight
+                  text: app.others(parent.parent.d) || "Your files"; font.weight: Font.Bold; font.pixelSize: Theme.small + 0.5
+                }
+              }
+              // The handle on the line between them.
+              Rectangle {
+                id: knob
+                x: bar.width - mem.width - width / 2; anchors.verticalCenter: bar.verticalCenter
+                width: 14; height: 52; radius: 7
+                visible: parent.hi > app.minSize + 1e9
+                color: Theme.dark ? "#f2f2f4" : "#ffffff"
+                border.color: kd.active ? Theme.accent : Theme.separator; border.width: kd.active ? 2 : 1
+                Rectangle { anchors.centerIn: parent; width: 2; height: 18; radius: 1; color: Theme.textFaint }
+                HoverHandler { cursorShape: Qt.SplitHCursor }
+                DragHandler {
+                  id: kd
+                  target: null; yAxis.enabled: false
+                  // Measured on the screen: the handle itself moves while dragged.
+                  property real from: 0
+                  property real x0: 0
+                  onActiveChanged: if (active) { from = app.size; x0 = centroid.scenePosition.x }
+                  onCentroidChanged: if (active) {
+                    const it = knob.parent
+                    const v = from - (centroid.scenePosition.x - x0) / bar.width * it.total
+                    // Whole gigabytes, never past what can be taken.
+                    app.size = Math.max(app.minSize, Math.min(it.hi, Math.round(v / 1e9) * 1e9))
+                  }
+                }
+                Tip { text: "Drag to share the disk"; delay: 500 }
+              }
+              Txt {
+                y: 48; text: (app.others(parent.d) || "Your files") + " · " + app.gb(app.otherAfter > 0 ? app.otherAfter : parent.total - app.size)
+                color: Theme.textDim; font.pixelSize: Theme.small
+              }
+              Txt {
+                y: 48; anchors.right: parent.right
+                text: "Memora · " + app.gb(app.size) + (parent.hi > app.minSize + 1e9 ? "  (up to " + app.gb(parent.hi) + ")" : "")
+                color: Theme.textDim; font.pixelSize: Theme.small
+              }
+            }
             Item { Layout.fillHeight: true }
             Rectangle {
-              Layout.fillWidth: true; implicitHeight: 56; radius: 12
+              Layout.fillWidth: true; implicitHeight: 52; radius: 12
+              visible: !app.probing
               color: Theme.field; border.color: Theme.separator
               Sym { x: 16; anchors.verticalCenter: parent.verticalCenter; name: "lock"; width: 18; height: 18 }
               Column {
                 x: 46; anchors.verticalCenter: parent.verticalCenter
-                Txt { text: "Encrypt the disk" }
+                Txt { text: "Encrypt Memora" }
                 Txt { text: "Recommended. Your password is asked when the computer starts."; color: Theme.textDim; font.pixelSize: Theme.small }
               }
               Kit.Switch { anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter } checked: app.encrypt; onToggled: on => app.encrypt = on }
@@ -364,9 +521,9 @@ ShellRoot {
               Item { width: 1; height: 1; visible: app.userError !== "" }
               Txt { visible: app.userError !== ""; text: app.userError; color: Theme.red; font.pixelSize: Theme.small }
               Txt { text: "Password"; color: Theme.textDim; Layout.alignment: Qt.AlignRight }
-              Kit.Field { Layout.fillWidth: true; secret: true; onTextChanged: app.password = text }
+              Kit.Field { Layout.fillWidth: true; secret: true; text: app.password; onTextChanged: if (text !== app.password) app.password = text }
               Txt { text: "Again"; color: Theme.textDim; Layout.alignment: Qt.AlignRight }
-              Kit.Field { Layout.fillWidth: true; secret: true; onTextChanged: app.password2 = text }
+              Kit.Field { Layout.fillWidth: true; secret: true; text: app.password2; onTextChanged: if (text !== app.password2) app.password2 = text }
               Item { width: 1; height: 1; visible: app.passError !== "" }
               Txt { visible: app.passError !== ""; text: app.passError; color: Theme.red; font.pixelSize: Theme.small }
               Txt { text: "Computer name"; color: Theme.textDim; Layout.alignment: Qt.AlignRight }
@@ -488,9 +645,14 @@ ShellRoot {
             }
             Rectangle {
               Layout.fillWidth: true; implicitHeight: warn.implicitHeight + 22; radius: 12
-              color: Qt.rgba(1, 0.37, 0.34, Theme.dark ? 0.14 : 0.1); border.color: Qt.rgba(1, 0.37, 0.34, 0.5)
+              readonly property color tone: app.mode === "erase" ? Qt.rgba(1, 0.37, 0.34, 1) : Theme.accent
+              color: Qt.rgba(tone.r, tone.g, tone.b, Theme.dark ? 0.14 : 0.1); border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.5)
               Txt { id: warn; x: 16; y: 11; width: parent.width - 32; wrapMode: Text.Wrap
-                text: "Everything on " + (app.chosenDisk ? app.chosenDisk.model : "the disk") + " will be erased. This can't be undone." }
+                text: app.mode === "erase"
+                  ? "Everything on " + (app.chosenDisk ? app.chosenDisk.model : "the disk") + " will be erased. This can't be undone."
+                  : (app.otherAfter > 0
+                     ? (app.others(app.chosenDisk) || "Your files") + " keep" + (app.others(app.chosenDisk) ? "s" : "") + " everything, in " + app.gb(app.otherAfter) + ". Resizing is safe, but as with any change to a disk, back up what you can't lose first."
+                     : "Memora goes in the free space. Nothing on the disk is changed.") }
             }
             Item { Layout.fillHeight: true }
           }
@@ -520,7 +682,7 @@ ShellRoot {
               }
             }
             Txt { Layout.alignment: Qt.AlignHCenter; visible: !app.error; text: Math.round(app.progress * 100) + "%"; color: Theme.textFaint; font.pixelSize: Theme.small }
-            Kit.Button { Layout.alignment: Qt.AlignHCenter; visible: app.error !== ""; text: "Start Over"; onClicked: { app.error = ""; app.progress = 0; app.page = 3 } }
+            Kit.Button { Layout.alignment: Qt.AlignHCenter; visible: app.error !== ""; text: "Start Over"; onClicked: { app.error = ""; app.progress = 0; app.page = 2; diskList.running = true } }
           }
         }
 
@@ -538,6 +700,14 @@ ShellRoot {
             }
             Txt { Layout.alignment: Qt.AlignHCenter; text: "Memora is installed"; font.pixelSize: 28; font.weight: Font.Bold }
             Txt { Layout.alignment: Qt.AlignHCenter; text: "Remove the USB stick, then restart."; color: Theme.textDim }
+            Txt {
+              Layout.alignment: Qt.AlignHCenter; Layout.fillWidth: true; Layout.maximumWidth: 520
+              horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+              visible: app.mode === "alongside" && app.others(app.chosenDisk) !== ""
+              text: "When the computer starts, pick Memora or " + app.others(app.chosenDisk) + " from the menu. Memora starts by itself after a few seconds."
+                + (app.otherAfter > 0 && app.chosenDisk.shrink.fstype === "ntfs" ? " The first time, Windows may check its disk — that's normal." : "")
+              color: Theme.textDim; font.pixelSize: Theme.small + 0.5
+            }
           }
         }
       }
@@ -560,8 +730,8 @@ ShellRoot {
         }
         Big {
           anchors.right: parent.right
-          text: app.page === 0 ? "Get Started" : (app.page === 6 ? "Erase and Install" : (app.page === 8 ? "Restart" : "Continue"))
-          danger: app.page === 6
+          text: app.page === 0 ? "Get Started" : (app.page === 6 ? (app.mode === "erase" ? "Erase and Install" : "Install") : (app.page === 8 ? "Restart" : "Continue"))
+          danger: app.page === 6 && app.mode === "erase"
           enabled: app.canGo(app.page)
           onClicked: {
             if (app.page === 6) app.install()
@@ -582,6 +752,32 @@ ShellRoot {
     visible: Math.abs(index - app.page) <= 1
     Behavior on x { NumberAnimation { duration: Theme.slow; easing.type: Theme.easingEmph } }
     Behavior on opacity { NumberAnimation { duration: Theme.normal } }
+  }
+  // One way to use the disk: a radio card.
+  component Choice: Rectangle {
+    id: ch
+    property bool on: false
+    property string title
+    property string detail
+    signal picked()
+    Layout.fillWidth: true
+    implicitHeight: chc.implicitHeight + 22; radius: 12
+    color: on && enabled ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12) : (chh.hovered && enabled ? Theme.hover : Theme.field)
+    border.width: on && enabled ? 2 : 1; border.color: on && enabled ? Theme.accent : Theme.separator
+    Behavior on color { ColorAnimation { duration: Theme.fast } }
+    Rectangle {
+      x: 16; y: 14; width: 18; height: 18; radius: 9
+      color: "transparent"; border.width: 2; border.color: ch.on && ch.enabled ? Theme.accent : Theme.textFaint
+      Rectangle { anchors.centerIn: parent; width: 8; height: 8; radius: 4; color: Theme.accent; visible: ch.on && ch.enabled }
+    }
+    Column {
+      id: chc
+      x: 46; y: 11; width: parent.width - 62; spacing: 2
+      Txt { text: ch.title; font.weight: Font.Bold; opacity: ch.enabled ? 1 : 0.55 }
+      Txt { width: parent.width; text: ch.detail; wrapMode: Text.Wrap; color: ch.enabled ? Theme.textDim : "#f07322"; font.pixelSize: Theme.small; visible: text !== "" }
+    }
+    HoverHandler { id: chh; cursorShape: ch.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+    TapHandler { enabled: ch.enabled; onTapped: ch.picked() }
   }
   component Heading: ColumnLayout {
     property string title
