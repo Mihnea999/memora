@@ -67,8 +67,25 @@ def area(w):
     return (m["x"] + l + GAP, m["y"] + t + GAP, mw - l - r - 2 * GAP, mh - t - b - 2 * GAP)
 
 
+def title_bar(w):
+    """Height of the title bar Memora draws above this window (apps that leave
+    their frame to the system, see plugin/titlebar.cpp), else 0."""
+    try:
+        run = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        for line in open(os.path.join(run, "memora-titlebars")):
+            addr, _, h = line.partition(" ")
+            if addr == w["address"]:
+                return int(h)
+    except (OSError, ValueError, KeyError):
+        pass
+    return 0
+
+
 def rect(zone, a, w=None):
     ax, ay, aw, ah = a
+    if w:   # leave room for a title bar drawn above the window
+        bar = title_bar(w)
+        ay, ah = ay + bar, ah - bar
     hw, hh = (aw - GAP) // 2, (ah - GAP) // 2
     tw = (aw - 2 * GAP) // 3
     z = {

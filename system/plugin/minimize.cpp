@@ -14,6 +14,10 @@
 #include <format>
 #include <unordered_map>
 
+// titlebar.cpp: Mac-like title bars for apps that leave their frame to the system.
+void memoraTitlebarInit(HANDLE handle);
+void memoraTitlebarExit();
+
 static HANDLE                                         PHANDLE = nullptr;
 static CHyprSignalListener                            g_open, g_close, g_key;
 static std::unordered_map<void*, CHyprSignalListener> g_state;
@@ -42,10 +46,12 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         else if (ev.keycode == 56 || ev.keycode == 100)
             IPC::Socket2::sock()->postEvent({"memorakeyup", "alt"});
     });
-    return {"memora-minimize", "Minimize buttons send windows to the Memora Dock", "Memora", "1.0"};
+    memoraTitlebarInit(handle);
+    return {"memora-minimize", "Minimize buttons send windows to the Memora Dock; title bars for apps without their own", "Memora", "1.1"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+    memoraTitlebarExit();
     g_state.clear();
     g_open.reset();
     g_close.reset();
