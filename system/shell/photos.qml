@@ -28,16 +28,45 @@ ShellRoot {
     sortField: FolderListModel.Name
     onStatusChanged: if (status === FolderListModel.Ready) app.syncIndex()
   }
+  // Opened without a picture: the whole library, every picture in Pictures and
+  // its folders, newest first. Opened on a picture: the pictures next to it.
+  // (set once, from how it was opened: picking a picture keeps you in the library)
+  property bool library: (Quickshell.env("MEMORA_PHOTOS_FILE") || "") === ""
+  ListModel { id: lib }
+  readonly property var src: library ? lib : pics
+  function pathAt(i) { return library ? (lib.get(i) || {}).filePath || "" : pics.get(i, "filePath") }
+  Process {
+    id: scan
+    command: ["bash", "-c", "cd ~/Pictures 2>/dev/null || exit 0; find . -mindepth 1 -name '.*' -prune -o -type f \\( " +
+      app.exts.filter(e => e === e.toLowerCase()).map(e => "-iname '" + e + "'").join(" -o ") + " \\) -printf '%T@\\t%p\\n' 2>/dev/null | sort -rn | head -5000 | cut -f2-"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        const paths = text.split("\n").filter(l => l).map(l => app.home + "/Pictures/" + l.replace(/^\.\//, ""))
+        // Only touch the model when something changed, so the grid doesn't jump.
+        let same = paths.length === lib.count
+        for (let i = 0; same && i < paths.length; i++) same = lib.get(i).filePath === paths[i]
+        if (!same) { lib.clear(); paths.forEach(p => lib.append({ filePath: p })) }
+        app.libraryLoaded = true
+        app.syncIndex()
+      }
+    }
+  }
+  property bool libraryLoaded: false
+  function rescan() { if (library && !scan.running) scan.running = true }
+  Component.onCompleted: rescan()
+  // New pictures (a screenshot, a download) show up while it is open.
+  Timer { interval: 5000; repeat: true; running: app.library && app.file === "" && win.visible; onTriggered: app.rescan() }
+
   property int index: -1
   function syncIndex() {
     if (!file) { index = -1; return }
-    for (let i = 0; i < pics.count; i++) if (pics.get(i, "filePath") === file) { index = i; return }
+    for (let i = 0; i < src.count; i++) if (pathAt(i) === file) { index = i; return }
   }
   function show(i) {
-    if (pics.count === 0) return
-    const n = (i + pics.count) % pics.count
-    dir = n > index || (index === pics.count - 1 && n === 0) ? 1 : -1
-    index = n; file = pics.get(n, "filePath")
+    if (src.count === 0) return
+    const n = (i + src.count) % src.count
+    dir = n > index || (index === src.count - 1 && n === 0) ? 1 : -1
+    index = n; file = pathAt(n)
     view.reset()
   }
   property int dir: 1
@@ -49,7 +78,7 @@ ShellRoot {
 
   IpcHandler {
     target: "photos"
-    function open(path: string): void { app.file = path; app.folder = path.substring(0, path.lastIndexOf("/")); app.syncIndex(); view.reset() }
+    function open(path: string): void { app.library = false; app.file = path; app.folder = path.substring(0, path.lastIndexOf("/")); app.syncIndex(); view.reset() }
   }
 
   Process {
@@ -66,8 +95,9 @@ ShellRoot {
     if (!file) return
     const was = index
     run(["gio", "trash", "--", file])
-    // The folder model drops it; show the next one.
-    Qt.callLater(() => { if (pics.count > 1) show(Math.min(was, pics.count - 2)); else { file = ""; index = -1 } })
+    // The folder model drops it by itself; the library is a list: take it out.
+    if (library && was >= 0) lib.remove(was)
+    Qt.callLater(() => { if (src.count > (library ? 0 : 1)) show(Math.min(was, src.count - (library ? 1 : 2))); else { file = ""; index = -1 } })
   }
 
   Timer { running: app.slideshow; interval: 3500; repeat: true; onTriggered: app.show(app.index + 1) }
@@ -86,7 +116,7 @@ ShellRoot {
     Shortcut { sequence: "Right"; onActivated: app.show(app.index + 1) }
     Shortcut { sequence: "Left"; onActivated: app.show(app.index - 1) }
     Shortcut { sequence: "Space"; onActivated: app.slideshow = !app.slideshow }
-    Shortcut { sequence: "Escape"; onActivated: app.slideshow ? app.slideshow = false : (win.visibility === Window.FullScreen ? win.showNormal() : (app.file && pics.count > 1 ? app.file = "" : Qt.quit())) }
+    Shortcut { sequence: "Escape"; onActivated: app.slideshow ? app.slideshow = false : (win.visibility === Window.FullScreen ? win.showNormal() : (app.file && (app.library || pics.count > 1) ? app.file = "" : Qt.quit())) }
     Shortcut { sequence: "F"; onActivated: win.visibility === Window.FullScreen ? win.showNormal() : win.showFullScreen() }
     Shortcut { sequence: "R"; onActivated: app.turn = (app.turn + 1) % 4 }
     Shortcut { sequence: "I"; onActivated: app.info = !app.info }
@@ -169,7 +199,7 @@ ShellRoot {
       Column {
         anchors.centerIn: parent
         Txt { anchors.horizontalCenter: parent.horizontalCenter; text: app.file ? app.file.split("/").pop() : "Pictures"; font.weight: Font.Bold; color: app.file && Theme.dark ? "#ffffff" : Theme.text; elide: Text.ElideMiddle; width: Math.min(implicitWidth, win.width - 420) }
-        Txt { anchors.horizontalCenter: parent.horizontalCenter; visible: app.file !== "" && pics.count > 1; text: (app.index + 1) + " of " + pics.count; color: Theme.textDim; font.pixelSize: Theme.small - 1 }
+        Txt { anchors.horizontalCenter: parent.horizontalCenter; visible: app.file !== "" && app.src.count > 1; text: (app.index + 1) + " of " + app.src.count; color: Theme.textDim; font.pixelSize: Theme.small - 1 }
       }
       Row {
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
@@ -200,7 +230,7 @@ ShellRoot {
         Txt { text: app.file.split("/").pop(); font.weight: Font.Bold; Layout.fillWidth: true; elide: Text.ElideMiddle }
         Repeater {
           model: [["Dimensions", app.meta.w ? app.meta.w + " × " + app.meta.h : "…"], ["Size", app.meta.size ? app.human(app.meta.size) : "…"],
-                  ["Taken", app.meta.date ? app.meta.date.slice(0, 16) : "…"], ["Where", app.folder.replace(app.home, "~")]]
+                  ["Taken", app.meta.date ? app.meta.date.slice(0, 16) : "…"], ["Where", app.file.substring(0, app.file.lastIndexOf("/")).replace(app.home, "~")]]
           delegate: RowLayout {
             required property var modelData
             Layout.fillWidth: true
@@ -214,7 +244,7 @@ ShellRoot {
     // ---- filmstrip ---------------------------------------------------------------
     Glass {
       id: strip
-      visible: app.file !== "" && pics.count > 1
+      visible: app.file !== "" && app.src.count > 1
       anchors.horizontalCenter: parent.horizontalCenter
       y: parent.height - (app.chrome ? height + 16 : -10)
       Behavior on y { NumberAnimation { duration: Theme.slow; easing.type: Easing.OutQuint } }
@@ -226,7 +256,7 @@ ShellRoot {
         anchors { fill: parent; margins: 10 }
         orientation: ListView.Horizontal
         spacing: 6
-        model: pics
+        model: app.src
         clip: true
         currentIndex: app.index
         highlightMoveDuration: Theme.normal
@@ -254,7 +284,7 @@ ShellRoot {
       visible: app.file === ""
       anchors { fill: parent; topMargin: 60; leftMargin: 20; rightMargin: 20 }
       clip: true
-      model: pics
+      model: app.src
       cellWidth: Math.floor(width / Math.max(2, Math.floor(width / 190))); cellHeight: cellWidth
       delegate: Item {
         required property int index
@@ -273,10 +303,10 @@ ShellRoot {
       }
       Column {
         anchors.centerIn: parent
-        visible: pics.count === 0
+        visible: app.src.count === 0 && (!app.library || app.libraryLoaded)
         spacing: 8
         Sym { anchors.horizontalCenter: parent.horizontalCenter; name: "photo"; width: 44; height: 44; color: Theme.textFaint }
-        Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "No pictures in " + app.folder.replace(app.home, "~"); color: Theme.textDim }
+        Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "No pictures in " + (app.library ? "Pictures" : app.folder.replace(app.home, "~")); color: Theme.textDim }
       }
     }
   }

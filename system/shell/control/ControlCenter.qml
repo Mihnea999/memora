@@ -64,7 +64,7 @@ PanelWindow {
               sub: !Net.wifiEnabled ? "Off" : (Net.online ? Net.label : "Not connected")
               on: Net.wifiEnabled
               onToggled: Sys.setWifi(!Net.wifiEnabled)
-              onOpened: Apps.run("memora-settings wifi")
+              onOpened: Shell.openStatus("wifi")
             }
             Toggle {
               sym: "bluetooth"; title: "Bluetooth"
@@ -72,7 +72,7 @@ PanelWindow {
               on: Sys.btOn
               enabled: Sys.btAvailable
               onToggled: Sys.toggleBt()
-              onOpened: Apps.run("memora-settings bluetooth")
+              onOpened: Shell.openStatus("bluetooth")
             }
             Toggle {
               sym: "moon"; title: "Focus"
@@ -164,7 +164,10 @@ PanelWindow {
       Module {
         Layout.fillWidth: true
         Layout.preferredHeight: 70
-        Txt { text: "Sound"; font.weight: Font.Bold; x: 12; y: 10 }
+        Txt {
+          text: "Sound"; font.weight: Font.Bold; x: 12; y: 10
+          TapHandler { onTapped: Shell.openStatus("sound") }   // outputs, like the menu bar's Sound menu
+        }
         Slider { x: 12; y: 32; width: parent.width - 24; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.changeVolume(v) }
       }
 

@@ -79,6 +79,13 @@ b(S .. " + SHIFT + S", run("memora-screenshot region"), "Screenshot of an area")
 b("PRINT", run("memora-screenshot region"), "Screenshot of an area")
 b("SHIFT + PRINT", run("memora-screenshot screen"), "Screenshot of the screen")
 
+-- While choosing an area (memora-screenshot): Return or Enter takes the whole
+-- screen instead. Every other key (Escape cancels) goes to the chooser.
+hl.define_submap("screenshot", "reset", function()
+  hl.bind("RETURN", run("memora-screenshot whole"), { description = "Screenshot: the whole screen" })
+  hl.bind("KP_Enter", run("memora-screenshot whole"), { description = "Screenshot: the whole screen" })
+end)
+
 -- Session
 b("CTRL + " .. S .. " + Q", run("memora-lock"), "Lock screen")
 b(S .. " + L", run("memora-lock"), "Lock screen")

@@ -1,13 +1,57 @@
 #!/usr/bin/env bash
 # memora-screenshot region|screen|edit — saves to ~/Pictures/Screenshots and copies.
-set -euo pipefail
+#   region  drag to take part of the screen; a click (or Return) takes the whole
+#           screen under the pointer, Escape cancels
+#   screen  the whole screen at once
+#   edit    like region, then opens it to annotate
+#   whole   (the Return key while choosing) take the whole screen instead
+set -uo pipefail
 dir="$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")/Screenshots"
 mkdir -p "$dir"
 file="$dir/$(date +%Y-%m-%d_%H-%M-%S).png"
+whole="${XDG_RUNTIME_DIR:-/tmp}/memora-screenshot-whole"
+
+# The screen the pointer is on.
+screen_now() { hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name' | head -1; }
+
+# Prints what to take: grim's arguments (-g "x,y wxh" or -o SCREEN), one per
+# line, or nothing when cancelled. slurp -o
+# offers each screen as a box: a click takes the box, a drag draws an area.
+# While choosing, the "screenshot" key map (default/hypr/binds.lua) turns
+# Return into "whole screen".
+choose() {
+  rm -f "$whole"
+  hyprctl dispatch 'hl.dsp.submap("screenshot")' >/dev/null 2>&1
+  local geo; geo="$(slurp -d -o 2>/dev/null)"; local rc=$?
+  hyprctl dispatch 'hl.dsp.submap("reset")' >/dev/null 2>&1
+  if [[ -f $whole ]]; then
+    rm -f "$whole"
+    local m; m="$(screen_now)"
+    [[ -n $m ]] && printf '%s\n' -o "$m"
+  elif [[ $rc == 0 && -n $geo ]]; then
+    printf '%s\n' -g "$geo"
+  fi
+}
+
+shot() { memora-sound screenshot & disown; }
+
 case "${1:-region}" in
-  region) geo="$(slurp -d)" || exit 0; grim -g "$geo" "$file"; memora-sound screenshot & ;;
-  screen) grim "$file"; memora-sound screenshot & ;;
-  edit) geo="$(slurp -d)" || exit 0; memora-sound screenshot & grim -g "$geo" - | satty --filename - --output-filename "$file" --copy-command wl-copy --early-exit; exit 0 ;;
+  whole) touch "$whole"; pkill -x slurp; exit 0 ;;
+  region)
+    mapfile -t what < <(choose); [[ ${#what[@]} == 2 ]] || exit 0
+    sleep 0.15   # let slurp's dimming leave the screen first
+    grim "${what[@]}" "$file" || exit 1
+    shot ;;
+  screen)
+    grim "$file" || exit 1
+    shot ;;
+  edit)
+    mapfile -t what < <(choose); [[ ${#what[@]} == 2 ]] || exit 0
+    sleep 0.15
+    shot
+    grim "${what[@]}" - | satty --filename - --output-filename "$file" --copy-command wl-copy --early-exit
+    exit 0 ;;
+  *) sed -n '2,7p' "$0"; exit 2 ;;
 esac
 wl-copy < "$file"
 notify-send -a memora -h boolean:suppress-sound:true -i "$file" "Screenshot saved" "${file/#$HOME/\~}"

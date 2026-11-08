@@ -20,6 +20,12 @@ Singleton {
   function show(name) { open = name }
   function close() { open = ""; menu = "" }
 
+  // A status menu (Wi-Fi, Bluetooth, Battery, Sound; bar/StatusMenu.qml) at the
+  // right of the menu bar, e.g. from Control Center.
+  function openStatus(kind) {
+    const scr = menuScreen || (Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "")
+    menu = kind; menuX = 1e6; menuScreen = scr; open = "status"
+  }
   function openMenu(id, x, screen) {
     menu = id; menuX = x; menuScreen = screen; open = "menu"
   }
