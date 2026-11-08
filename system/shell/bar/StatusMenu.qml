@@ -226,7 +226,21 @@ PopupWindow {
 
   // ---------------------------------------------------------------- Sound
   readonly property var sinks: Pipewire.nodes.values.filter(n => n.isSink && !n.isStream && n.audio)
-  PwObjectTracker { objects: sm.sinks }
+  // Apps playing sound right now (their playback streams), for the mixer.
+  // (not filtered on .audio: a node only has it once tracked, which is below)
+  readonly property var streams: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioOutStream)
+  PwObjectTracker { objects: sm.sinks.concat(sm.streams) }
+  function appName(n) {
+    const p = n.properties || {}
+    return p["application.name"] || n.description || n.nickname || n.name || "App"
+  }
+  function appIcon(n) {
+    const p = n.properties || {}
+    const id = p["application.icon-name"] || p["application.process.binary"] || p["application.id"] || ""
+    return id ? Quickshell.iconPath(id.toLowerCase(), true) : ""
+  }
+  // Hear the alert volume once its slider stops.
+  Timer { id: alertPreview; interval: 350; onTriggered: Quickshell.execDetached(["memora-sound", "preview", Prefs.alertSound]) }
   Component {
     id: soundMenu
     ColumnLayout {
@@ -242,6 +256,44 @@ PopupWindow {
           sym: Sys.muted ? "sound-off" : "sound"
           value: Sys.muted ? 0 : Sys.volume
           onMoved: v => Sys.changeVolume(v)
+        }
+      }
+      Section { text: "Alerts & System Sounds" }
+      Item {
+        Layout.fillWidth: true; implicitHeight: 34
+        Slider {
+          anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; verticalCenter: parent.verticalCenter }
+          implicitHeight: 22
+          sym: Prefs.alertVolume > 0 ? "bell" : "sound-off"
+          value: Prefs.alertVolume
+          onMoved: v => { Prefs.set("alertVolume", Math.round(v * 100) / 100); alertPreview.restart() }
+        }
+      }
+      // The mixer: each app that is playing, with its own volume.
+      Section { text: "Apps"; visible: sm.streams.length > 0 }
+      Repeater {
+        model: sm.streams
+        delegate: Item {
+          required property var modelData
+          Layout.fillWidth: true; implicitHeight: 46
+          Image {
+            id: appIcon
+            x: 10; y: 4; width: 16; height: 16
+            source: sm.appIcon(modelData); sourceSize: Qt.size(32, 32)
+            visible: status === Image.Ready
+          }
+          Txt {
+            anchors { left: appIcon.visible ? appIcon.right : parent.left; leftMargin: appIcon.visible ? 6 : 10; right: parent.right; rightMargin: 10 }
+            y: 4; text: sm.appName(modelData); font.pixelSize: Theme.small; elide: Text.ElideRight
+          }
+          Slider {
+            anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; bottom: parent.bottom; bottomMargin: 2 }
+            implicitHeight: 20
+            readonly property var a: modelData.audio
+            sym: !a || a.muted || a.volume === 0 ? "sound-off" : "sound"
+            value: !a || a.muted ? 0 : Math.min(1, a.volume)
+            onMoved: v => { if (a) { a.muted = false; a.volume = v } }
+          }
         }
       }
       Sep {}
