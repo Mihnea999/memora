@@ -179,15 +179,24 @@ Singleton {
     dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
   }
 
-  // Dock click: open the app, bring its window forward, or cycle its windows.
+  // Dock click, as on a Mac: an app that isn't open opens; an open one comes to
+  // the front with all its windows (on this desktop, else where they are), the
+  // one used last on top; if all its windows are minimized, the last one comes
+  // back. Clicking the app already in front leaves it as it is.
   function activate(appId) {
     if (appId === "memora-launchpad") return Shell.toggle("launchpad")
     const ws = windowsOf(appId)
     if (ws.length === 0) return launch(appId)
-    const active = ws.find(w => w.activated)
-    if (active && ws.length === 1) return minimize(active.address)
-    const next = active ? ws[(ws.indexOf(active) + 1) % ws.length] : ws[0]
-    focus(next)
+    const shown = ws.filter(w => !isMinimized(w))
+    const recent = list => list.slice().sort((a, b) => (a.lastIpcObject.focusHistoryID ?? 99) - (b.lastIpcObject.focusHistoryID ?? 99))
+    if (shown.length === 0) return restore(recent(ws)[0])
+    if (shown.some(w => w.activated)) return
+    const cur = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
+    const here = shown.filter(w => w.workspace && w.workspace.id === cur)
+    const pick = recent(here.length ? here : shown)
+    // The others first, so the last used ends on top.
+    pick.slice(1).reverse().forEach(w => dispatch('hl.dsp.window.alter_zorder({ mode = "top", window = "' + sel(w.address) + '" })'))
+    focus(pick[0])
   }
 
   function quit(appId) { windowsOf(appId).forEach(w => close(w)) }

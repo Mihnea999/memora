@@ -66,6 +66,7 @@ ShellRoot {
       const c = Apps.classOf(Apps.windows.find(x => x.address === w.address) || w)
       Apps.windowsOf(c).filter(x => !Apps.isMinimized(x)).forEach(x => Apps.minimize(x.address))
     }
+    function toggleDockHiding(): void { Prefs.set("dockAutohide", !Prefs.dockAutohide) }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {
       const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)

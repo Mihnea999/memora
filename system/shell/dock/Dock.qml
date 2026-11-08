@@ -18,15 +18,42 @@ PanelWindow {
   readonly property real peak: Prefs.magnify ? Math.max(Prefs.magnifySize, base) : base
   readonly property real reach: 200      // how far magnification spreads, in px
   readonly property real gap: 6
-  readonly property bool hidden: Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.hasFullscreen
+
+  // Like a Mac: the Dock stays put and windows (zoomed ones too) end above it.
+  // It steps aside for an app in full screen, or always with "Automatically hide
+  // and show the Dock"; then pushing the pointer against the bottom edge brings
+  // it back, and it leaves again once the pointer moves away.
+  readonly property var monitor: Hyprland.monitors.values.find(m => m.name === modelData.name) || null
+  readonly property bool fullscreen: {
+    const ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
+    return Apps.windows.some(w => w.lastIpcObject.fullscreen === 2 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws)
+  }
+  readonly property bool concealable: Prefs.dockAutohide || fullscreen
+  property bool revealed: false
+  // Kept out while in use: under the pointer, its menu open, an icon dragged, Launchpad open.
+  readonly property bool inUse: dockHover.hovered || menuFor !== null || draggingId !== "" || Shell.open === "launchpad"
+  readonly property bool hidden: concealable && !revealed && !inUse
+  onInUseChanged: if (!inUse && revealed) leave.restart()
+  onConcealableChanged: revealed = false
+  Timer { id: arrive; interval: Prefs.dockAutohide && !dock.fullscreen ? 60 : 180; onTriggered: { dock.revealed = true; leave.restart() } }
+  Timer { id: leave; interval: 450; onTriggered: if (!dock.inUse && !edgeHover.hovered) dock.revealed = false; else if (!dock.inUse) restart() }
 
   anchors { bottom: true; left: true; right: true }
   implicitHeight: 170
-  exclusiveZone: hidden ? 0 : base + 22 + gap
+  exclusiveZone: concealable ? 0 : base + 22 + gap
   color: "transparent"
   WlrLayershell.namespace: "memora-dock"
-  WlrLayershell.layer: WlrLayer.Top
-  mask: Region { item: hit }
+  // Over full-screen apps it must be above them to show at all.
+  WlrLayershell.layer: fullscreen ? WlrLayer.Overlay : WlrLayer.Top
+  mask: Region { item: dock.hidden ? edge : hit }
+
+  // The bottom edge of the screen: where the pointer calls a hidden Dock.
+  Item {
+    id: edge
+    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+    height: 2
+    HoverHandler { id: edgeHover; onHoveredChanged: if (hovered && dock.hidden) arrive.restart(); else if (!hovered) arrive.stop() }
+  }
 
   property real mouseX: -1000
   property string draggingId: ""
@@ -216,8 +243,15 @@ PanelWindow {
   Component {
     id: sepComp
     Item {
+      id: sepItem
       width: 13; height: dock.base
       Rectangle { anchors.centerIn: parent; width: 1; height: dock.base * 0.72; color: Theme.separator }
+      // Right-click the divider: the Dock's own options, like on a Mac.
+      HoverHandler { cursorShape: Qt.SizeVerCursor }
+      TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: { const p = sepItem.mapToItem(hit, sepItem.width / 2, 0); dock.menuX = dock.hitX + p.x; dock.menuFor = { kind: "sep", id: "sep" } }
+      }
     }
   }
 
@@ -259,6 +293,12 @@ PanelWindow {
       { text: "Open", action: () => Apps.run("nautilus --new-window trash:///") },
       { separator: true },
       { text: "Empty Trash", enabled: dock.trashFull, action: () => Shell.power("trash") }
+    ]
+    if (e.kind === "sep") return [
+      { text: Prefs.dockAutohide ? "Turn Hiding Off" : "Turn Hiding On", action: () => Prefs.set("dockAutohide", !Prefs.dockAutohide) },
+      { text: Prefs.magnify ? "Turn Magnification Off" : "Turn Magnification On", action: () => Prefs.set("magnify", !Prefs.magnify) },
+      { separator: true },
+      { text: "Dock Settings…", action: () => Apps.run("memora-settings dock") }
     ]
     if (e.kind === "folder") return [
       { text: "Open Downloads", action: () => Apps.run("nautilus --new-window ~/Downloads") }

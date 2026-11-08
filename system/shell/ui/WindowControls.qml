@@ -9,17 +9,18 @@ Item {
   id: wc
   property var window                       // the FloatingWindow
   signal closeRequested()
-  width: row.width; height: 14
+  // 16px circles 28px apart: the same in every app (the Browser draws its own so).
+  width: row.width; height: 16
   readonly property bool over: hov.hovered || layouts.hovered
 
   Row {
     id: row
-    spacing: 8
+    spacing: 12
     Repeater {
       model: [["close", Theme.red, "close"], ["min", Theme.yellow, "minus"], ["zoom", Theme.green, "plus"]]
       delegate: Rectangle {
         required property var modelData
-        width: 13; height: 13; radius: 6.5
+        width: 16; height: 16; radius: 8
         color: modelData[1]
         border.color: Qt.rgba(0, 0, 0, 0.15)
         scale: press.pressed ? 0.88 : 1
@@ -32,9 +33,9 @@ Item {
           onPaint: {
             const c = getContext("2d"); c.reset(); c.strokeStyle = "#000"; c.lineWidth = 1.3; c.lineCap = "round"
             const m = width / 2
-            if (modelData[2] === "close") { c.moveTo(m - 2.6, m - 2.6); c.lineTo(m + 2.6, m + 2.6); c.moveTo(m + 2.6, m - 2.6); c.lineTo(m - 2.6, m + 2.6) }
-            else if (modelData[2] === "minus") { c.moveTo(m - 3, m); c.lineTo(m + 3, m) }
-            else { c.moveTo(m - 3, m); c.lineTo(m + 3, m); c.moveTo(m, m - 3); c.lineTo(m, m + 3) }
+            if (modelData[2] === "close") { c.moveTo(m - 3, m - 3); c.lineTo(m + 3, m + 3); c.moveTo(m + 3, m - 3); c.lineTo(m - 3, m + 3) }
+            else if (modelData[2] === "minus") { c.moveTo(m - 3.5, m); c.lineTo(m + 3.5, m) }
+            else { c.moveTo(m - 3.5, m); c.lineTo(m + 3.5, m); c.moveTo(m, m - 3.5); c.lineTo(m, m + 3.5) }
             c.stroke()
           }
         }

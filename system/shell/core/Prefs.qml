@@ -19,6 +19,8 @@ Singleton {
   property real animationSpeed: 1.0    // 0.5 slow … 2 fast
   property string windowStyle: "pop"   // pop | slide | fade (Hyprland)
   property bool dockBounce: true
+  property bool dockAutohide: false    // hide the Dock until the pointer reaches the bottom of the screen
+  property bool dockDots: true         // a dot under apps that are open
   property bool snapping: true
   // Look
   property real transparency: 1.0      // 0 solid … 1 full glass
@@ -46,7 +48,7 @@ Singleton {
   property bool snapLayouts: true      // drag a window to the top middle for a choice of layouts
 
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet",
-    "animations", "animationSpeed", "windowStyle", "dockBounce", "snapping", "transparency", "menuBarTransparent",
+    "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockDots", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
     "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "updateCheck", "desktops", "snapAssist", "snapLayouts"]
 

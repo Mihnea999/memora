@@ -94,7 +94,7 @@ Item {
 
   // Running dot.
   Rectangle {
-    visible: it.running && it.kind === "app"
+    visible: it.running && it.kind === "app" && Prefs.dockDots
     width: 4; height: 4; radius: 2
     color: Theme.text
     opacity: 0.75
