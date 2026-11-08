@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=Player
-Comment=Watch films and listen to music
+Comment=Listen to music
 Exec=memora-player %f
 Icon=memora-player
 Terminal=false
-Categories=AudioVideo;Audio;Video;Player;
-MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;audio/aac;audio/opus;
-Keywords=video;music;movie;film;audio;
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;audio/aac;audio/opus;
+Keywords=music;audio;song;mp3;

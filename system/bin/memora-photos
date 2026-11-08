@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# memora-photos [FILE] — Photos. With Photos open, shows FILE in it.
+# memora-photos [FILE] — Gallery: photos and videos. With it open, shows FILE in it.
 dir="${MEMORA_PATH:-/usr/share/memora}"
 source "$dir/lib/single.sh"
-qml="$dir/shell/photos.qml"
+qml="$dir/shell/gallery.qml"
 f="${1:-}"; f="${f#file://}"
 [[ -n $f ]] && f="$(realpath -m "$f")"
 if memora_single memora-photos "$qml"; then

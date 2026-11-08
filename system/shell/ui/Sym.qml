@@ -11,6 +11,7 @@ Canvas {
   property color color: Theme.text
   property real level: 1      // wifi strength / battery charge / volume, 0..1
   property bool charging: false
+  property bool filled: false  // heart: filled in (a favourite)
   property real stroke: 1.6
   implicitWidth: 16
   implicitHeight: 16
@@ -20,6 +21,7 @@ Canvas {
   onColorChanged: requestPaint()
   onLevelChanged: requestPaint()
   onChargingChanged: requestPaint()
+  onFilledChanged: requestPaint()
   onWidthChanged: requestPaint()
   onHeightChanged: requestPaint()
 
@@ -237,6 +239,23 @@ Canvas {
       ctx.lineWidth = 1.5
       rr(ctx, 1.5, 2.5, 13, 9, 1.8); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(5.5, 14); ctx.lineTo(10.5, 14); ctx.moveTo(8, 11.5); ctx.lineTo(8, 14); ctx.stroke()
+      break
+    }
+    case "heart": {
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(8, 13.6)
+      ctx.bezierCurveTo(2.4, 9.8, 1.2, 7.4, 1.6, 5.2); ctx.bezierCurveTo(2, 2.8, 4.2, 1.8, 5.9, 2.4)
+      ctx.bezierCurveTo(6.9, 2.8, 7.6, 3.6, 8, 4.4); ctx.bezierCurveTo(8.4, 3.6, 9.1, 2.8, 10.1, 2.4)
+      ctx.bezierCurveTo(11.8, 1.8, 14, 2.8, 14.4, 5.2); ctx.bezierCurveTo(14.8, 7.4, 13.6, 9.8, 8, 13.6); ctx.closePath()
+      if (c.filled) ctx.fill(); ctx.stroke()
+      break
+    }
+    case "trash": {
+      ctx.lineWidth = 1.4
+      ctx.beginPath(); ctx.moveTo(2, 4); ctx.lineTo(14, 4); ctx.moveTo(6, 4); ctx.lineTo(6.4, 2); ctx.lineTo(9.6, 2); ctx.lineTo(10, 4); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(3.4, 4); ctx.lineTo(4.2, 13.4); ctx.quadraticCurveTo(4.3, 14.4, 5.3, 14.4); ctx.lineTo(10.7, 14.4)
+      ctx.quadraticCurveTo(11.7, 14.4, 11.8, 13.4); ctx.lineTo(12.6, 4); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(6.6, 6.6); ctx.lineTo(6.8, 12); ctx.moveTo(9.4, 6.6); ctx.lineTo(9.2, 12); ctx.stroke()
       break
     }
     case "photo": {
