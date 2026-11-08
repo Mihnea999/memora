@@ -46,7 +46,11 @@ b(S .. " + D", run("memora-shell show-desktop"), "Show desktop")
 b(S .. " + ALT + D", run("memora-shell toggleDockHiding"), "Turn Dock hiding on or off")
 b(S .. " + F3", run("memora-shell show-desktop"), "Show desktop")
 b("CTRL + " .. S .. " + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }), "Full screen")
-b("F11", hl.dsp.window.fullscreen({ mode = "fullscreen" }), "Full screen", { non_consuming = true })
+-- F11 belongs to the system, not the app as well: an app that also toggled its
+-- own full screen on the same key undid it half the time (Chromium ended up
+-- just maximized). Apps still follow: told they are full screen, they go full screen.
+b("F11", hl.dsp.window.fullscreen({ mode = "fullscreen" }), "Full screen")
+b("SHIFT + F11", run("memora-shell semiFullscreen"), "Fill the screen, keep the menu bar, Dock out of the way")
 -- Docking from the keyboard: halves, then two-thirds and thirds on repeat;
 -- combine for quarters (left, then up = top-left); down goes back.
 b(S .. " + UP", run("memora-window key up"), "Fill the screen, or the top quarter")

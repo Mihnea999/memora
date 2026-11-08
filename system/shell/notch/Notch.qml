@@ -113,7 +113,9 @@ Scope {
       required property var modelData
       screen: modelData
       readonly property bool here: Hyprland.focusedMonitor ? modelData.name === Hyprland.focusedMonitor.name : modelData === Quickshell.screens[0]
-      visible: here
+      // Out of the way while an app is full screen (a film, a game), unless it is
+      // open or working.
+      visible: here && (!Shell.fullscreenApp || ai.expanded || ai.busy)
       anchors { top: true; left: true; right: true }
       implicitHeight: 720
       exclusionMode: ExclusionMode.Ignore

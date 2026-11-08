@@ -56,6 +56,9 @@ Singleton {
 
   // Do-not-disturb, shared by Control Center and notifications.
   property bool focusMode: false
+  // Windows in "semi full screen": filling the screen under the menu bar, with
+  // the Dock out of the way (address -> true). See Apps.semiFullscreen.
+  property var semi: ({})
 
   // ---- Keep Awake ------------------------------------------------------------
   // The screen stays on, doesn't lock and the computer doesn't sleep: while Keep

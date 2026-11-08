@@ -86,6 +86,7 @@ ShellRoot {
     }
     function setFocusMode(on: string): void { Shell.focusMode = on === "on" || on === "true" }
     function toggleDockHiding(): void { Prefs.set("dockAutohide", !Prefs.dockAutohide) }
+    function semiFullscreen(): void { Apps.semiFullscreen() }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {
       const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)

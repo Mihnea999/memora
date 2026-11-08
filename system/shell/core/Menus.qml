@@ -179,6 +179,7 @@ Singleton {
     case "window": return [
       { text: "Minimize", keys: "Super M", enabled: hasWin, action: () => Apps.minimize(win.address) },
       { text: "Zoom", enabled: hasWin, action: () => Apps.zoom(win) },
+      { text: "Fill Screen Without Dock", keys: "Shift F11", enabled: hasWin, action: () => Apps.semiFullscreen() },
       { text: "Fill", keys: "Super Up", enabled: hasWin, action: () => Apps.run("memora-window fill") },
       { text: "Center", keys: "Super C", enabled: hasWin, action: () => Apps.run("memora-window center") },
       sep(),

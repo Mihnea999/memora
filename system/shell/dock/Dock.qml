@@ -28,7 +28,12 @@ PanelWindow {
     const ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
     return Apps.windows.some(w => w.lastIpcObject.fullscreen === 2 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws)
   }
-  readonly property bool concealable: Prefs.dockAutohide || fullscreen
+  // A window in semi full screen here (Shift+F11): the Dock steps aside too.
+  readonly property bool semi: {
+    const ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
+    return Apps.windows.some(w => Shell.semi[Apps.addrKey(w.address)] && w.lastIpcObject.fullscreen === 1 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws)
+  }
+  readonly property bool concealable: Prefs.dockAutohide || fullscreen || semi
   property bool revealed: false
   // Kept out while in use: under the pointer, its menu open, an icon dragged, Launchpad open.
   readonly property bool inUse: dockHover.hovered || menuFor !== null || draggingId !== "" || Shell.open === "launchpad"

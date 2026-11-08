@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Hyprland
 import qs.core
@@ -12,6 +13,7 @@ Item {
   // 16px circles 28px apart: the same in every app (the Browser draws its own so).
   width: row.width; height: 16
   readonly property bool over: hov.hovered || layouts.hovered
+  property bool onGreen: false
 
   Row {
     id: row
@@ -47,25 +49,43 @@ Item {
             else Quickshell.execDetached(["memora-window", "fill"])
           }
         }
-        Tip { text: ({ close: "Close", min: "Minimize to the Dock", zoom: "Fill the screen · rest here for layouts" })[modelData[0]] }
-        HoverHandler { onHoveredChanged: if (modelData[0] === "zoom") { if (hovered) showLater.restart(); else { showLater.stop(); hideLater.restart() } } }
+        // No tooltip on the green button: resting there opens the layouts panel,
+        // which explains itself (a tooltip would cover it).
+        Tip { text: ({ close: "Close", min: "Minimize to the Dock", zoom: "" })[modelData[0]] }
+        HoverHandler { enabled: modelData[0] === "zoom"; onHoveredChanged: { wc.onGreen = hovered; if (hovered) { hideLater.stop(); if (!layouts.open) showLater.restart() } else { showLater.stop(); hideLater.restart() } } }
       }
     }
   }
   HoverHandler { id: hov }
-  Timer { id: showLater; interval: 450; onTriggered: layouts.open = true }
-  Timer { id: hideLater; interval: 350; onTriggered: if (!layouts.hovered) layouts.open = false }
+  // The panel lives on top of the whole window (not inside the title bar, where
+  // the window's content would cover it and take the pointer): placed from here.
+  readonly property var host: wc.Window.contentItem
+  property point panelAt: Qt.point(0, 0)
+  Timer { id: showLater; interval: 450; onTriggered: { wc.panelAt = wc.mapToItem(wc.host, 0, 0); layouts.open = true } }
+  Timer { id: hideLater; interval: 500; onTriggered: if (!layouts.hovered && !wc.onGreen) layouts.open = false }
+
+  // Between the green button and the panel: the pointer passing through keeps it open.
+  Item {
+    parent: wc.host || wc
+    z: 9999
+    visible: layouts.open
+    x: wc.panelAt.x + 40; y: wc.panelAt.y + 8
+    width: 36; height: 22 - 8 + 4
+    HoverHandler { id: bridgeHover; onHoveredChanged: if (hovered) hideLater.stop(); else hideLater.restart() }
+  }
 
   // The layouts panel, under the green button.
   Glass {
     id: layouts
     property bool open: false
-    readonly property bool hovered: lh.hovered
-    x: 42; y: 22
-    z: 100
+    readonly property bool hovered: lh.hovered || bridgeHover.hovered
+    parent: wc.host || wc
+    x: wc.panelAt.x + 42; y: wc.panelAt.y + 22
+    z: 10000
     width: grid.width + 20; height: grid.height + 40
     radius: 12
-    fill: Theme.glassStrong
+    // Solid: inside a window nothing blurs what is under it, so glass would let the text show through.
+    fill: Theme.dark ? Qt.rgba(0.15, 0.15, 0.17, 0.98) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
     shadowSize: 22
     visible: opacity > 0
     opacity: open ? 1 : 0
@@ -73,7 +93,7 @@ Item {
     transformOrigin: Item.TopLeft
     Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutBack } }
-    HoverHandler { id: lh; onHoveredChanged: if (!hovered) hideLater.restart() }
+    HoverHandler { id: lh; onHoveredChanged: if (hovered) hideLater.stop(); else hideLater.restart() }
 
     Text {
       x: 10; y: 8

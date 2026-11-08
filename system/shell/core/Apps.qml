@@ -173,8 +173,30 @@ Singleton {
     dispatch('hl.dsp.window.move({ workspace = "' + ws + '", follow = true, window = "' + sel(addr) + '" })')
     dispatch('hl.dsp.focus({ window = "' + sel(addr) + '" })')
   }
+  // Semi full screen: the window fills the screen under the menu bar and the
+  // Dock steps aside (it comes back at the bottom edge). Again to leave.
+  function addrKey(a) { return String(a).replace(/^0x/, "") }
+  function forgetSemi(a) { const k = addrKey(a); if (Shell.semi[k]) { const s = Object.assign({}, Shell.semi); delete s[k]; Shell.semi = s } }
+  function semiFullscreen() {
+    const t = Hyprland.activeToplevel
+    if (!t) return
+    const k = addrKey(t.address)
+    const w = windows.find(x => addrKey(x.address) === k)
+    const maximized = w && w.lastIpcObject && w.lastIpcObject.fullscreen === 1
+    const s = Object.assign({}, Shell.semi)
+    if (s[k]) {
+      delete s[k]
+      if (maximized) dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
+    } else {
+      s[k] = true
+      if (w && w.lastIpcObject && w.lastIpcObject.fullscreen === 2) dispatch('hl.dsp.window.fullscreen({ mode = "fullscreen" })')
+      if (!maximized) dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
+    }
+    Shell.semi = s
+  }
   function close(w) { if (w && w.wayland) w.wayland.close() }
   function zoom(w) {
+    forgetSemi(w.address)
     dispatch('hl.dsp.focus({ window = "' + sel(w.address) + '" })')
     dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
   }
