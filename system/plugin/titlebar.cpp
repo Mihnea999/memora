@@ -32,6 +32,7 @@
 #undef private
 
 #include <hyprland/src/plugins/PluginAPI.hpp>
+#include <hyprland/src/ipc/s1/S1.hpp>
 #include <hyprland/src/render/decorations/IHyprWindowDecoration.hpp>
 #include <hyprland/src/render/pass/PassElement.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
@@ -453,7 +454,7 @@ static void publishBars() {
 // `hyprctl memora-sizes`: each window's smallest and largest size and whether it
 // is a dialog (has a parent), as JSON. memora-window and the shell use it to
 // offer only the docking zones a window can really take.
-static std::string sizesJSON(eHyprCtlOutputFormat, std::string) {
+static IPC::Socket1::SResponse sizesJSON(const IPC::Socket1::SRequest&) {
     std::string out = "[";
     bool        first = true;
     for (auto& w : Desktop::windowState()->windows()) {
@@ -479,9 +480,9 @@ static std::string sizesJSON(eHyprCtlOutputFormat, std::string) {
                            (int)std::max(1.0, mn.y), (int)mx.x, (int)mx.y, parent ? "true" : "false");
         first = false;
     }
-    return out + "]";
+    return IPC::Socket1::SResponse(out + "]");
 }
-static SP<SHyprCtlCommand> g_sizesCmd;
+static SP<IPC::Socket1::SCommand> g_sizesCmd;
 
 static HANDLE              g_handle = nullptr;
 static CHyprSignalListener g_open, g_title, g_active, g_tdown, g_tmotion, g_tup;
@@ -591,7 +592,7 @@ static void forBar(PHLWINDOW w, auto&& fn) {
 void memoraTitlebarInit(HANDLE handle) {
     g_handle = handle;
     touchInit();
-    g_sizesCmd = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "memora-sizes", .exact = true, .fn = sizesJSON});
+    g_sizesCmd = HyprlandAPI::registerHyprCtlCommand(handle, IPC::Socket1::SCommand{.name = "memora-sizes", .match = IPC::Socket1::COMMAND_MATCH_EXACT, .handler = sizesJSON});
     g_open   = Event::bus()->m_events.window.open.listen([](PHLWINDOW w) { maybeAddBar(w); });
     g_title  = Event::bus()->m_events.window.title.listen([](PHLWINDOW w) { forBar(w, [](auto& bar) { bar->titleChanged(); }); });
     // Buttons and title change colour with focus: redraw every bar.
