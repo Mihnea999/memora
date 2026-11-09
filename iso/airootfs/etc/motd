@@ -1,6 +1,0 @@
-Memora installer
-
-  memora-install    start the installer
-  iwctl             connect to Wi-Fi manually
-  Log file:         /var/log/memora-install.log
-

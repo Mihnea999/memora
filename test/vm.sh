@@ -94,6 +94,6 @@ case "${1:-}" in
   live)
     cp -n "$ovmf_vars" "${pre}vars.fd" 2>/dev/null || true
     qemu-system-x86_64 "${common[@]}" "${audio[@]}" -cdrom "$iso" -drive "file=$disk,if=virtio,format=qcow2" \
-      -device virtio-vga-gl -display gtk,gl=on ;;
+      -device virtio-vga-gl,xres=$xres,yres=$yres -display sdl,gl=on ;;
   *) sed -n '2,8p' "$0"; exit 1 ;;
 esac
