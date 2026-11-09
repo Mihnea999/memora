@@ -142,7 +142,7 @@ Scope {
       // Apps: icons as big as fit. Windows: pictures about a sixth of the screen tall.
       readonly property real iconSize: Math.max(48, Math.min(96, (maxW - 60) / Math.max(1, sw.list.length) - 16))
       readonly property real thumbH: Math.max(100, Math.min(200, screen.height * 0.17))
-      implicitWidth: Math.min(maxW, (sw.mode === "apps" ? appRow.implicitWidth : cards.implicitWidth) + 48)
+      implicitWidth: Math.min(maxW, (sw.mode === "apps" ? appRow.implicitWidth : cards.implicitW) + 84)
       implicitHeight: sw.mode === "apps" ? iconSize + 84 : Math.min(screen.height - 160, cards.implicitHeight + 76)
       exclusiveZone: 0
       color: "transparent"
