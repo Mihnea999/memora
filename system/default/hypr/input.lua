@@ -33,3 +33,6 @@ hl.config({
 hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 hl.gesture({ fingers = 3, direction = "up", action = function() hl.exec_cmd("memora-shell show overview") end })
 hl.gesture({ fingers = 3, direction = "down", action = function() hl.exec_cmd("memora-shell swipeDown") end })
+-- Four fingers, as on a Mac: pinch for Apps, spread for the desktop.
+hl.gesture({ fingers = 4, direction = "pinchin", action = function() hl.exec_cmd("memora-shell toggle launchpad") end })
+hl.gesture({ fingers = 4, direction = "pinchout", action = function() hl.exec_cmd("memora-shell show-desktop") end })
