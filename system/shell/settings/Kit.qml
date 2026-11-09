@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -150,6 +151,43 @@ QtObject {
           TapHandler { onTapped: ch.picked(modelData.value) }
         }
       }
+    }
+  }
+
+  // A pop-up choice for longer lists: options [{ text, value }].
+  component Select: Rectangle {
+    id: sel
+    property var options: []
+    property var value
+    property bool open: false
+    signal picked(var value)
+    readonly property var current: options.find(o => o.value === value) || options[0] || { text: "" }
+    width: Math.max(120, st.implicitWidth + 40); height: 26; radius: 7
+    color: sh.hovered || open ? Theme.pressed : Theme.field
+    border.color: Theme.separator
+    Txt { id: st; anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter } text: sel.current.text; font.pixelSize: Theme.small + 0.5 }
+    Sym { anchors { right: parent.right; rightMargin: 9; verticalCenter: parent.verticalCenter } name: "chevron"; width: 9; height: 9; rotation: 90; color: Theme.textDim }
+    HoverHandler { id: sh; cursorShape: Qt.PointingHandCursor }
+    TapHandler { onTapped: sel.open = !sel.open }
+    readonly property Item host: sel.Window.contentItem
+    // Over the whole window while open: a click outside closes it.
+    MouseArea {
+      parent: sel.host
+      visible: sel.open
+      anchors.fill: parent
+      z: 9998
+      onClicked: sel.open = false
+    }
+    MenuPanel {
+      parent: sel.host
+      visible: sel.open
+      z: 9999
+      readonly property point at: sel.open && sel.host ? sel.mapToItem(sel.host, 0, sel.height + 4) : Qt.point(0, 0)
+      x: Math.min(at.x, (sel.host ? sel.host.width : 0) - width - 8)
+      y: at.y + height > (sel.host ? sel.host.height : 0) - 8 ? at.y - height - sel.height - 8 : at.y
+      width: implicitWidth; height: implicitHeight
+      items: sel.options.map(o => ({ text: o.text, checked: o.value === sel.value, value: o.value }))
+      onPicked: item => { sel.open = false; sel.picked(item.value) }
     }
   }
 

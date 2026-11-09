@@ -62,6 +62,8 @@ Singleton {
   // Show Desktop: the windows are aside (desktops/ShowDesktop.qml); requestBack
   // asks for them to come back (a click on an app in the Dock).
   property bool desktopShown: false
+  // A mouse button is held to drag a window (snap/Snap.qml): hot corners wait.
+  property bool dragging: false
   property bool requestBack: false
 
   // The app chosen in the app switcher (Super+Tab), and Q/H pressed meanwhile.

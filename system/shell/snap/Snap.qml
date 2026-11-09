@@ -20,6 +20,7 @@ import qs.ui
 Scope {
   id: snap
   property bool held: false
+  onHeldChanged: Shell.dragging = held
   property bool moving: false
   property string zone: ""
   property string addr: ""

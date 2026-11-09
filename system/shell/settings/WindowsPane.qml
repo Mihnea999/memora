@@ -68,6 +68,41 @@ Kit.Page {
     }
   }
 
+  // Hot Corners: a screen, with a choice at each corner.
+  readonly property var cornerOptions: [
+    { text: "—", value: "" }, { text: "Mission Control", value: "overview" }, { text: "App Windows", value: "expose" },
+    { text: "Desktop", value: "desktop" }, { text: "Apps", value: "launchpad" }, { text: "Notification Center", value: "notifications" },
+    { text: "Control Center", value: "control" }, { text: "Memora AI", value: "ai" }, { text: "Lock Screen", value: "lock" },
+    { text: "Turn Display Off", value: "display" }]
+  function setCorner(c, v) { const h = Object.assign({}, Prefs.hotCorners || {}); h[c] = v; Prefs.set("hotCorners", h) }
+  Kit.Group {
+    header: "Hot Corners"
+    footer: "Push the pointer into a corner of the screen. Nothing happens while you drag a window."
+    Item {
+      Layout.fillWidth: true
+      implicitHeight: 190
+      Rectangle {
+        id: scr
+        anchors.centerIn: parent
+        width: 230; height: 140; radius: 10
+        color: Theme.field; border.color: Theme.separator
+        Rectangle { width: parent.width; height: 8; radius: 4; color: Theme.textFaint; opacity: 0.5 }
+        Rectangle { anchors { bottom: parent.bottom; bottomMargin: 6; horizontalCenter: parent.horizontalCenter } width: 90; height: 12; radius: 4; color: Theme.textFaint; opacity: 0.5 }
+      }
+      Repeater {
+        model: [["tl", -1, -1], ["tr", 1, -1], ["bl", -1, 1], ["br", 1, 1]]
+        delegate: Kit.Select {
+          required property var modelData
+          x: modelData[1] < 0 ? scr.x - width + 26 : scr.x + scr.width - 26
+          y: modelData[2] < 0 ? scr.y - height / 2 : scr.y + scr.height - height / 2
+          options: p.cornerOptions
+          value: (Prefs.hotCorners || {})[modelData[0]] || ""
+          onPicked: v => p.setCorner(modelData[0], v)
+        }
+      }
+    }
+  }
+
   Kit.Group {
     header: "Desktops"
     Kit.Row {
@@ -88,13 +123,13 @@ Kit.Page {
     header: "Shortcuts"
     footer: "All shortcuts: Help > Keyboard Shortcuts."
     Repeater {
-      model: [["Search", "Super+Space"], ["Apps", "Tap Super"], ["Switch apps", "Super+Tab"], ["Close window", "Super+W"],
+      model: [["Search", "Super+Space"], ["Apps", "Tap Super"], ["Switch apps", "Super+Tab"], ["Switch windows", "Alt+Tab"], ["Arrange windows", "Super+Alt+A"], ["Close window", "Super+W"],
               ["Quit app", "Super+Q"], ["Hide app", "Super+H"], ["Minimize", "Super+M"], ["Screenshot", "Super+Shift+3 · 4 · 5"],
               ["Lock screen", "Ctrl+Super+Q"], ["Memora AI", "Super+A"]]
       delegate: Kit.Row {
         required property var modelData
         required property int index
-        label: modelData[0]; last: index === 9
+        label: modelData[0]; last: index === 11
         Kit.Value { text: modelData[1] }
       }
     }
