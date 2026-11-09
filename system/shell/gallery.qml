@@ -13,7 +13,9 @@ import qs.ui
 // everything newest first under the month it was taken; Albums groups them by
 // folder (Screenshots among them), plus Videos and Favourites. A tap opens one full size:
 // pictures zoom (scroll, pinch, double-click), videos play right there; the
-// arrow keys go to the next and previous. Run as `memora-photos [FILE]`.
+// arrow keys go to the next and previous. A long click selects (then clicks
+// add to it) for sharing, favourites or deleting many at once; deleted ones
+// wait in Recently Deleted (the Trash) to be recovered. Run as `memora-photos [FILE]`.
 ShellRoot {
   id: app
   readonly property string home: Quickshell.env("HOME")
@@ -44,7 +46,9 @@ ShellRoot {
       if (favs[it.path]) add("@favs", "Favourites", it)
     })
     const special = ["@favs", "@videos"].filter(k => m[k]).map(k => m[k])
-    return special.concat(order.filter(k => !k.startsWith("@")).map(k => m[k]))
+    const out = special.concat(order.filter(k => !k.startsWith("@")).map(k => m[k]))
+    if (deleted.length) out.push({ id: "@deleted", name: "Recently Deleted", cover: deleted[0], count: deleted.length })
+    return out
   }
   function inAlbum(it, a) {
     if (!a) return true
@@ -54,11 +58,13 @@ ShellRoot {
   }
   function refreshShown() {
     const keep = open >= 0 && shown[open] ? shown[open].path : ""
-    shown = all.filter(it => inAlbum(it, album))
+    shown = album === "@deleted" ? deleted : all.filter(it => inAlbum(it, album))
     if (keep) { const i = shown.findIndex(it => it.path === keep); open = i }
   }
   onAllChanged: refreshShown()
-  onAlbumChanged: refreshShown()
+  onAlbumChanged: { refreshShown(); endSelect() }
+  onTabChanged: endSelect()
+  onDeletedChanged: if (album === "@deleted") { refreshShown(); if (!deleted.length) album = "" }
   onFavsChanged: if (album === "@favs") refreshShown()
 
   Process {
@@ -87,9 +93,9 @@ ShellRoot {
     }
   }
   function rescan() { if (!scan.running) scan.running = true }
-  Component.onCompleted: rescan()
+  Component.onCompleted: { rescan(); scanDeleted() }
   // New pictures and videos (a screenshot, a download) appear while it's open.
-  Timer { interval: 5000; repeat: true; running: win.visible && app.open < 0; onTriggered: app.rescan() }
+  Timer { interval: 5000; repeat: true; running: win.visible && app.open < 0 && !app.selecting; onTriggered: { app.rescan(); app.scanDeleted() } }
 
   // Video thumbnails and lengths, made once with ffmpeg and kept in ~/.cache.
   Process {
@@ -178,15 +184,99 @@ ShellRoot {
   property bool chrome: true
   Timer { id: hideChrome; interval: 2600; onTriggered: if (app.current && app.current.video && video.playbackState === MediaPlayer.PlayingState) app.chrome = false }
 
-  Process { id: runner }
+  Process { id: runner; onExited: app.scanDeleted() }
   function trash() {
     if (!current) return
     const p = current.path, was = open
-    runner.command = ["gio", "trash", "--", p]; runner.running = true
-    all = all.filter(it => it.path !== p)
-    shown = shown.filter(it => it.path !== p)
-    Quickshell.execDetached(["memora-sound", "trash"])
+    if (album === "@deleted") return askDelete([p])
+    trashMany([p])
     if (!shown.length) close(); else show(Math.min(was, shown.length - 1))
+  }
+  function trashMany(paths) {
+    if (!paths.length) return
+    runner.command = ["gio", "trash", "--"].concat(paths); runner.running = true
+    const gone = {}; paths.forEach(p => gone[p] = true)
+    all = all.filter(it => !gone[it.path])
+    shown = shown.filter(it => !gone[it.path])
+    Quickshell.execDetached(["memora-sound", "trash"])
+  }
+
+  // ---- selecting (a long click starts it, as on a phone) --------------------------
+  property bool selecting: false
+  property var sel: ({})               // path -> true
+  readonly property int selCount: Object.keys(sel).length
+  function startSelect(p) { selecting = true; sel = p ? ({ [p]: true }) : ({}) }
+  function endSelect() { selecting = false; sel = ({}); confirmDelete = [] }
+  function toggleSel(p) { const s = Object.assign({}, sel); if (s[p]) delete s[p]; else s[p] = true; sel = s }
+  function selectAll() { const s = {}; shown.forEach(it => s[it.path] = true); sel = s }
+  function selected() { return shown.filter(it => sel[it.path]).map(it => it.path) }
+  function favSelected() {
+    const ps = selected(), f = Object.assign({}, favs)
+    const allFav = ps.every(p => f[p])
+    ps.forEach(p => { if (allFav) delete f[p]; else f[p] = true })
+    favs = f
+    Quickshell.execDetached(["mkdir", "-p", home + "/.local/share/memora"])
+    favFile.setText(JSON.stringify({ favourites: Object.keys(f) }, null, 1) + "\n")
+    endSelect()
+  }
+
+  // ---- Recently Deleted: pictures and videos in the Trash -------------------------
+  // [{ path (in the Trash), orig, info, time, video, album: "@deleted" }], newest first.
+  property var deleted: []
+  Process {
+    id: delScan
+    command: ["bash", "-c",
+      "T=\"${XDG_DATA_HOME:-$HOME/.local/share}/Trash\"; for i in \"$T\"/info/*.trashinfo; do [ -f \"$i\" ] || continue; " +
+      "n=$(basename \"$i\" .trashinfo); f=\"$T/files/$n\"; [ -f \"$f\" ] || continue; " +
+      "o=$(sed -n 's/^Path=//p' \"$i\" | head -1); d=$(sed -n 's/^DeletionDate=//p' \"$i\" | head -1); " +
+      "printf '%s\\t%s\\t%s\\t%s\\n' \"$f\" \"$i\" \"$d\" \"$o\"; done"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        const exts = app.imageExt.concat(app.videoExt)
+        const list = text.split("\n").filter(l => l).map(l => {
+          const f = l.split("\t")
+          let orig = f[3] || ""; try { orig = decodeURIComponent(orig) } catch (e) {}
+          return { path: f[0], info: f[1], time: Date.parse(f[2]) || 0, orig: orig, video: app.isVideo(f[0]), album: "@deleted" }
+        }).filter(d => exts.indexOf(d.path.split(".").pop().toLowerCase()) >= 0)
+          .sort((a, b) => b.time - a.time)
+        const same = list.length === app.deleted.length && list.every((d, i) => d.path === app.deleted[i].path)
+        if (!same) app.deleted = list
+      }
+    }
+  }
+  function scanDeleted() { if (!delScan.running) delScan.running = true }
+  // Put them back where they were (next to a same-named one if that came back meanwhile).
+  function recover(paths) {
+    const items = deleted.filter(d => paths.indexOf(d.path) >= 0)
+    if (!items.length) return
+    const args = []
+    items.forEach(d => args.push(d.path, d.info, d.orig))
+    restorer.command = ["bash", "-c",
+      "while [ $# -ge 3 ]; do f=$1; i=$2; o=$3; shift 3; [ -n \"$o\" ] || continue; mkdir -p \"$(dirname \"$o\")\"; " +
+      "t=$o; n=2; while [ -e \"$t\" ]; do t=\"${o%.*} ($n).${o##*.}\"; n=$((n+1)); done; " +
+      "mv -n -- \"$f\" \"$t\" && rm -f -- \"$i\"; done", "_"].concat(args)
+    restorer.running = true
+    deleted = deleted.filter(d => paths.indexOf(d.path) < 0)
+    endSelect()
+  }
+  Process { id: restorer; onExited: { app.rescan(); app.scanDeleted() } }
+  // Deleting for good asks once more: the button turns into "Delete N?" for a few seconds.
+  property var confirmDelete: []
+  Timer { id: confirmTimer; interval: 4000; onTriggered: app.confirmDelete = [] }
+  function askDelete(paths) {
+    if (confirmDelete.length && confirmDelete.join("\n") === paths.join("\n")) return deleteForever(paths)
+    confirmDelete = paths; confirmTimer.restart()
+  }
+  function deleteForever(paths) {
+    const items = deleted.filter(d => paths.indexOf(d.path) >= 0)
+    const args = []
+    items.forEach(d => args.push(d.path, d.info))
+    if (args.length) Quickshell.execDetached(["rm", "-f", "--"].concat(args))
+    Quickshell.execDetached(["memora-sound", "trash"])
+    deleted = deleted.filter(d => paths.indexOf(d.path) < 0)
+    confirmDelete = []
+    if (current && paths.indexOf(current.path) >= 0) { if (!shown.length) close(); else show(Math.min(open, shown.length - 1)) }
+    endSelect()
   }
 
   IpcHandler {
@@ -235,7 +325,9 @@ ShellRoot {
     Shortcut { sequence: "Right"; enabled: !!app.current; onActivated: app.show(app.open + 1) }
     Shortcut { sequence: "Left"; enabled: !!app.current; onActivated: app.show(app.open - 1) }
     Shortcut { sequence: "Space"; enabled: !!app.current && app.current.video; onActivated: video.playbackState === MediaPlayer.PlayingState ? video.pause() : video.play() }
-    Shortcut { sequence: "Escape"; onActivated: win.visibility === Window.FullScreen ? win.showNormal() : (app.current ? app.close() : (app.album ? app.album = "" : Qt.quit())) }
+    Shortcut { sequence: "Escape"; onActivated: win.visibility === Window.FullScreen ? win.showNormal() : (app.current ? app.close() : app.selecting ? app.endSelect() : (app.album ? app.album = "" : Qt.quit())) }
+    Shortcut { sequence: "Ctrl+A"; enabled: !app.current && (app.tab === "library" || app.album !== ""); onActivated: { app.selecting = true; app.selectAll() } }
+    Shortcut { sequence: "Delete"; enabled: !app.current && app.selecting && app.selCount > 0; onActivated: app.album === "@deleted" ? app.askDelete(app.selected()) : (app.trashMany(app.selected()), app.endSelect()) }
     Shortcut { sequence: "F"; onActivated: win.visibility === Window.FullScreen ? win.showNormal() : win.showFullScreen() }
     Shortcut { sequence: "I"; enabled: !!app.current; onActivated: app.info = !app.info }
     Shortcut { sequence: "Delete"; enabled: !!app.current; onActivated: app.trash() }
@@ -290,10 +382,21 @@ ShellRoot {
           text: (app.albums.find(a => a.id === app.album) || {}).name || ""
           font.weight: Font.Bold; font.pixelSize: Theme.large
         }
-        Txt {
-          anchors { right: parent.right; rightMargin: 20; verticalCenter: parent.verticalCenter }
-          text: app.shown.length ? app.shown.length + (app.shown.length === 1 ? " item" : " items") : ""
-          color: Theme.textDim; font.pixelSize: Theme.small
+        Row {
+          anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+          spacing: 10
+          Txt {
+            anchors.verticalCenter: parent.verticalCenter
+            text: app.selecting ? (app.selCount ? app.selCount + " selected" : "Select items")
+                : app.shown.length ? app.shown.length + (app.shown.length === 1 ? " item" : " items") : ""
+            color: app.selecting ? Theme.text : Theme.textDim; font.pixelSize: Theme.small; font.weight: app.selecting ? Font.Bold : Font.Normal
+          }
+          Pill { visible: app.selecting; text: app.selCount === app.shown.length ? "Deselect All" : "Select All"; onClicked: app.selCount === app.shown.length ? (app.sel = ({})) : app.selectAll() }
+          Pill {
+            visible: (app.tab === "library" || app.album !== "") && app.shown.length > 0
+            text: app.selecting ? "Cancel" : "Select"; strong: !app.selecting
+            onClicked: app.selecting ? app.endSelect() : app.startSelect("")
+          }
         }
       }
 
@@ -348,6 +451,34 @@ ShellRoot {
         }
       }
 
+      // ---- What to do with the selection (or with all of Recently Deleted)
+      Rectangle {
+        id: actions
+        readonly property bool bin: app.album === "@deleted"
+        visible: (app.selecting || bin) && grid.visible && app.shown.length > 0
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 18 }
+        width: actRow.implicitWidth + 16; height: 44; radius: 22
+        color: Theme.dark ? Qt.rgba(0.16, 0.16, 0.18, 0.96) : Qt.rgba(1, 1, 1, 0.97)
+        border.color: Theme.separator
+        readonly property var targets: app.selecting ? app.selected() : app.shown.map(it => it.path)
+        Row {
+          id: actRow
+          anchors.centerIn: parent
+          spacing: 6
+          // Library and albums
+          Pill { visible: !actions.bin; enabled: app.selCount > 0; text: "Share"; onClicked: { Quickshell.execDetached(["memora-shell", "share"].concat(app.selected())); app.endSelect() } }
+          Pill { visible: !actions.bin; enabled: app.selCount > 0; text: app.selected().every(p => app.favs[p]) && app.selCount ? "Unfavourite" : "Favourite"; onClicked: app.favSelected() }
+          Pill { visible: !actions.bin; enabled: app.selCount > 0; text: "Delete"; danger: true; strong: app.selCount > 0; onClicked: { app.trashMany(app.selected()); app.endSelect() } }
+          // Recently Deleted: everything, or what is selected
+          Pill { visible: actions.bin; enabled: actions.targets.length > 0; text: app.selecting ? "Recover" : "Recover All"; onClicked: app.recover(actions.targets) }
+          Pill {
+            visible: actions.bin; enabled: actions.targets.length > 0; danger: true; strong: true
+            text: app.confirmDelete.length ? "Delete " + app.confirmDelete.length + " for good?" : (app.selecting ? "Delete" : "Delete All")
+            onClicked: app.askDelete(actions.targets)
+          }
+        }
+      }
+
       // ---- Albums
       GridView {
         id: albumGrid
@@ -374,9 +505,9 @@ ShellRoot {
               source: modelData.cover.video ? (app.thumbs[modelData.cover.path] ? "file://" + app.thumbs[modelData.cover.path].img : "") : "file://" + modelData.cover.path
             }
             Sym {
-              visible: modelData.id === "@favs" || modelData.id === "@videos"
+              visible: modelData.id === "@favs" || modelData.id === "@videos" || modelData.id === "@deleted"
               anchors { left: parent.left; bottom: parent.bottom; margins: 10 }
-              name: modelData.id === "@favs" ? "heart" : "play"; width: 18; height: 18; color: "#ffffff"
+              name: modelData.id === "@favs" ? "heart" : modelData.id === "@deleted" ? "trash" : "play"; width: 18; height: 18; color: "#ffffff"
             }
           }
           Txt { x: 8; anchors.top: cover.bottom; anchors.topMargin: 6; width: parent.width - 16; text: modelData.name; font.weight: Font.Bold; elide: Text.ElideRight }
@@ -505,11 +636,12 @@ ShellRoot {
         Row {
           anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
           spacing: 4
-          Tool { sym: "share"; tip: "Share with a device nearby"; onClicked: Quickshell.execDetached(["memora-shell", "share", app.current.path]) }
-          Tool { sym: "heart"; on: !!app.current && !!app.favs[app.current.path]; tip: "Favourite"; onClicked: app.toggleFav(app.current.path) }
-          Tool { sym: "photo"; visible: !!app.current && !app.current.video; tip: "Use as Wallpaper"; onClicked: { Prefs.set("wallpaper", app.current.path); Quickshell.execDetached(["notify-send", "-a", "Gallery", "-h", "boolean:suppress-sound:true", "-i", app.current.path, "Wallpaper changed", app.current.path.split("/").pop()]) } }
+          Tool { sym: "restart"; visible: app.album === "@deleted"; tip: "Recover"; onClicked: { const p = app.current.path, was = app.open; app.recover([p]); if (!app.shown.length) app.close(); else app.show(Math.min(was, app.shown.length - 1)) } }
+          Tool { sym: "share"; visible: app.album !== "@deleted"; tip: "Share with a device nearby"; onClicked: Quickshell.execDetached(["memora-shell", "share", app.current.path]) }
+          Tool { sym: "heart"; visible: app.album !== "@deleted"; on: !!app.current && !!app.favs[app.current.path]; tip: "Favourite"; onClicked: app.toggleFav(app.current.path) }
+          Tool { sym: "photo"; visible: !!app.current && !app.current.video && app.album !== "@deleted"; tip: "Use as Wallpaper"; onClicked: { Prefs.set("wallpaper", app.current.path); Quickshell.execDetached(["notify-send", "-a", "Gallery", "-h", "boolean:suppress-sound:true", "-i", app.current.path, "Wallpaper changed", app.current.path.split("/").pop()]) } }
           Tool { sym: "info"; on: app.info; tip: "Info (I)"; onClicked: app.info = !app.info }
-          Tool { sym: "trash"; tip: "Move to Trash (Delete)"; onClicked: app.trash() }
+          Tool { sym: "trash"; on: app.album === "@deleted" && app.confirmDelete.length > 0; tip: app.album === "@deleted" ? (app.confirmDelete.length ? "Click again to delete for good" : "Delete for good") : "Delete (Recently Deleted keeps it)"; onClicked: app.trash() }
         }
       }
 
@@ -605,9 +737,38 @@ ShellRoot {
       }
     }
     Sym { visible: !!app.favs[tile.it.path]; anchors { left: parent.left; top: parent.top; margins: 7 } name: "heart"; width: 13; height: 13; color: "#ffffff" }
-    Rectangle { anchors.fill: parent; color: "#ffffff"; opacity: th.hovered ? 0.08 : 0 }
+    Rectangle { anchors.fill: parent; color: "#ffffff"; opacity: tile.chosen ? 0.22 : th.hovered ? 0.08 : 0 }
+    readonly property bool chosen: app.selecting && !!app.sel[tile.it.path]
+    // Selection: a ring, filled with a check when chosen.
+    Rectangle {
+      visible: app.selecting
+      anchors { right: parent.right; bottom: parent.bottom; margins: 7 }
+      width: 22; height: 22; radius: 11
+      color: tile.chosen ? Theme.accent : Qt.rgba(0, 0, 0, 0.25)
+      border.width: 1.5; border.color: "#ffffff"
+      Sym { visible: tile.chosen; anchors.centerIn: parent; name: "check"; width: 12; height: 12; color: "#ffffff" }
+    }
     HoverHandler { id: th; cursorShape: Qt.PointingHandCursor }
-    TapHandler { onTapped: app.show(tile.index) }
+    TapHandler {
+      longPressThreshold: 0.45
+      onTapped: app.selecting ? app.toggleSel(tile.it.path) : app.show(tile.index)
+      onLongPressed: { if (!app.selecting) app.startSelect(tile.it.path); else app.toggleSel(tile.it.path) }
+    }
+  }
+
+  component Pill: Rectangle {
+    id: pl
+    property string text
+    property bool strong: false
+    property bool danger: false
+    signal clicked()
+    implicitWidth: pt.implicitWidth + 26; implicitHeight: 30
+    width: implicitWidth; height: implicitHeight; radius: 15
+    opacity: enabled ? 1 : 0.4
+    color: strong ? (danger ? Theme.red : Theme.accent) : (ph.hovered ? Theme.hover : Theme.field)
+    Txt { id: pt; anchors.centerIn: parent; text: pl.text; color: pl.strong ? "#ffffff" : (pl.danger ? Theme.red : Theme.text); font.weight: Font.Bold; font.pixelSize: Theme.small + 0.5 }
+    HoverHandler { id: ph; cursorShape: Qt.PointingHandCursor }
+    TapHandler { onTapped: pl.clicked() }
   }
 
   component Tool: Rectangle {
