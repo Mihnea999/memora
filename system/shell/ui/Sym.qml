@@ -200,6 +200,13 @@ Canvas {
       ctx.quadraticCurveTo(2, 2, 2, 3.4); ctx.lineTo(2, 9.1); ctx.quadraticCurveTo(2, 10.5, 3.4, 10.5); ctx.lineTo(3.6, 10.5); ctx.stroke()
       break
     }
+    case "file": {   // a page with a folded corner
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(9.5, 1.8); ctx.lineTo(4.2, 1.8); ctx.quadraticCurveTo(3, 1.8, 3, 3); ctx.lineTo(3, 13)
+      ctx.quadraticCurveTo(3, 14.2, 4.2, 14.2); ctx.lineTo(11.8, 14.2); ctx.quadraticCurveTo(13, 14.2, 13, 13); ctx.lineTo(13, 5.3); ctx.closePath(); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(9.5, 1.8); ctx.lineTo(9.5, 5.3); ctx.lineTo(13, 5.3); ctx.stroke()
+      break
+    }
     case "plus": {
       ctx.lineWidth = 1.7
       ctx.beginPath(); ctx.moveTo(8, 2.5); ctx.lineTo(8, 13.5); ctx.moveTo(2.5, 8); ctx.lineTo(13.5, 8); ctx.stroke()

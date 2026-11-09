@@ -542,6 +542,9 @@ FloatingWindow {
         win.dragging = []; ghost.over = null
       }
       function track(p) {
+        // Out of the window: hand it to the system, so it can be dropped in
+        // other apps (the AI, a browser, a chat…) as files.
+        if (p.x < -8 || p.y < -8 || p.x > content.width + 8 || p.y > content.height + 8) { outDrag.start(); return }
         // Highlight the folder under the pointer (icons or list).
         const c = win.view === "icons" ? grid.itemAt(p.x - grid.x + grid.contentX, p.y - grid.y + grid.contentY)
                                        : list.itemAt(p.x - list.x + list.contentX, p.y - list.parent.y - list.y + list.contentY)
@@ -558,6 +561,24 @@ FloatingWindow {
       }
       Drag.active: visible
       Drag.hotSpot: Qt.point(32, 32)
+    }
+    // The same files, dragged out to other apps (a system drag-and-drop).
+    Item {
+      id: outDrag
+      property string uris: ""
+      function start() {
+        if (!win.dragging.length || Drag.active) return
+        uris = win.dragging.map(f => "file://" + encodeURI(f)).join("\r\n") + "\r\n"
+        Drag.imageSource = ghost.icon
+        if (ghost.over) ghost.over.hot = false
+        ghost.over = null
+        win.dragging = []
+        Drag.active = true
+      }
+      Drag.dragType: Drag.Automatic
+      Drag.supportedActions: Qt.CopyAction
+      Drag.mimeData: ({ "text/uri-list": uris })
+      Drag.onDragFinished: Drag.active = false
     }
   }
 

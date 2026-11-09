@@ -1191,18 +1191,27 @@ class Agent:
         self.cc_session = None
         self.cc_started = False
 
-    def turn(self, text):
+    def turn(self, text, files=()):
         self.cfg = load_config()
         self.tools.hands_on = False
         provider = self.cfg.get("provider") or "anthropic"
-        self.messages.append({"role": "user", "content": text})
+        files = [f for f in files if isinstance(f, str) and os.path.isfile(f)]
+        # Attached files: Claude sees pictures and PDFs; the others get the text
+        # of text files and the paths of the rest (they can open them with tools).
+        blocks, note = attachments(files, images=provider == "anthropic")
+        if blocks:
+            self.messages.append({"role": "user", "content": blocks + [{"type": "text", "text": (text or "What is this?") + note}]})
+        else:
+            self.messages.append({"role": "user", "content": (text or ("What is this?" if files else "")) + note})
         try:
             if provider == "anthropic":
                 self.claude_turn()
             elif provider == "deepseek":
                 self.claude_turn(deepseek=True)
             elif provider == "claude-code":
-                self.claude_code_turn(text)
+                # Claude Code reads them itself (its Read tool sees pictures and PDFs).
+                paths = "".join(f"\n- {f}" for f in files)
+                self.claude_code_turn((text or "What is this?") + (f"\n\nAttached files (read them):{paths}" if files else ""))
             else:
                 self.openai_turn(provider)
         except Exception as e:  # shown in the window, not a crash
@@ -1421,9 +1430,13 @@ class Agent:
         base = (self.cfg.get("baseUrl") or ("http://localhost:11434/v1" if provider == "ollama" else "")).rstrip("/")
         if not base:
             raise RuntimeError("Set the server address in System Settings > Memora AI.")
+        def plain(c):
+            if isinstance(c, str):
+                return c
+            return "\n".join(b.get("text", "") if isinstance(b, dict) and b.get("type") == "text" else
+                             ("[a picture]" if isinstance(b, dict) and b.get("type") == "image" else json.dumps(b, default=str)) for b in c)
         msgs = [{"role": "system", "content": system_prompt()}] + [
-            {"role": m["role"], "content": m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])}
-            for m in self.messages]
+            {"role": m["role"], "content": plain(m["content"])} for m in self.messages]
         body = json.dumps({"model": self.cfg.get("model") or "qwen3:8b", "stream": True, "messages": msgs}).encode()
         req = urllib.request.Request(base + "/chat/completions", data=body, headers={
             "Content-Type": "application/json", "Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "none")})
@@ -1452,6 +1465,62 @@ class Agent:
             (DATA / "last-session.json").write_text(json.dumps(plain, default=str)[:5_000_000])
         except OSError:
             pass
+
+
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+TEXT_LIMIT = 200_000
+
+
+def attachments(files, images=True):
+    """Content blocks for attached files (pictures, PDFs) and a note to add
+    to the message (text files' contents, the paths of everything else)."""
+    blocks, notes = [], []
+    for f in files:
+        ext = os.path.splitext(f)[1].lower()
+        size = os.path.getsize(f)
+        name = os.path.basename(f)
+        if images and (ext in IMAGE_TYPES or ext in (".bmp", ".tif", ".tiff", ".heic", ".avif")):
+            data, media = picture(f, ext)
+            if data:
+                blocks.append({"type": "image", "source": {"type": "base64", "media_type": media, "data": data}})
+                notes.append(f"(picture above: {f})")
+                continue
+        if images and ext == ".pdf" and size <= 20_000_000:
+            blocks.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
+                                                          "data": base64.b64encode(Path(f).read_bytes()).decode()}, "title": name})
+            notes.append(f"(PDF above: {f})")
+            continue
+        text = None
+        if size <= TEXT_LIMIT:
+            try:
+                raw = Path(f).read_bytes()
+                if b"\0" not in raw[:4096]:
+                    text = raw.decode("utf-8")
+            except (OSError, UnicodeDecodeError):
+                text = None
+        if text is not None:
+            notes.append(f"Attached file {f}:\n```\n{text}\n```")
+        else:
+            kind = "picture" if ext in IMAGE_TYPES else "file"
+            notes.append(f"Attached {kind}: {f} ({size:,} bytes). Use your tools to look at it if needed.")
+    return blocks, ("\n\n" + "\n\n".join(notes)) if notes else ""
+
+
+def picture(f, ext):
+    """(base64, media type) for the API: as it is when it's small, else made
+    smaller (longest side 1568 px, which is what Claude looks at anyway)."""
+    try:
+        if ext in IMAGE_TYPES and os.path.getsize(f) <= 3_500_000:
+            dims = subprocess.run(["magick", "identify", "-format", "%w %h", f + "[0]"], capture_output=True, text=True, timeout=10).stdout.split()
+            if len(dims) == 2 and max(int(dims[0]), int(dims[1])) <= 1568:
+                return base64.b64encode(Path(f).read_bytes()).decode(), IMAGE_TYPES[ext]
+        out = subprocess.run(["magick", f + "[0]", "-auto-orient", "-resize", "1568x1568>", "-quality", "85", "jpeg:-"],
+                             capture_output=True, timeout=30)
+        if out.returncode == 0 and out.stdout:
+            return base64.b64encode(out.stdout).decode(), "image/jpeg"
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return None, None
 
 
 def friendly_error(e):
@@ -1613,7 +1682,7 @@ def main():
                 continue
             if m.get("type") == "user":
                 ui.stop.clear()
-                agent.turn(m.get("text", ""))
+                agent.turn(m.get("text", ""), m.get("files") or [])
                 ui.send(type="done")
     elif mode == "tools":
         for t in TOOLS:

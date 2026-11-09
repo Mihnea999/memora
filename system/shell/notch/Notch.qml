@@ -32,7 +32,21 @@ Scope {
   // While the assistant works in apps (typing, clicking) it folds into its pill
   // and lets go of the keyboard, so keys reach the app; it opens again after.
   property bool driving: false
-  // items: { kind: "user"|"assistant"|"tool"|"confirm"|"error", text, id, ok, done, level, title, detail, why, answered }
+  // items: { kind: "user"|"assistant"|"tool"|"confirm"|"error", text, id, ok, done, level, title, detail, why, answered, files }
+  // Files and pictures to send with the next message (pasted with Ctrl+V or
+  // dropped on the panel): [{ path, name, image }].
+  property var attached: []
+  readonly property var imageExt: /\.(png|jpe?g|gif|webp|bmp|tiff?|heic|avif)$/i
+  function attach(paths) {
+    const now = attached.slice()
+    for (const p of paths) {
+      if (!p || now.some(a => a.path === p)) continue
+      now.push({ path: p, name: p.split("/").pop(), image: imageExt.test(p) })
+    }
+    attached = now.slice(0, 10)
+    expand()
+  }
+  function detach(path) { attached = attached.filter(a => a.path !== path) }
   ListModel { id: items }
 
   function toggle() { expanded ? collapse() : expand() }
@@ -49,18 +63,22 @@ Scope {
   function effortName(e) { return ({ low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" })[e] || e }
   function ask(text) {
     const t = (text || "").trim()
-    if (!t || busy) return
+    const files = attached.map(a => a.path)
+    if ((!t && !files.length) || busy) return
     started = true; picking = false
-    items.append({ kind: "user", text: t, id: 0, ok: true, done: true, level: "", title: "", detail: "", why: "", answered: false })
+    items.append({ kind: "user", text: t, id: 0, ok: true, done: true, level: "", title: "", detail: "", why: "", answered: false, files: JSON.stringify(files) })
+    attached = []
     busy = true; status = "Thinking…"
-    if (agent.running) send({ type: "user", text: t })
-    else pending = t
+    if (agent.running) send({ type: "user", text: t, files: files })
+    else { pending = t; pendingFiles = files }
+    return true
   }
   property string pending: ""
+  property var pendingFiles: []
   function newChat() { if (busy) send({ type: "stop" }); items.clear(); send({ type: "new" }); busy = false; status = "" }
   function lastAssistant() {
     if (items.count && items.get(items.count - 1).kind === "assistant") return items.count - 1
-    items.append({ kind: "assistant", text: "", id: 0, ok: true, done: false, level: "", title: "", detail: "", why: "", answered: false })
+    items.append({ kind: "assistant", text: "", id: 0, ok: true, done: false, level: "", title: "", detail: "", why: "", answered: false, files: "" })
     return items.count - 1
   }
   function find(kind, id) { for (let i = items.count - 1; i >= 0; i--) { const it = items.get(i); if (it.kind === kind && it.id === id) return i } return -1 }
@@ -80,7 +98,7 @@ Scope {
     command: ["python3", Theme.share + "/ai/agent.py", "serve"]
     onRunningChanged: {
       if (running && ai.pendingSettings) { ai.send(Object.assign({ type: "settings" }, ai.pendingSettings)); ai.pendingSettings = null }
-      if (running && ai.pending) { ai.send({ type: "user", text: ai.pending }); ai.pending = "" }
+      if (running && (ai.pending || ai.pendingFiles.length)) { ai.send({ type: "user", text: ai.pending, files: ai.pendingFiles }); ai.pending = ""; ai.pendingFiles = [] }
     }
     stdout: SplitParser {
       onRead: line => {
@@ -101,13 +119,13 @@ Scope {
           if (m.on && !ai.driving) { ai.driving = true; ai.expanded = false }
           else if (!m.on) ai.driving = false
           break
-        case "tool": items.append({ kind: "tool", text: m.summary, id: m.id, ok: true, done: false, level: "", title: m.name, detail: "", why: "", answered: false }); ai.status = m.summary; break
+        case "tool": items.append({ kind: "tool", text: m.summary, id: m.id, ok: true, done: false, level: "", title: m.name, detail: "", why: "", answered: false, files: "" }); ai.status = m.summary; break
         case "tool_done": { const i = ai.find("tool", m.id); if (i >= 0) { items.setProperty(i, "done", true); items.setProperty(i, "ok", m.ok) } break }
         case "confirm":
-          items.append({ kind: "confirm", text: "", id: m.id, ok: false, done: false, level: m.level, title: m.title, detail: m.detail, why: m.why, answered: false })
+          items.append({ kind: "confirm", text: "", id: m.id, ok: false, done: false, level: m.level, title: m.title, detail: m.detail, why: m.why, answered: false, files: "" })
           ai.status = "Needs your OK"; ai.expanded = true
           break
-        case "error": items.append({ kind: "error", text: m.message, id: 0, ok: false, done: true, level: "", title: "", detail: "", why: "", answered: false }); break
+        case "error": items.append({ kind: "error", text: m.message, id: 0, ok: false, done: true, level: "", title: "", detail: "", why: "", answered: false, files: "" }); break
         case "done":
           ai.busy = false; ai.status = ""
           // After working in apps it stays folded, so what it opened stays in
@@ -118,8 +136,25 @@ Scope {
         }
       }
     }
-    onExited: { if (ai.busy) items.append({ kind: "error", text: "The assistant stopped. Ask again to restart it.", id: 0, ok: false, done: true, level: "", title: "", detail: "", why: "", answered: false }); ai.busy = false; ai.started = false }
+    onExited: { if (ai.busy) items.append({ kind: "error", text: "The assistant stopped. Ask again to restart it.", id: 0, ok: false, done: true, level: "", title: "", detail: "", why: "", answered: false, files: "" }); ai.busy = false; ai.started = false }
   }
+  Process {
+    id: paster
+    command: ["bash", "-c", `
+      types="$(wl-paste --list-types 2>/dev/null)"
+      if grep -qx 'text/uri-list' <<<"$types"; then
+        wl-paste --no-newline --type text/uri-list | tr -d '\\r' | sed -n 's|^file://||p' |
+          python3 -c 'import sys, urllib.parse; [print("FILE " + urllib.parse.unquote(l.strip())) for l in sys.stdin if l.strip()]'
+      elif ! grep -qx 'text/plain' <<<"$types" && img="$(grep -m1 -E '^image/(png|jpeg|webp|gif)$' <<<"$types")"; then
+        d="$HOME/.cache/memora/ai"; mkdir -p "$d"; f="$d/pasted-$(date +%Y%m%d-%H%M%S-%N).\${img#image/}"
+        wl-paste --type "$img" > "$f" && [ -s "$f" ] && echo "FILE $f"
+      fi`]
+    property var found: []
+    stdout: SplitParser { onRead: line => { if (line.startsWith("FILE ")) paster.found = paster.found.concat([line.slice(5)]) } }
+    onExited: { if (found.length) ai.attach(found); else ai.pasteText(); found = [] }
+  }
+  signal pasteText()
+
   // A short glow on the island when an answer finishes while folded.
   property bool flash: false
   Timer { running: ai.flash; interval: 2600; onTriggered: ai.flash = false }
@@ -163,7 +198,7 @@ Scope {
       // Folded: a pill in the bar; working: wider, with what it is doing.
       readonly property real foldedW: ai.busy ? Math.min(460, statusText.implicitWidth + 86) : (ai.flash ? 210 : 132)
       readonly property real openW: Math.min(win.width - 40, 680)
-      readonly property real openH: Math.min(win.height - 40, Math.max(items.count ? 600 : 250, ai.picking ? picker.height + 70 : 0))
+      readonly property real openH: Math.min(win.height - 40, Math.max(items.count ? 600 : 250 + (ai.attached.length ? 80 : 0), ai.picking ? picker.height + 70 : 0))
 
       Item {
         id: island
@@ -212,8 +247,27 @@ Scope {
         }
         HoverHandler { id: islandHover; cursorShape: ai.expanded ? Qt.ArrowCursor : Qt.PointingHandCursor }
         TapHandler { enabled: !ai.expanded; onTapped: { ai.flash = false; ai.expand() } }
-        scale: !ai.expanded && islandHover.hovered ? 1.04 : 1
+        scale: !ai.expanded && islandHover.hovered ? 1.04 : 1 + (drop.containsDrag && !ai.expanded ? 0.08 : 0)
         Behavior on scale { NumberAnimation { duration: Theme.fast } }
+
+        // Files and pictures dropped on it (open or folded) go with the next message.
+        DropArea {
+          id: drop
+          anchors.fill: parent
+          keys: ["text/uri-list"]
+          onEntered: ev => { if (!ev.hasUrls) ev.accepted = false }
+          onDropped: ev => {
+            const paths = ev.urls.map(u => u.toString()).filter(u => u.startsWith("file://")).map(u => decodeURIComponent(u.slice(7)))
+            if (paths.length) { ev.acceptProposedAction(); ai.attach(paths) }
+          }
+        }
+        Rectangle {
+          anchors { fill: parent; topMargin: -radius }
+          visible: drop.containsDrag
+          radius: shape.radius; color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12)
+          border.width: 2; border.color: Theme.accent
+          z: 10
+        }
 
         // ---- open content
         Item {
@@ -326,7 +380,7 @@ Scope {
           ListView {
             id: list
             visible: items.count > 0
-            anchors { left: parent.left; right: parent.right; top: head.bottom; topMargin: 10; bottom: input.top; bottomMargin: 10 }
+            anchors { left: parent.left; right: parent.right; top: head.bottom; topMargin: 10; bottom: tray.top; bottomMargin: 10 }
             clip: true
             model: items
             spacing: 10
@@ -348,13 +402,24 @@ Scope {
               required property string why
               required property bool answered
               width: list.width
-              implicitHeight: kind === "user" ? ub.height : kind === "assistant" ? at.implicitHeight + (copyRow.visible ? 26 : 2)
+              required property string files
+              readonly property var fileList: { try { return JSON.parse(files || "[]") } catch (e) { return [] } }
+              implicitHeight: kind === "user" ? ub.height + (fileList.length ? uf.height + 6 : 0) : kind === "assistant" ? at.implicitHeight + (copyRow.visible ? 26 : 2)
                 : kind === "tool" ? 24 : kind === "confirm" ? cc.height : et.implicitHeight + 8
 
+              Flow {
+                id: uf
+                visible: d.kind === "user" && d.fileList.length > 0
+                anchors.right: parent.right
+                width: Math.min(d.width * 0.75, implicitWidth); layoutDirection: Qt.RightToLeft
+                spacing: 6
+                Repeater { model: d.kind === "user" ? d.fileList : []; delegate: Attachment { required property var modelData; path: modelData } }
+              }
               Rectangle {
                 id: ub
-                visible: d.kind === "user"
+                visible: d.kind === "user" && d.text !== ""
                 anchors.right: parent.right
+                y: d.fileList.length ? uf.height + 6 : 0
                 width: Math.min(ut.implicitWidth + 26, d.width * 0.75); height: ut.implicitHeight + 16
                 radius: 15; color: Theme.accent
                 TextEdit {
@@ -443,6 +508,15 @@ Scope {
             }
           }
 
+          // Attachments waiting to go with the next message.
+          Flow {
+            id: tray
+            anchors { left: parent.left; right: parent.right; bottom: input.top; bottomMargin: ai.attached.length ? 8 : 0 }
+            height: ai.attached.length ? implicitHeight : 0
+            spacing: 6
+            Repeater { model: ai.attached; delegate: Attachment { required property var modelData; path: modelData.path; removable: true } }
+          }
+
           // Input
           Rectangle {
             id: input
@@ -465,25 +539,58 @@ Scope {
                 Keys.onEscapePressed: ai.collapse()
                 Keys.onReturnPressed: ev => {
                   if (ev.modifiers & Qt.ShiftModifier) { ev.accepted = false; return }
-                  ai.ask(text); text = ""
+                  if (ai.ask(text)) text = ""
                 }
-                Txt { visible: !field.text; text: ai.busy ? (ai.status || "Working…") : "Ask anything, or tell it what to do"; color: win.faint }
+                // Ctrl+V: pictures and copied files become attachments.
+                Keys.onPressed: ev => {
+                  if ((ev.key === Qt.Key_V && (ev.modifiers & Qt.ControlModifier)) || (ev.key === Qt.Key_Insert && (ev.modifiers & Qt.ShiftModifier))) {
+                    ev.accepted = true
+                    if (!paster.running) paster.running = true
+                  }
+                }
+                Connections { target: ai; function onPasteText() { field.paste() } }
+                Txt { visible: !field.text; text: ai.busy ? (ai.status || "Working…") : ai.attached.length ? "Ask about " + (ai.attached.length === 1 ? "it" : "them") : "Ask anything, or drop a file here"; color: win.faint }
               }
             }
             Rectangle {
               id: go
               anchors { right: parent.right; rightMargin: 7; bottom: parent.bottom; bottomMargin: 7 }
               width: 30; height: 30; radius: 15
-              color: ai.busy ? win.ink : (field.text.trim() ? Theme.accent : win.well)
+              readonly property bool ready: field.text.trim() !== "" || ai.attached.length > 0
+              color: ai.busy ? win.ink : (ready ? Theme.accent : win.well)
               Behavior on color { ColorAnimation { duration: Theme.fast } }
-              Sym { anchors.centerIn: parent; visible: !ai.busy; name: "arrow"; width: 14; height: 14; rotation: -90; color: field.text.trim() ? "#ffffff" : win.dim }
+              Sym { anchors.centerIn: parent; visible: !ai.busy; name: "arrow"; width: 14; height: 14; rotation: -90; color: go.ready ? "#ffffff" : win.dim }
               Rectangle { anchors.centerIn: parent; visible: ai.busy; width: 10; height: 10; radius: 2; color: "#000" }
-              TapHandler { onTapped: { if (ai.busy) ai.send({ type: "stop" }); else { ai.ask(field.text); field.text = "" } } }
+              TapHandler { onTapped: { if (ai.busy) ai.send({ type: "stop" }); else if (ai.ask(field.text)) field.text = "" } }
             }
           }
           Connections { target: ai; function onExpandedChanged() { if (ai.expanded && win.here) Qt.callLater(() => field.forceActiveFocus()) } }
         }
       }
+    }
+  }
+
+  component Attachment: Rectangle {
+    id: at
+    property string path
+    property bool removable: false
+    readonly property bool image: ai.imageExt.test(path)
+    readonly property string name: path.split("/").pop()
+    width: image ? 64 : Math.min(200, fn.implicitWidth + 40); height: image ? 64 : 34
+    radius: 10; clip: true
+    color: Qt.rgba(1, 1, 1, 0.09)
+    border.color: Qt.rgba(1, 1, 1, 0.12)
+    Image { anchors.fill: parent; visible: at.image; source: at.image ? "file://" + at.path : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(128, 128) }
+    Sym { visible: !at.image; x: 10; anchors.verticalCenter: parent.verticalCenter; name: "file"; width: 14; height: 14; color: "#c7c7cc" }
+    Txt { id: fn; visible: !at.image; x: 30; width: parent.width - 38; anchors.verticalCenter: parent.verticalCenter; text: at.name; elide: Text.ElideMiddle; color: "#f5f5f7"; font.pixelSize: Theme.small }
+    HoverHandler { id: ah; cursorShape: Qt.PointingHandCursor }
+    TapHandler { onTapped: Quickshell.execDetached(["xdg-open", at.path]) }
+    Rectangle {
+      visible: at.removable && ah.hovered
+      anchors { top: parent.top; right: parent.right; margins: 3 }
+      width: 18; height: 18; radius: 9; color: Qt.rgba(0, 0, 0, 0.7)
+      Sym { anchors.centerIn: parent; name: "close"; width: 8; height: 8; color: "#ffffff" }
+      TapHandler { onTapped: ai.detach(at.path) }
     }
   }
 
