@@ -53,7 +53,7 @@ Scope {
   Variants {
     model: Quickshell.screens
     PanelWindow {
-      id: layer
+      id: wl
       required property var modelData
       screen: modelData
       readonly property bool here: wm.at.x >= modelData.x && wm.at.x < modelData.x + modelData.width && wm.at.y >= modelData.y && wm.at.y < modelData.y + modelData.height
@@ -66,13 +66,13 @@ Scope {
       WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
       Item {
         anchors.fill: parent
-        focus: layer.visible
+        focus: wl.visible
         Keys.onEscapePressed: wm.open = false
         TapHandler { acceptedButtons: Qt.AllButtons; onTapped: wm.open = false }
       }
       MenuPanel {
-        x: Math.min(wm.at.x - layer.modelData.x, layer.width - width - 8)
-        y: Math.min(wm.at.y - layer.modelData.y, layer.height - height - 8)
+        x: Math.min(wm.at.x - wl.modelData.x, wl.width - width - 8)
+        y: Math.min(wm.at.y - wl.modelData.y, wl.height - height - 8)
         width: implicitWidth; height: implicitHeight
         items: wm.items
         onPicked: item => { const run = item.action; wm.open = false; if (run) Qt.callLater(run) }

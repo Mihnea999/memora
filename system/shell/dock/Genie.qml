@@ -36,7 +36,7 @@ Scope {
   Variants {
     model: Quickshell.screens
     PanelWindow {
-      id: layer
+      id: wl
       required property var modelData
       screen: modelData
       readonly property bool here: view.screenName === "" ? modelData === Quickshell.screens[0] : view.screenName === modelData.name
@@ -54,8 +54,8 @@ Scope {
         visible: false
         readonly property bool hasContent: pic.hasContent
         property real t: 0     // 0 at the window, 1 in the Dock
-        readonly property rect a: Qt.rect(view.from.x - layer.modelData.x, view.from.y - layer.modelData.y, view.from.width, view.from.height)
-        readonly property point b: Qt.point(Apps.dockTarget.x - layer.modelData.x, Apps.dockTarget.y - layer.modelData.y)
+        readonly property rect a: Qt.rect(view.from.x - wl.modelData.x, view.from.y - wl.modelData.y, view.from.width, view.from.height)
+        readonly property point b: Qt.point(Apps.dockTarget.x - wl.modelData.x, Apps.dockTarget.y - wl.modelData.y)
         // Shrinks to an icon, and narrows faster than it shortens.
         readonly property real sx: 1 - (1 - 48 / Math.max(1, a.width)) * Math.min(1, t * 1.25)
         readonly property real sy: 1 - (1 - 48 / Math.max(1, a.height)) * t
@@ -73,7 +73,7 @@ Scope {
           anchors.fill: parent
           visible: !view.useCard
           live: false
-          captureSource: layer.here && !view.useCard ? view.source : null
+          captureSource: wl.here && !view.useCard ? view.source : null
         }
         Glass {
           anchors.fill: parent
@@ -83,11 +83,11 @@ Scope {
           shadowSize: 20
           AppIcon { anchors.centerIn: parent; width: Math.min(96, parent.width * 0.5, parent.height * 0.5); height: width; appId: view.appId }
         }
-        Connections { target: view; function onKickChanged() { if (layer.here) go.restart() } }
+        Connections { target: view; function onKickChanged() { if (wl.here) go.restart() } }
 
         // Start once the picture has arrived.
         Timer {
-          running: layer.here && view.addr !== "" && !view.started && !!view.source
+          running: wl.here && view.addr !== "" && !view.started && !!view.source
           interval: 30; repeat: true
           onTriggered: if (shot.hasContent) { stop(); go.restart() }
         }

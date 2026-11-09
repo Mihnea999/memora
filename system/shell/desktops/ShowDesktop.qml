@@ -19,8 +19,14 @@ Scope {
   readonly property int strip: 26  // how much of each window stays in sight
 
   function toggle() { shown ? back() : aside() }
+  // Sizes change without events: look again first, then gather the windows.
   function aside() {
-    if (shown || anim.running) return
+    if (shown || anim.running || fresh.running) return
+    Hyprland.refreshToplevels()
+    fresh.restart()
+  }
+  Timer { id: fresh; interval: 160; onTriggered: sd.gather() }
+  function gather() {
     const showing = Hyprland.monitors.values.map(m => m.activeWorkspace ? m.activeWorkspace.id : -1)
     const ws = Apps.windows.filter(w => {
       const o = w.lastIpcObject
@@ -35,13 +41,16 @@ Scope {
       return { addr: "0x" + Apps.addrKey(w.address), win: w, rect: { x: o.at[0], y: o.at[1], w: o.size[0], h: o.size[1] }, ws: o.workspace.id, mon: m ? m.name : "" }
     })
     Shell.desktopShown = true
-    hideLater.restart()          // once the pictures are taken
-    anim.from = 0; anim.to = 1; anim.restart()
+    t = 0
+    hideLater.restart()          // once the pictures are taken, the windows go and the pictures glide
   }
   Timer {
     id: hideLater
-    interval: 70
-    onTriggered: sd.items.forEach(i => Hyprland.dispatch('hl.dsp.window.move({ workspace = "special:desktop", follow = false, window = "address:' + i.addr + '" })'))
+    interval: 220
+    onTriggered: {
+      sd.items.forEach(i => Hyprland.dispatch('hl.dsp.window.move({ workspace = "special:desktop", follow = false, window = "address:' + i.addr + '" })'))
+      anim.from = 0; anim.to = 1; anim.restart()
+    }
   }
   function back() {
     if (!shown) return
@@ -83,7 +92,7 @@ Scope {
   Variants {
     model: Quickshell.screens
     PanelWindow {
-      id: layer
+      id: shot
       required property var modelData
       screen: modelData
       readonly property var mine: sd.items.filter(i => i.mon === modelData.name)
@@ -99,15 +108,15 @@ Scope {
         id: pics
         anchors.fill: parent
         Repeater {
-          model: layer.mine
+          model: shot.mine
           delegate: Item {
             id: pic
             required property var modelData
-            readonly property point to: sd.target(modelData, layer.modelData)
-            readonly property real fx: modelData.rect.x - layer.modelData.x
-            readonly property real fy: modelData.rect.y - layer.modelData.y
-            x: fx + (to.x - layer.modelData.x - fx) * sd.t
-            y: fy + (to.y - layer.modelData.y - fy) * sd.t
+            readonly property point to: sd.target(modelData, shot.modelData)
+            readonly property real fx: modelData.rect.x - shot.modelData.x
+            readonly property real fy: modelData.rect.y - shot.modelData.y
+            x: fx + (to.x - shot.modelData.x - fx) * sd.t
+            y: fy + (to.y - shot.modelData.y - fy) * sd.t
             width: modelData.rect.w; height: modelData.rect.h
             opacity: 1 - 0.25 * sd.t
             property Region region: Region { item: pic }
