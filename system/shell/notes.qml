@@ -563,6 +563,7 @@ ShellRoot {
       Txt { visible: app.renamingFolder !== fr.key; anchors { left: fi.right; leftMargin: 9; right: cnt.left; rightMargin: 6; verticalCenter: parent.verticalCenter } text: fr.label }
       TextInput {
         id: rn
+        clip: true   // long text scrolls inside the field, never spills out
         visible: app.renamingFolder === fr.key
         anchors { left: fi.right; leftMargin: 9; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
         color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontSize

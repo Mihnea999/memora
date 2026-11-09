@@ -94,6 +94,7 @@ Scope {
             border.width: pass.activeFocus ? 2 : 1
             TextInput {
               id: pass
+              clip: true   // long text scrolls inside the field, never spills out
               anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
               verticalAlignment: TextInput.AlignVCenter
               color: Theme.text

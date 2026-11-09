@@ -1028,6 +1028,8 @@ ShellRoot {
         spacing: 12
         TextInput {
           id: ttl
+          width: Math.min(contentWidth + 2, app.width * 0.45)
+          clip: true   // long text scrolls inside the field, never spills out
           text: st.title; readOnly: !st.editable
           color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.Bold
           selectByMouse: st.editable

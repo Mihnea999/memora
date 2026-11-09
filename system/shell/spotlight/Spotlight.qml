@@ -177,6 +177,7 @@ PanelWindow {
     Sym { id: lens; name: "search"; width: 22; height: 22; color: Theme.textDim; anchors { left: parent.left; leftMargin: 20; top: parent.top; topMargin: 19 } }
     TextInput {
       id: field
+      clip: true   // long text scrolls inside the field, never spills out
       anchors { left: lens.right; leftMargin: 14; right: parent.right; rightMargin: 20; top: parent.top; topMargin: 15 }
       height: 30
       color: Theme.text

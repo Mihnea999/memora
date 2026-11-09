@@ -149,6 +149,7 @@ PanelWindow {
       Sym { name: "search"; width: 16; height: 16; color: Theme.textDim; anchors { left: parent.left; leftMargin: 15; verticalCenter: parent.verticalCenter } }
       TextInput {
         id: search
+        clip: true   // long text scrolls inside the field, never spills out
         anchors { left: parent.left; right: parent.right; leftMargin: 42; rightMargin: 14; verticalCenter: parent.verticalCenter }
         color: Theme.text
         font.family: Theme.font; font.pixelSize: Theme.large

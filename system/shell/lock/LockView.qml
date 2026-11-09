@@ -102,6 +102,7 @@ Item {
       border.color: Qt.rgba(1, 1, 1, 0.35)
       TextInput {
         id: field
+        clip: true   // long text scrolls inside the field, never spills out
         anchors { left: parent.left; right: go.left; leftMargin: 16; rightMargin: 6; verticalCenter: parent.verticalCenter }
         color: v.ink
         font.family: Theme.font; font.pixelSize: Theme.fontSize

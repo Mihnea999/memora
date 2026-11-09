@@ -99,6 +99,7 @@ ShellRoot {
         Sym { name: "search"; width: 12; height: 12; color: Theme.textDim; anchors { left: parent.left; leftMargin: 9; verticalCenter: parent.verticalCenter } }
         TextInput {
           id: searchField
+          clip: true   // long text scrolls inside the field, never spills out
           anchors { left: parent.left; right: parent.right; leftMargin: 28; rightMargin: 8; verticalCenter: parent.verticalCenter }
           color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.small + 0.5
           onTextChanged: app.search = text

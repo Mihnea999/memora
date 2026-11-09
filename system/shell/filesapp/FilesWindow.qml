@@ -830,6 +830,7 @@ FloatingWindow {
       x: 16; y: 40; width: parent.width - 32; height: 32; radius: 8; color: Theme.field; border.color: Theme.accent
       TextInput {
         id: goField
+        clip: true   // long text scrolls inside the field, never spills out
         anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
         verticalAlignment: TextInput.AlignVCenter
         color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontSize
@@ -1107,6 +1108,7 @@ FloatingWindow {
           border.color: pass.activeFocus ? Theme.accent : Theme.separator; border.width: pass.activeFocus ? 2 : 1
           TextInput {
             id: pass
+            clip: true   // long text scrolls inside the field, never spills out
             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
             verticalAlignment: TextInput.AlignVCenter
             echoMode: TextInput.Password; passwordCharacter: "•"
