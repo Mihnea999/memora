@@ -391,9 +391,20 @@ install_base() {
   fastest_mirrors || true
   mapfile -t pkgs < <(package_list)
   log "pacstrap ${#pkgs[@]} packages"
-  pacstrap -K "$TARGET" "${pkgs[@]}" 2>&1 | tee -a "$LOG" | grep --line-buffered -E '^(::|\([ 0-9]+/[0-9]+\) installing)' |
-    if [[ $GUI == 1 ]]; then sed -nu 's/^(\s*\([0-9]*\)\/\([0-9]*\)) installing \(.*\)\.\.\..*/@pkg \1 \2 \3/p'; else cat; fi || true
-  [[ -x $TARGET/usr/bin/Hyprland || -x $TARGET/usr/bin/hyprland ]] || { log "pacstrap did not install hyprland"; false; }
+  # A server that was quick for the speed test can still stall on big files:
+  # then drop the servers that failed and go again (what's downloaded stays).
+  local try bad h list=/etc/pacman.d/mirrorlist
+  for try in 1 2 3; do
+    pacstrap -K "$TARGET" "${pkgs[@]}" 2>&1 | tee -a "$LOG" | grep --line-buffered -E '^(::|\([ 0-9]+/[0-9]+\) installing)' |
+      if [[ $GUI == 1 ]]; then sed -nu 's/^(\s*\([0-9]*\)\/\([0-9]*\)) installing \(.*\)\.\.\..*/@pkg \1 \2 \3/p'; else cat; fi || true
+    [[ -x $TARGET/usr/bin/Hyprland || -x $TARGET/usr/bin/hyprland ]] && break
+    [[ $try == 3 ]] && { log "pacstrap did not install hyprland"; return 1; }
+    bad="$(grep -oP "failed retrieving file '[^']*' from \K\S+" "$LOG" | sort -u)"
+    for h in $bad; do sed -i "\|//$h/|d" "$list"; done
+    grep -q '^Server' "$list" || cp "$list.orig" "$list" 2>/dev/null || true
+    log "pacstrap try $try failed; dropped servers: ${bad:-none}"
+    info "A download server stalled. Trying again with another one…"
+  done
   genfstab -U "$TARGET" >> "$TARGET/etc/fstab"
 }
 
