@@ -96,6 +96,7 @@ Singleton {
       id = name.toLowerCase()
     }
     switch (id) {
+    case "overflow": return Shell.moreMenus.map(t => ({ text: t.title, action: () => Shell.openMenu(t.id, Shell.menuX, Shell.menuScreen) }))
     case "system": return [
       { text: "About This Memora", action: () => Apps.run("memora-settings about") },
       sep(),

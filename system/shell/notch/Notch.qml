@@ -196,7 +196,8 @@ Scope {
       readonly property color line: Qt.rgba(1, 1, 1, 0.1)
 
       // Folded: a pill in the bar; working: wider, with what it is doing.
-      readonly property real foldedW: ai.busy ? Math.min(460, statusText.implicitWidth + 86) : (ai.flash ? 210 : 132)
+      readonly property real foldedW: ai.busy ? Math.min(460, win.width * 0.3, statusText.implicitWidth + 86) : (ai.flash ? 210 : 132)
+      Binding { target: Shell; property: "notchWidth"; value: win.foldedW; when: win.here }
       readonly property real openW: Math.min(win.width - 40, 680)
       readonly property real openH: Math.min(win.height - 40, Math.max(items.count ? 600 : 250 + (ai.attached.length ? 80 : 0), ai.picking ? picker.height + 70 : 0))
 

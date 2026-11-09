@@ -29,6 +29,26 @@ PanelWindow {
   readonly property bool desktop: cls === ""
   readonly property string appName: desktop ? "Files" : Apps.nameFor(cls)
 
+  // Room for the app's menus: up to the AI notch when it is on this screen.
+  // Menus that don't fit go under "»" (small screens, apps with many menus).
+  readonly property bool hasNotch: !!Hyprland.focusedMonitor && Hyprland.focusedMonitor.name === modelData.name && !Shell.fullscreenApp
+  readonly property real notchW: hasNotch ? Shell.notchWidth : 0
+  readonly property real room: hasNotch ? (bar.width - notchW) / 2 - 10 - 14 : statusRow.x - 10 - 24
+  readonly property var titles: [{ id: "app:" + bar.cls, title: bar.appName, bold: true }].concat(Menus.titles(bar.cls).map(t => ({ id: t.id, title: t.title, cls: bar.cls })))
+  FontMetrics { id: fm; font.family: Theme.font; font.pixelSize: Theme.fontSize }
+  FontMetrics { id: fmb; font.family: Theme.font; font.pixelSize: Theme.fontSize; font.bold: true }
+  readonly property int fits: {
+    let x = 34
+    const more = fm.advanceWidth("»") + 18
+    for (let i = 0; i < titles.length; i++) {
+      const w = (titles[i].bold ? fmb : fm).advanceWidth(titles[i].title) + 18
+      const need = i < titles.length - 1 ? more : 0
+      if (i > 0 && x + w + need > room) return i
+      x += w
+    }
+    return titles.length
+  }
+
   Rectangle {
     anchors.fill: parent
     color: Theme.bar
@@ -66,11 +86,12 @@ PanelWindow {
     // The app's name and its own menus; when another app comes forward they
     // slide in one after another.
     Repeater {
-      model: [{ id: "app:" + bar.cls, title: bar.appName, bold: true }].concat(Menus.titles(bar.cls).map(t => ({ id: t.id, title: t.title, cls: bar.cls })))
+      model: bar.titles
       delegate: BarTitle {
         id: bt
         required property var modelData
         required property int index
+        visible: index < bar.fits
         menuId: modelData.id.startsWith("app:") ? "app" : modelData.id
         label: modelData.title
         bold: !!modelData.bold
@@ -87,11 +108,23 @@ PanelWindow {
         }
       }
     }
+    // The menus that didn't fit.
+    BarTitle {
+      visible: bar.fits < bar.titles.length
+      menuId: "overflow"
+      label: "»"
+      onOpening: Shell.moreMenus = bar.titles.slice(bar.fits).map(t => ({ id: t.id.startsWith("app:") ? "app" : t.id, title: t.title }))
+    }
   }
 
   // --------------------------------------------------------------- right side
+  // The date goes when the status items would reach the notch.
+  readonly property string dateText: Qt.formatDateTime(now.date, "ddd MMM d") + "   "
+  readonly property string timeText: Qt.formatDateTime(now.date, Prefs.clock24 ? "HH:mm" : "h:mm AP")
+  readonly property bool dateFits: Prefs.showDate && (bar.width + notchW) / 2 + 14 + statusRow.implicitWidth + fm.advanceWidth(dateText + timeText) + 30 < bar.width
   RowLayout {
-    anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+    id: statusRow
+    anchors { right: clock.left; rightMargin: 2; verticalCenter: parent.verticalCenter }
     spacing: 2
 
     Repeater {
@@ -120,6 +153,8 @@ PanelWindow {
     }
 
     BarButton {
+      // The notch is already the way in; on a narrow bar this one makes room.
+      visible: !bar.hasNotch || bar.width >= 1400
       tip: "Memora AI (Super+A)"
       Sym { anchors.centerIn: parent; name: "ai"; width: 15; height: 15 }
       onClicked: Apps.run("memora-ai window")
@@ -189,19 +224,21 @@ PanelWindow {
       onClicked: { Shell.menuScreen = bar.modelData.name; Shell.toggle("control") }
     }
 
-    BarButton {
-      id: clock
-      tip: "Calendar and notifications"
-      implicitWidth: clockText.implicitWidth + 16
-      highlighted: Shell.open === "calendar" && Shell.menuScreen === bar.modelData.name
-      Txt {
-        id: clockText
-        anchors.centerIn: parent
-        font.weight: Font.Medium
-        text: (Prefs.showDate ? Qt.formatDateTime(now.date, "ddd MMM d") + "   " : "") + Qt.formatDateTime(now.date, Prefs.clock24 ? "HH:mm" : "h:mm AP")
-      }
-      onClicked: { Shell.menuScreen = bar.modelData.name; Shell.toggle("calendar") }
+  }
+
+  BarButton {
+    id: clock
+    anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+    tip: "Calendar and notifications"
+    implicitWidth: clockText.implicitWidth + 16
+    highlighted: Shell.open === "calendar" && Shell.menuScreen === bar.modelData.name
+    Txt {
+      id: clockText
+      anchors.centerIn: parent
+      font.weight: Font.Medium
+      text: (bar.dateFits ? bar.dateText : "") + bar.timeText
     }
+    onClicked: { Shell.menuScreen = bar.modelData.name; Shell.toggle("calendar") }
   }
 
   SystemClock { id: now; precision: SystemClock.Minutes }
@@ -258,7 +295,8 @@ PanelWindow {
       font.weight: title.bold ? Font.Bold : Font.Normal
       visible: title.label !== ""
     }
-    function openHere() { Shell.openMenu(menuId, title.mapToItem(null, 0, 0).x, bar.modelData.name) }
+    signal opening()
+    function openHere() { title.opening(); Shell.openMenu(menuId, title.mapToItem(null, 0, 0).x, bar.modelData.name) }
     HoverHandler {
       onHoveredChanged: if (hovered && Shell.open === "menu" && Shell.menuScreen === bar.modelData.name && Shell.menu !== title.menuId) title.openHere()
     }

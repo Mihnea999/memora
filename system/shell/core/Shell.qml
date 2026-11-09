@@ -55,6 +55,12 @@ Singleton {
       .map(l => ({ name: l.split("|")[0], entry: l.split("|")[1] }))
   }
 
+  // Width of the Memora AI notch in the middle of the menu bar (on the focused
+  // screen), so the bar keeps its menus clear of it.
+  property real notchWidth: 132
+  // App menus that didn't fit before the notch: listed under "»" ([{ id, title }]).
+  property var moreMenus: []
+
   // Do-not-disturb, shared by Control Center and notifications.
   property bool focusMode: false
   // Files being shared with a nearby device: the Share sheet is open (share/ShareSheet.qml).
