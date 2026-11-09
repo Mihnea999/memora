@@ -17,5 +17,14 @@ windowcontrols:hover > button > image { color: rgba(0,0,0,0.55); }
 /* The Browser (Chromium, GTK 4) says hover only for the button under the
    pointer, not for the group: show the symbol then too. */
 windowcontrols > button:hover > image { color: rgba(0,0,0,0.55); }
+/* The green button shows a +, as in Memora's own windows: GTK's own icon there is
+   a square (and an app's icon can't be swapped), so it is hidden and a + drawn. */
+windowcontrols > button.maximize > image,
+windowcontrols:hover > button.maximize > image { color: transparent; }
+windowcontrols:hover > button.maximize > image,
+windowcontrols > button.maximize:hover > image {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><path d='M8 3.5v9M3.5 8h9' stroke='rgba(0,0,0,0.6)' stroke-width='1.9' stroke-linecap='round'/></svg>");
+  background-size: 10px 10px; background-position: center; background-repeat: no-repeat;
+}
 windowcontrols > button:backdrop > image { background: alpha(#{{fg}}, 0.16); }
 
