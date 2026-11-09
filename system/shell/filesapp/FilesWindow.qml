@@ -405,6 +405,8 @@ FloatingWindow {
   // ---- contents
   Item {
     id: content
+    // Two fingers sideways: back and forward through the folders you visited.
+    SwipeNav { onBack: win.goBack(); onForward: win.goForward() }
     anchors { left: side.right; right: parent.right; top: tools.bottom; bottom: status.top; leftMargin: 6 }
     focus: true
     // Not clipped, so a dragged file stays visible over the sidebar.

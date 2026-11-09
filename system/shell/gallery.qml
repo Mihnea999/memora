@@ -336,6 +336,8 @@ ShellRoot {
     // ==== Library / Albums ====
     Item {
       id: browse
+      // Two fingers to the right: out of the album.
+      SwipeNav { onBack: if (app.selecting) app.endSelect(); else if (app.album) app.album = "" }
       anchors.fill: parent
       visible: !app.current
 
@@ -521,6 +523,8 @@ ShellRoot {
     // ==== One photo or video, full size ====
     Item {
       id: viewer
+      // Two fingers sideways: the previous or next photo.
+      SwipeNav { enabled: viewer.zoom === 1; onBack: app.show(app.open - 1); onForward: app.show(app.open + 1) }
       anchors.fill: parent
       visible: !!app.current
       clip: true

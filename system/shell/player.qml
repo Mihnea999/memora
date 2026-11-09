@@ -401,6 +401,8 @@ ShellRoot {
     // ==== content ====
     Item {
       id: content
+      // Two fingers to the right: back to where you were.
+      SwipeNav { onBack: app.goBack() }
       anchors { left: side.right; right: queuePanel.visible ? queuePanel.left : parent.right; top: bar.bottom; bottom: parent.bottom; leftMargin: 1; topMargin: 1 }
       clip: true
 

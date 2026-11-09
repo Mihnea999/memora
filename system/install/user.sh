@@ -43,7 +43,9 @@ mkdir -p "$cfg/chromium/Default"
   > "$cfg/chromium/Default/Preferences"
 touch "$cfg/chromium/First Run"
 
+# TouchpadOverscrollHistoryNavigation: two fingers sideways go back and forward, as on a Mac.
 printf '%s\n' --no-first-run --no-default-browser-check --password-store=gnome-libsecret --ozone-platform-hint=auto \
+  --enable-features=TouchpadOverscrollHistoryNavigation \
   > "$cfg/chromium-flags.conf"
 
 # With disk encryption the session starts without a password, so there is none
