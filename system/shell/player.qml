@@ -235,6 +235,7 @@ ShellRoot {
   function goBack() { if (!back.length) return; view = back[back.length - 1]; back = back.slice(0, -1) }
   property string query: ""
   property bool showQueue: false
+  property bool full: false           // Now Playing, filling the window
 
   FloatingWindow {
     id: win
@@ -245,6 +246,7 @@ ShellRoot {
     color: "transparent"
     onVisibleChanged: if (!visible) Qt.quit()
     Rectangle { anchors.fill: parent; color: Theme.window }
+    ColorPick { id: tint; src: app.current ? app.current.cover : "" }
 
     Shortcut { sequence: "Space"; onActivated: app.toggle() }
     Shortcut { sequence: "Ctrl+Right"; onActivated: app.next() }
@@ -253,7 +255,7 @@ ShellRoot {
     Shortcut { sequence: "Ctrl+Down"; onActivated: app.setVolume(Math.max(0, app.volume - 10)) }
     Shortcut { sequence: "Ctrl+F"; onActivated: search.forceActiveFocus() }
     Shortcut { sequence: "Ctrl+W"; onActivated: Qt.quit() }
-    Shortcut { sequence: "Escape"; onActivated: app.showLyrics ? app.showLyrics = false : app.showQueue ? app.showQueue = false : app.goBack() }
+    Shortcut { sequence: "Escape"; onActivated: app.full ? app.full = false : app.showLyrics ? app.showLyrics = false : app.showQueue ? app.showQueue = false : app.goBack() }
 
     // Drop songs on the window to play them.
     DropArea {
@@ -344,7 +346,12 @@ ShellRoot {
         anchors { left: transport.right; leftMargin: 18; right: tools.left; rightMargin: 18; verticalCenter: parent.verticalCenter }
         height: 50; radius: 10
         color: Theme.field
-        Cover { id: npCover; x: 4; y: 4; width: 42; height: 42; radius: 6; src: app.current ? app.current.cover : ""; small: true }
+        Cover {
+          id: npCover; x: 4; y: 4; width: 42; height: 42; radius: 6; src: app.current ? app.current.cover : ""; small: true
+          hover: nph.hovered
+          HoverHandler { id: nph; cursorShape: app.current ? Qt.PointingHandCursor : Qt.ArrowCursor }
+          TapHandler { onTapped: if (app.current) app.full = true }
+        }
         Column {
           anchors { left: npCover.right; leftMargin: 12; right: parent.right; rightMargin: 12; top: parent.top; topMargin: 6 }
           spacing: 1
@@ -362,8 +369,10 @@ ShellRoot {
           visible: !!app.current
           readonly property real frac: app.dur > 0 ? Math.min(1, (sd.active ? sd.frac : app.pos) / app.dur) : 0
           Txt { anchors { right: parent.left; rightMargin: -40; verticalCenter: parent.verticalCenter } visible: false; text: "" }
-          Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 3; radius: 1.5; color: Theme.separator }
-          Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width * seekbar.frac; height: 3; radius: 1.5; color: Theme.textDim }
+          readonly property real thick: seekHover.hovered || sd.active ? 5 : 3
+          Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: seekbar.thick; radius: height / 2; color: Theme.separator; Behavior on height { NumberAnimation { duration: 120 } } }
+          Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width * seekbar.frac; height: seekbar.thick; radius: height / 2; color: seekHover.hovered ? tint.vivid : Theme.textDim; Behavior on height { NumberAnimation { duration: 120 } } }
+          Rectangle { visible: seekHover.hovered || sd.active; x: parent.width * seekbar.frac - 6; anchors.verticalCenter: parent.verticalCenter; width: 12; height: 12; radius: 6; color: "#ffffff"; border.color: Theme.separator }
           DragHandler {
             id: sd; target: null; xAxis.enabled: true; yAxis.enabled: false
             property real frac: 0
@@ -424,8 +433,15 @@ ShellRoot {
 
       // Search results, and every list of songs.
       Loader {
+        id: page
         anchors.fill: parent
         active: app.tracks.length > 0 && !app.showLyrics
+        onLoaded: { item.opacity = 0; pageIn.restart() }
+        ParallelAnimation {
+          id: pageIn
+          NumberAnimation { target: page.item; property: "opacity"; from: 0; to: 1; duration: Prefs.motion(260); easing.type: Easing.OutCubic }
+          NumberAnimation { target: page; property: "anchors.topMargin"; from: 14; to: 0; duration: Prefs.motion(320); easing.type: Easing.OutCubic }
+        }
         sourceComponent: content.searching ? searchView
           : app.view === "recent" ? recentView
           : app.view === "albums" ? albumsView
@@ -497,6 +513,185 @@ ShellRoot {
           dim: index < app.qpos
           onPlay: app.send(["playlist-play-index", index])
           onContext: (it, x, y) => menu.open(it, x, y, [t.path], { queueIndex: index })
+        }
+      }
+    }
+
+    // ==== Now Playing, filling the window ====
+    Item {
+      id: np
+      anchors.fill: parent
+      z: 50
+      visible: opacity > 0
+      opacity: app.full ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: Prefs.motion(320); easing.type: Easing.OutCubic } }
+      transform: Translate { y: app.full ? 0 : 60; Behavior on y { NumberAnimation { duration: Prefs.motion(420); easing.type: Easing.OutQuint } } }
+      Rectangle { anchors.fill: parent; color: "#0b0b0d" }
+      // The cover, huge and blurred, drifting slowly: the room the music fills.
+      Cover {
+        id: npBg
+        anchors.centerIn: parent
+        width: Math.max(parent.width, parent.height) * 1.5; height: width
+        src: app.current ? app.current.cover : ""; radius: 0; blurred: true
+        opacity: 0.85
+        RotationAnimation on rotation { running: np.visible && app.playing; from: 0; to: 360; duration: 180000; loops: Animation.Infinite }
+      }
+      Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+          GradientStop { position: 0; color: Qt.rgba(tint.color.r * 0.4, tint.color.g * 0.4, tint.color.b * 0.4, 0.35) }
+          GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.7) }
+        }
+      }
+      DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+      WindowControls { x: 18; y: 15; window: win; onCloseRequested: Qt.quit() }
+      // Down: back to the library.
+      Rectangle {
+        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 12 }
+        width: 44; height: 24; radius: 12
+        color: dh.hovered ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.1)
+        Sym { anchors.centerIn: parent; name: "chevron"; rotation: 90; width: 12; height: 12; color: "#ffffff" }
+        HoverHandler { id: dh; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: app.full = false }
+      }
+
+      readonly property bool wide: width > 980 && (app.lyrics.length > 0 || app.queue.length > 1)
+      Item {
+        id: stage
+        anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: 50; bottomMargin: 30 }
+        width: np.wide ? parent.width * 0.5 : parent.width
+        readonly property real coverSize: Math.min(width * 0.62, height - 230)
+        // The cover breathes: full size while playing, a little smaller paused.
+        Cover {
+          id: big
+          anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 10 }
+          width: stage.coverSize; height: width; radius: 12
+          src: app.current ? app.current.cover : ""; shadow: true
+          scale: app.playing ? 1 : 0.86
+          Behavior on scale { SpringAnimation { spring: 2.6; damping: 0.28; epsilon: 0.002 } }
+        }
+        Column {
+          anchors { top: big.bottom; topMargin: 26; horizontalCenter: parent.horizontalCenter }
+          width: stage.coverSize + 40
+          spacing: 6
+          Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; text: app.current ? app.current.title : ""; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Bold }
+          Txt {
+            width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
+            text: app.current ? [app.current.artist, app.current.album].filter(x => x).join(" — ") : ""
+            color: Qt.rgba(1, 1, 1, 0.65); font.pixelSize: Theme.large
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: if (app.current && app.current.album) { app.full = false; app.go("album:" + app.albumKey(app.current)) } }
+          }
+          Item { width: 1; height: 10 }
+          // Where the song is.
+          Item {
+            id: bigSeek
+            width: parent.width; height: 14
+            readonly property real frac: app.dur > 0 ? Math.min(1, (bsd.active ? bsd.frac : app.pos) / app.dur) : 0
+            readonly property real thick: bsh.hovered || bsd.active ? 7 : 5
+            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: bigSeek.thick; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.22); Behavior on height { NumberAnimation { duration: 120 } } }
+            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width * bigSeek.frac; height: bigSeek.thick; radius: height / 2; color: "#ffffff"; Behavior on height { NumberAnimation { duration: 120 } } }
+            HoverHandler { id: bsh }
+            DragHandler {
+              id: bsd; target: null; xAxis.enabled: true; yAxis.enabled: false
+              property real frac: 0
+              onCentroidChanged: if (active) frac = Math.max(0, Math.min(1, centroid.position.x / bigSeek.width)) * app.dur
+              onActiveChanged: if (!active) app.seek(frac)
+            }
+            TapHandler { onTapped: ev => app.seek(Math.max(0, Math.min(1, ev.position.x / bigSeek.width)) * app.dur) }
+          }
+          Item {
+            width: parent.width; height: 16
+            Txt { text: app.time(app.pos); color: Qt.rgba(1, 1, 1, 0.55); font.pixelSize: Theme.small - 1 }
+            Txt { anchors.right: parent.right; text: "-" + app.time(app.dur - app.pos); color: Qt.rgba(1, 1, 1, 0.55); font.pixelSize: Theme.small - 1 }
+          }
+          Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 22
+            BigBtn { sym: "shuffle"; size: 18; on: app.shuffled; onClicked: app.toggleShuffle() }
+            BigBtn { sym: "prev"; size: 26; onClicked: app.prev() }
+            // Play: a white disc.
+            Rectangle {
+              width: 64; height: 64; radius: 32
+              anchors.verticalCenter: parent.verticalCenter
+              color: "#ffffff"
+              scale: pph.pressed ? 0.92 : (pphv.hovered ? 1.05 : 1)
+              Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
+              Sym { anchors.centerIn: parent; anchors.horizontalCenterOffset: app.playing ? 0 : 2; name: app.playing ? "pause" : "play"; width: 26; height: 26; color: "#111114" }
+              HoverHandler { id: pphv; cursorShape: Qt.PointingHandCursor }
+              TapHandler { id: pph; onTapped: app.toggle() }
+            }
+            BigBtn { sym: "next"; size: 26; onClicked: app.next() }
+            BigBtn { sym: app.repeat === "one" ? "repeat-one" : "repeat"; size: 18; on: app.repeat !== "off"; onClicked: app.cycleRepeat() }
+          }
+          Item { width: 1; height: 6 }
+          // Volume.
+          Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 10
+            Sym { anchors.verticalCenter: parent.verticalCenter; name: "sound-off"; width: 13; height: 13; color: Qt.rgba(1, 1, 1, 0.55) }
+            Item {
+              id: bigVol
+              anchors.verticalCenter: parent.verticalCenter
+              width: 220; height: 14
+              Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 4; radius: 2; color: Qt.rgba(1, 1, 1, 0.22) }
+              Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width * app.volume / 100; height: 4; radius: 2; color: Qt.rgba(1, 1, 1, 0.8) }
+              DragHandler { target: null; xAxis.enabled: true; yAxis.enabled: false; onCentroidChanged: if (active) app.setVolume(Math.round(Math.max(0, Math.min(1, centroid.position.x / bigVol.width)) * 100)) }
+              TapHandler { onTapped: ev => app.setVolume(Math.round(Math.max(0, Math.min(1, ev.position.x / bigVol.width)) * 100)) }
+            }
+            Sym { anchors.verticalCenter: parent.verticalCenter; name: "sound"; level: 1; width: 15; height: 15; color: Qt.rgba(1, 1, 1, 0.55) }
+          }
+        }
+      }
+      // Beside it: the lyrics, or what comes next.
+      Item {
+        visible: np.wide
+        anchors { left: stage.right; right: parent.right; top: parent.top; bottom: parent.bottom; topMargin: 60; bottomMargin: 40; rightMargin: 50 }
+        ListView {
+          id: npLyrics
+          anchors.fill: parent
+          visible: app.lyrics.length > 0
+          model: app.lyrics
+          spacing: 16; clip: true
+          preferredHighlightBegin: height * 0.35; preferredHighlightEnd: height * 0.35 + 40
+          highlightRangeMode: ListView.ApplyRange; highlightMoveDuration: 420
+          currentIndex: Math.max(0, app.lyricLine)
+          header: Item { height: npLyrics.height * 0.35 }
+          footer: Item { height: npLyrics.height * 0.6 }
+          delegate: Txt {
+            required property var modelData
+            required property int index
+            width: npLyrics.width; wrapMode: Text.Wrap
+            text: modelData.text || "♪"
+            font.pixelSize: 28; font.weight: Font.Bold; color: "#ffffff"
+            opacity: index === app.lyricLine ? 1 : 0.32
+            scale: index === app.lyricLine ? 1 : 0.97
+            transformOrigin: Item.Left
+            Behavior on opacity { NumberAnimation { duration: 260 } }
+            Behavior on scale { NumberAnimation { duration: 260 } }
+            TapHandler { onTapped: app.seek(modelData.t) }
+          }
+        }
+        Column {
+          visible: app.lyrics.length === 0
+          width: parent.width
+          spacing: 4
+          Txt { text: "Up Next"; color: "#ffffff"; font.weight: Font.Bold; font.pixelSize: Theme.large; bottomPadding: 10 }
+          Repeater {
+            model: Math.min(8, Math.max(0, app.queue.length - app.qpos - 1))
+            delegate: Row {
+              required property int index
+              readonly property var t: app.byPath[app.queue[app.qpos + 1 + index]] || { title: (app.queue[app.qpos + 1 + index] || "").split("/").pop(), artist: "", cover: "" }
+              spacing: 12
+              Cover { width: 44; height: 44; radius: 6; src: parent.t.cover || ""; small: true }
+              Column {
+                anchors.verticalCenter: parent.verticalCenter
+                Txt { text: parent.parent.t.title; color: "#ffffff"; width: 320; elide: Text.ElideRight }
+                Txt { text: parent.parent.t.artist; color: Qt.rgba(1, 1, 1, 0.55); font.pixelSize: Theme.small; width: 320; elide: Text.ElideRight }
+              }
+              TapHandler { onTapped: app.send(["playlist-play-index", app.qpos + 1 + index]) }
+            }
+          }
         }
       }
     }
@@ -600,6 +795,16 @@ ShellRoot {
       readonly property var a: app.albumByKey[app.view.slice(6)] || null
       clip: true; boundsBehavior: Flickable.StopAtBounds
       contentHeight: acol.implicitHeight + 60
+      ColorPick { id: albumTint; src: af.a ? af.a.cover : "" }
+      Rectangle {
+        width: af.width; height: 380; y: -af.contentY * 0.4
+        parent: af
+        z: -1
+        gradient: Gradient {
+          GradientStop { position: 0; color: Qt.rgba(albumTint.color.r, albumTint.color.g, albumTint.color.b, Theme.dark ? 0.55 : 0.35) }
+          GradientStop { position: 1; color: "transparent" }
+        }
+      }
       Column {
         id: acol
         x: 32; y: 28; width: af.width - 64
@@ -721,6 +926,22 @@ ShellRoot {
     property bool shadow: false
     property bool small: false
     property bool blurred: false
+    // The shadow, under it (on its own: padding the picture for it would crop it).
+    Rectangle {
+      id: shade
+      anchors.fill: parent; radius: cv.radius; color: "black"
+      visible: false; layer.enabled: true
+    }
+    MultiEffect {
+      anchors.fill: parent
+      visible: cv.shadow || cv.hover
+      source: shade
+      shadowEnabled: true; shadowColor: "black"
+      shadowOpacity: cv.hover ? 0.5 : 0.4; shadowBlur: 1.0; shadowVerticalOffset: cv.hover ? 12 : 8
+      opacity: 0.9
+      scale: cv.hover ? 1.03 : 1
+      Behavior on scale { NumberAnimation { duration: Theme.fast } }
+    }
     Rectangle {
       id: ph
       anchors.fill: parent; radius: cv.radius
@@ -742,7 +963,7 @@ ShellRoot {
       maskEnabled: cv.radius > 0
       maskSource: mask
       blurEnabled: cv.blurred; blur: 1.0; blurMax: 64
-      shadowEnabled: cv.shadow; shadowOpacity: 0.35; shadowBlur: 0.8; shadowVerticalOffset: 6
+      autoPaddingEnabled: false
       scale: cv.hover ? 1.03 : 1
       Behavior on scale { NumberAnimation { duration: Theme.fast } }
     }
@@ -931,6 +1152,48 @@ ShellRoot {
     TapHandler { onTapped: { app.back = []; app.view = ni.target; app.query = ""; search.text = ""; app.showLyrics = false } }
   }
   component Head: Txt { x: 20; height: 30; verticalAlignment: Text.AlignBottom; bottomPadding: 4; color: Theme.textDim; font.pixelSize: Theme.small - 0.5; font.weight: Font.Bold }
+
+  // The colour of a cover: its pixels averaged, the vivid ones counting more.
+  component ColorPick: Canvas {
+    id: cp
+    property string src
+    property color color: Theme.dark ? "#3a3a44" : "#c8c8d0"
+    readonly property color vivid: Qt.hsla(color.hslHue, Math.max(0.45, color.hslSaturation), Theme.dark ? 0.62 : 0.45, 1)
+    width: 12; height: 12; opacity: 0
+    readonly property string url: src ? "file://" + src : ""
+    onUrlChanged: { if (url) { if (isImageLoaded(url)) requestPaint(); else loadImage(url) } }
+    onImageLoaded: requestPaint()
+    onPaint: {
+      if (!url || !isImageLoaded(url)) return
+      const ctx = getContext("2d")
+      ctx.clearRect(0, 0, 12, 12)
+      ctx.drawImage(url, 0, 0, 12, 12)
+      const d = ctx.getImageData(0, 0, 12, 12).data
+      let r = 0, g = 0, b = 0, n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2])
+        const w = 1 + 6 * (mx - mn) / 255            // saturated pixels weigh more
+        r += d[i] * w; g += d[i + 1] * w; b += d[i + 2] * w; n += w
+      }
+      if (n) cp.color = Qt.rgba(r / n / 255, g / n / 255, b / n / 255, 1)
+    }
+  }
+
+  component BigBtn: Item {
+    id: bb
+    property string sym
+    property real size: 22
+    property bool on: false
+    signal clicked()
+    width: size + 20; height: size + 20
+    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+    Sym { anchors.centerIn: parent; name: bb.sym; width: bb.size; height: bb.size; color: bb.on ? "#ffffff" : Qt.rgba(1, 1, 1, bbh.hovered ? 1 : 0.8) }
+    Rectangle { anchors.centerIn: parent; width: 5; height: 5; radius: 2.5; anchors.verticalCenterOffset: bb.size / 2 + 8; visible: bb.on; color: "#ffffff" }
+    scale: bbp.pressed ? 0.88 : 1
+    Behavior on scale { NumberAnimation { duration: 120 } }
+    HoverHandler { id: bbh; cursorShape: Qt.PointingHandCursor }
+    TapHandler { id: bbp; onTapped: bb.clicked() }
+  }
 
   component Btn: Rectangle {
     id: b
