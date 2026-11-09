@@ -23,6 +23,7 @@ page, then progress. If the screen can't show it, the text installer runs instea
 test/vm.sh install    # unattended install into test/disk.qcow2 (user memora / memora)
 test/vm.sh run        # boot it in a GPU-accelerated window
 test/vm.sh live       # boot the ISO in a window and use the real installer
+RES=1366x768 test/vm.sh run   # another screen size (2560x1080, 1080x1920…)
 VM=dev test/vm.sh install && VM=dev test/vm.sh dev   # second disk that runs system/ live from this checkout
 ```
 
@@ -33,17 +34,20 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 | Part | What it does |
 |---|---|
 | Menu bar | System menu, the focused app's name, File / Edit / View / Go / Window / Help (they send the standard shortcuts, so they work in any app), status icons, clock |
-| Dock | Pinned and running apps with magnification, running dots, bounce on launch, minimized windows, Downloads, Trash, right-click menus |
+| Dock | Pinned and running apps with magnification, running dots, bounce on launch, minimized windows, Downloads, Trash, right-click menus; bottom, left or right; always fits the screen; hides when a window needs the room (automatic on small screens) |
 | Apps | A glass library rising from the Dock: search, most used, apps grouped by kind (tap Super, or the grid in the Dock) |
 | Memora AI | A notch in the middle of the menu bar that unfolds into a conversation (Super+A) |
 | Widgets | Clock, weather, calendar, system, now playing and notes on the desktop; right-click the desktop > Edit Widgets |
-| Screens | Extend, mirror, one screen only (Super+P, or by itself when a screen is plugged in) |
+| Screens | Extend, mirror, one screen only (Super+P, or by itself when a screen is plugged in); each screen starts at its own scale (from pixel density), Text size from Larger Text to More Space; windows go back to a screen plugged in again |
+| Windows | Docking by dragging (edges, corners, a layouts bar shaped for the screen: small, wide, ultrawide, portrait), Snap Assist, a shared line to resize docked windows, Arrange All (Super+Alt+A), Keep on Top, move to another screen (Super+Shift+arrows), the window menu (right-click a title bar, Alt+Space); apps reopen where you left them, new windows cascade, dialogs open over their window, Picture in Picture sits in a corner |
+| Mission Control | Every desktop and its windows (Super+S, F3, three fingers up): type to find a window, × to close, drop on + for a new desktop, name desktops; App Exposé for one app (Ctrl+Super+↓); Show Desktop slides windows aside (Super+D); Hot Corners |
+| Touch | Edge swipes and three/four-finger gestures, bigger targets under a finger, dragging windows by their title bars, an on-screen keyboard for tapped text fields, rotation on 2-in-1s |
 | Spotlight | Apps, files, settings, maths, ask the AI (Super+Space); also clipboard history and keyboard shortcuts |
 | Control Center | Wi-Fi, Bluetooth, Focus, appearance, display, sound, media, power |
 | Notifications | Banners, and Notification Center with a calendar (click the clock) |
 | Lock and login | Same face: time, person, password field; login runs in greetd + cage |
 | Dialogs | Administrator password (polkit), volume and brightness |
-| Alt+Tab | Window switcher |
+| Switching | Super+Tab: apps (Q quits, H hides, ` shows its windows); Alt+Tab: windows with live pictures; Super+`: the app's windows; hold Super to see the shortcuts |
 
 Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Photos**, **Player** (films and
 music), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
