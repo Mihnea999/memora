@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # memora-screenshot region|screen|edit — saves to ~/Pictures/Screenshots and copies.
-#   region  drag to take part of the screen; a click (or Return) takes the whole
-#           screen under the pointer, Escape cancels
+#   region  drag to take part of the screen; a click on a window takes that
+#           window, a click anywhere else (or Return) the whole screen under
+#           the pointer; Escape cancels
 #   screen  the whole screen at once
 #   edit    like region, then opens it to annotate
 #   whole   (the Return key while choosing) take the whole screen instead
@@ -13,6 +14,27 @@ whole="${XDG_RUNTIME_DIR:-/tmp}/memora-screenshot-whole"
 
 # The screen the pointer is on.
 screen_now() { hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name' | head -1; }
+
+# A click (slurp gives back the whole screen) on a window means that window:
+# prints its area, with the title bar Memora draws for some apps
+# (plugin/titlebar.cpp); nothing for a drag or a click on the desktop. The
+# window on top is the one fullscreen, else the one used last.
+clicked_window() {
+  local mons; mons="$(hyprctl monitors -j 2>/dev/null)" || return 0
+  jq -r '.[] | "\(.x),\(.y) \((.width / .scale) | round)x\((.height / .scale) | round)"' <<<"$mons" | grep -qxF "$1" || return 0
+  local pos x y; pos="$(hyprctl cursorpos 2>/dev/null)" || return 0
+  x="${pos%%,*}"; y="${pos##*,}"; x="${x// /}"; y="${y// /}"
+  [[ $x =~ ^-?[0-9]+$ && $y =~ ^-?[0-9]+$ ]] || return 0
+  local bars='{}' f="${XDG_RUNTIME_DIR:-/tmp}/memora-titlebars"
+  [[ -s $f ]] && bars="$(jq -Rn '[inputs | split(" ") | {(.[0]): (.[1] | tonumber)}] | add // {}' "$f" 2>/dev/null || echo '{}')"
+  hyprctl clients -j 2>/dev/null | jq -r --argjson x "$x" --argjson y "$y" --argjson bars "$bars" \
+    --argjson ws "$(jq '[.[] | .activeWorkspace.id, .specialWorkspace.id]' <<<"$mons")" '
+    [ .[] | select(.mapped and (.hidden | not) and (.workspace.id as $w | $ws | index($w)))
+      | (($bars[.address] // 0)) as $b
+      | {x: .at[0], y: (.at[1] - $b), w: .size[0], h: (.size[1] + $b), top: (if .fullscreen > 0 then -1 else .focusHistoryID end)}
+      | select($x >= .x and $x < .x + .w and $y >= .y and $y < .y + .h) ]
+    | sort_by(.top) | .[0] // empty | "\(.x),\(.y) \(.w)x\(.h)"'
+}
 
 # Prints what to take: grim's arguments (-g "x,y wxh" or -o SCREEN), one per
 # line, or nothing when cancelled. slurp -o
@@ -29,7 +51,8 @@ choose() {
     local m; m="$(screen_now)"
     [[ -n $m ]] && printf '%s\n' -o "$m"
   elif [[ $rc == 0 && -n $geo ]]; then
-    printf '%s\n' -g "$geo"
+    local win; win="$(clicked_window "$geo")"
+    printf '%s\n' -g "${win:-$geo}"
   fi
 }
 
