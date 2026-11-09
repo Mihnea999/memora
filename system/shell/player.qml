@@ -242,7 +242,13 @@ ShellRoot {
     title: app.current ? app.current.title + " — " + app.current.artist : "Music"
     implicitWidth: 1180
     implicitHeight: 780
-    minimumSize: Qt.size(820, 520)
+    minimumSize: Qt.size(520, 440)
+    // Narrow (docked beside another app): the library tucks away behind the
+    // sidebar button and slides in over the music when wanted.
+    readonly property bool compact: width < 760
+    property bool sideOpen: false
+    onCompactChanged: sideOpen = false
+    Connections { target: app; function onViewChanged() { win.sideOpen = false } }
     color: "transparent"
     onVisibleChanged: if (!visible) Qt.quit()
     Rectangle { anchors.fill: parent; color: Theme.window }
@@ -270,8 +276,11 @@ ShellRoot {
     Rectangle {
       id: side
       width: 224
+      z: win.compact ? 10 : 0
       anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
-      color: Theme.sidebar
+      anchors.leftMargin: win.compact && !win.sideOpen ? -width - 24 : 0
+      Behavior on anchors.leftMargin { NumberAnimation { duration: Theme.normal; easing.type: Theme.easingEmph } }
+      color: win.compact ? Theme.glassSolid : Theme.sidebar
       Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 46; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) } }
       WindowControls { x: 18; y: 15; window: win; onCloseRequested: Qt.quit() }
@@ -323,12 +332,20 @@ ShellRoot {
         color: Theme.textFaint; font.pixelSize: Theme.small - 0.5; elide: Text.ElideRight
       }
     }
-    Rectangle { x: side.width; width: 1; height: parent.height; color: Theme.separator }
+    Rectangle { visible: !win.compact; x: side.width; width: 1; height: parent.height; color: Theme.separator }
+    CompactBar {
+      x: 18; y: 20; z: 5
+      visible: win.compact
+      window: win; sideOpen: win.sideOpen
+      onToggled: win.sideOpen = !win.sideOpen
+      onCloseRequested: Qt.quit()
+    }
+    MouseArea { anchors.fill: parent; z: 9; visible: win.compact && win.sideOpen; onClicked: win.sideOpen = false }
 
     // ==== the player, at the top ====
     Item {
       id: bar
-      anchors { left: side.right; right: parent.right; top: parent.top; leftMargin: 1 }
+      anchors { left: win.compact ? parent.left : side.right; right: parent.right; top: parent.top; leftMargin: win.compact ? 132 : 1 }
       height: 64
       DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
@@ -407,14 +424,14 @@ ShellRoot {
         Btn { sym: "queue"; size: 15; on: app.showQueue; tip: "Up Next"; onClicked: app.showQueue = !app.showQueue }
       }
     }
-    Rectangle { anchors { left: side.right; right: parent.right; top: bar.bottom; leftMargin: 1 } height: 1; color: Theme.separator }
+    Rectangle { anchors { left: win.compact ? parent.left : side.right; right: parent.right; top: bar.bottom; leftMargin: 1 } height: 1; color: Theme.separator }
 
     // ==== content ====
     Item {
       id: content
       // Two fingers to the right: back to where you were.
       SwipeNav { onBack: app.goBack() }
-      anchors { left: side.right; right: queuePanel.visible ? queuePanel.left : parent.right; top: bar.bottom; bottom: parent.bottom; leftMargin: 1; topMargin: 1 }
+      anchors { left: win.compact ? parent.left : side.right; right: queuePanel.visible ? queuePanel.left : parent.right; top: bar.bottom; bottom: parent.bottom; leftMargin: 1; topMargin: 1 }
       clip: true
 
       readonly property bool searching: app.query.trim().length > 0
