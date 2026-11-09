@@ -18,12 +18,19 @@ menu bar, above the Dock), remembering how big they were before.
   memora-window zone [ADDRESS]    print the zone it is docked in, if any
   memora-window rect ZONE         print the zone's rectangle (x y w h)
   memora-window layouts           the layouts that suit the focused window's screen
+  memora-window arrange [pair]    arrange the windows of this desktop in a grid that
+                                  suits the screen (pair: the active and the previous)
+  memora-window refit [MONITOR]   after a screen change: docked windows dock again,
+                                  the others shrink to fit and come inside
+  memora-window screen DIR [ADDRESS]  to the screen left/right/up/down/next
+  memora-window group [ADDRESS]   the windows docked together with it
 Zones are in default/zones.json (shared with the shell), or frac:FX,FY,FW,FH.
 """
 import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 GAP = int(os.environ.get("MEMORA_GAP", "10"))
@@ -207,6 +214,171 @@ def restore(w, st, at=None):
         place(w, "center", st, a)
     rec.pop("zone", None)
     rec.pop("orig", None)
+    rec.pop("group", None)   # it leaves its group of docked windows
+
+
+def monitors():
+    return hypr("monitors") or []
+
+
+def area_of(m):
+    s = m["scale"]
+    l, t, r, b = m["reserved"]
+    mw, mh = int(m["width"] / s), int(m["height"] / s)
+    if m["transform"] in (1, 3, 5, 7):
+        mw, mh = mh, mw
+    return (m["x"] + l + GAP, m["y"] + t + GAP, mw - l - r - 2 * GAP, mh - t - b - 2 * GAP)
+
+
+def shown_on(m):
+    """Windows showing on a monitor's desktop that docking may move, most recent first."""
+    ws = (m.get("activeWorkspace") or {}).get("id")
+    out = [c for c in hypr("clients") or [] if c.get("mapped", True) and not c.get("hidden") and c["monitor"] == m["id"]
+           and (c.get("workspace") or {}).get("id") == ws and c.get("floating") and not c.get("fullscreen") and not c.get("pinned")]
+    return sorted(out, key=lambda c: c.get("focusHistoryID", 99))
+
+
+def grid(cols, rows, n):
+    """n cells, row by row; a last row with fewer windows shares its width."""
+    cells = []
+    for i in range(n):
+        r, c = divmod(i, cols)
+        in_row = min(cols, n - r * cols)
+        cells.append(f"frac:{c / in_row:.6f},{r / rows:.6f},{1 / in_row:.6f},{1 / rows:.6f}")
+    return cells
+
+
+def arrangement(n, k):
+    """Where n windows go on a screen of kind k (compact, regular, wide, portrait)."""
+    if n == 1:
+        return ["fill"]
+    if k == "portrait":
+        return {2: ["top", "bottom"], 3: ["top-third", "middle-third", "bottom-third"]}.get(n) or grid(2, (n + 1) // 2, n)
+    if k == "wide":
+        return {2: ["left", "right"], 3: ["left-third", "center-third", "right-third"],
+                4: ["first-fourth", "second-fourth", "third-fourth", "last-fourth"]}.get(n) or grid(4 if n > 6 else 3, 2 if n <= 8 else 3, n)
+    return {2: ["left", "right"], 3: ["left", "top-right", "bottom-right"],
+            4: ["top-left", "top-right", "bottom-left", "bottom-right"]}.get(n) or grid(3, 2 if n <= 6 else 3, n)
+
+
+def arrange(st, pair=False):
+    """Arrange the windows of the focused screen's desktop; the active one first.
+    Windows docked together form a group (the shell brings them forward together)."""
+    m = next((m for m in monitors() if m["focused"]), None)
+    if not m:
+        return
+    a = area_of(m)
+    wins = shown_on(m)[:2 if pair else 9]
+    if not wins:
+        return
+    try:
+        sizes = {e["address"]: e.get("min") or (1, 1) for e in json.loads(subprocess.run(["hyprctl", "memora-sizes"], capture_output=True, text=True, timeout=2).stdout or "[]")}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        sizes = {}
+    # Fewer windows when some can't shrink to their part.
+    while wins:
+        zs = arrangement(len(wins), kind(a))
+        bad = [i for i, w in enumerate(wins) if not fits(zs[i], w, a, sizes.get(w["address"], (1, 1)))]
+        if not bad:
+            break
+        wins.pop(bad[-1])
+    gid = str(int(time.time() * 1000)) if len(wins) > 1 else None
+    for w, z in zip(wins, arrangement(len(wins), kind(a))):
+        place(w, z, st, a)
+        if gid:
+            st[w["address"]]["group"] = gid
+
+
+def overlap(r1, r2):
+    return r1[0] < r2[0] + r2[2] and r2[0] < r1[0] + r1[2] and r1[1] < r2[1] + r2[3] and r2[1] < r1[1] + r1[3]
+
+
+def join_group(w, zone, st):
+    """A window docked beside others (Snap Assist, the layouts bar, Super+arrows)
+    joins them: windows docked side by side on a desktop come forward together."""
+    a = area(w)
+    mine = rect(zone, a, w)
+    ws = (w.get("workspace") or {}).get("id")
+    mates = [c for c in hypr("clients") or [] if c["address"] != w["address"] and c["monitor"] == w["monitor"]
+             and (c.get("workspace") or {}).get("id") == ws and current_zone(c, a, st)]
+    mates = [c for c in mates if not overlap(rect(st[c["address"]]["zone"], a, c), mine)]
+    if not mates:
+        st[w["address"]].pop("group", None)
+        return
+    gid = next((st[c["address"]].get("group") for c in mates if st[c["address"]].get("group")), None) or str(int(time.time() * 1000))
+    for c in mates + [w]:
+        st.setdefault(c["address"], {})["group"] = gid
+
+
+def refit(st, only=None):
+    """After a screen changed (scale, resolution, plugged in or out, the Dock
+    moved): docked windows dock again in their zone; the others shrink to fit and
+    come inside the free area."""
+    ms = {m["id"]: m for m in monitors()}
+    for c in hypr("clients") or []:
+        m = ms.get(c["monitor"])
+        if not m or (only and m["name"] != only) or not c.get("floating") or c.get("fullscreen") or (c.get("workspace") or {}).get("name", "").startswith("special"):
+            continue
+        a = area_of(m)
+        z = st.get(c["address"], {}).get("zone")
+        if z and fractions(z):
+            place(c, z, st, a)
+            continue
+        x, y = c["at"]
+        ww, wh = c["size"]
+        nw, nh = min(ww, a[2]), min(wh, a[3])
+        nx = min(max(x, a[0]), a[0] + a[2] - nw)
+        ny = min(max(y, a[1]), a[1] + a[3] - nh)
+        sel = f'window = "address:{c["address"]}"'
+        if (nw, nh) != (ww, wh):
+            dispatch(f'hl.dsp.window.resize({{ x = {nw}, y = {nh}, {sel} }})')
+        if (nx, ny) != (x, y):
+            dispatch(f'hl.dsp.window.move({{ x = {nx}, y = {ny}, {sel} }})')
+
+
+def to_screen(w, direction, st):
+    """Move a window to the screen in a direction (or the next one), keeping its
+    zone, or its place and size relative to the screen."""
+    ms = monitors()
+    cur = next((m for m in ms if m["id"] == w["monitor"]), None)
+    if not cur or len(ms) < 2:
+        return
+    ca = area_of(cur)
+    cx, cy = ca[0] + ca[2] / 2, ca[1] + ca[3] / 2
+
+    def score(m):
+        a = area_of(m)
+        dx, dy = a[0] + a[2] / 2 - cx, a[1] + a[3] / 2 - cy
+        ok = {"left": dx < -1 and abs(dx) >= abs(dy), "right": dx > 1 and abs(dx) >= abs(dy),
+              "up": dy < -1 and abs(dy) > abs(dx), "down": dy > 1 and abs(dy) > abs(dx)}.get(direction, True)
+        return abs(dx) + abs(dy) if ok else None
+    named = next((m for m in ms if m["name"] == direction), None)
+    if named:
+        others = [(0, 0, named)] if named["id"] != cur["id"] else []
+        direction = "named"
+    else:
+        others = sorted(((score(m), i, m) for i, m in enumerate(ms) if m["id"] != cur["id"] and score(m) is not None), key=lambda t: (t[0], t[1]))
+    if not others:
+        return
+    if direction == "next":   # the next one along, round
+        order = sorted(ms, key=lambda m: (m["x"], m["y"]))
+        tgt = order[(order.index(cur) + 1) % len(order)]
+    else:
+        tgt = others[0][2]
+    ta = area_of(tgt)
+    z = current_zone(w, ca, st)
+    if z:
+        place(w, z, st, ta)
+        return
+    fx, fy = (w["at"][0] - ca[0]) / max(1, ca[2]), (w["at"][1] - ca[1]) / max(1, ca[3])
+    nw, nh = min(w["size"][0], ta[2]), min(w["size"][1], ta[3])
+    nx = int(min(ta[0] + fx * ta[2], ta[0] + ta[2] - nw))
+    ny = int(min(ta[1] + fy * ta[3], ta[1] + ta[3] - nh))
+    sel = f'window = "address:{w["address"]}"'
+    dispatch(f'hl.dsp.window.move({{ x = {nx}, y = {ny}, {sel} }})')
+    if (nw, nh) != tuple(w["size"]):
+        dispatch(f'hl.dsp.window.resize({{ x = {nw}, y = {nh}, {sel} }})')
+        dispatch(f'hl.dsp.window.move({{ x = {nx}, y = {ny}, {sel} }})')
 
 
 # Super+arrows: what each key does from where the window is now.
@@ -264,6 +436,22 @@ def main():
             restore(w, st)
         elif nxt:
             place(w, nxt, st, a)
+    elif cmd == "arrange":
+        arrange(st, pair=len(args) > 1 and args[1] == "pair")
+    elif cmd == "refit":
+        refit(st, args[1] if len(args) > 1 else None)
+    elif cmd == "screen":
+        w = window(args[2] if len(args) > 2 else None)
+        if w and not w.get("fullscreen"):
+            to_screen(w, args[1] if len(args) > 1 else "next", st)
+    elif cmd == "group":   # the addresses docked together with a window
+        w = window(args[1] if len(args) > 1 else None)
+        g = st.get(w["address"], {}).get("group") if w else None
+        a = area(w) if w else None
+        alive = {c["address"]: c for c in hypr("clients") or []}
+        if g:
+            print(" ".join(k for k, v in st.items() if v.get("group") == g and k in alive and current_zone(alive[k], area(alive[k]), st)))
+        return 0
     elif cmd == "restore":
         w = window(args[1] if len(args) > 1 else None)
         if w:
@@ -294,6 +482,8 @@ def main():
             print(__doc__)
             return 1
         place(w, cmd, st)
+        if cmd not in ("center", "fill"):
+            join_group(w, cmd, st)
     save(st)
     return 0
 

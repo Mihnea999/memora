@@ -73,6 +73,8 @@ apply() {
     grep -q "output = \"$n\", disabled" "$out" || hyprctl eval "hl.monitor({ output = \"$n\", disabled = false })" >/dev/null
   done
   grep '^hl.monitor' "$out" | while read -r l; do hyprctl eval "$l" >/dev/null; done
+  # Windows follow: docked ones dock again, the others fit inside.
+  (sleep 0.8; memora-window refit) >/dev/null 2>&1 &
 }
 
 set_key() { # KEY VALUE

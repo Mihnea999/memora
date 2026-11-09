@@ -45,6 +45,19 @@ ShellRoot {
   }
   property bool onBattery: UPower.onBattery
   readonly property real started: Date.now()
+  // Screens change (plugged in or out) or the Dock moves: windows follow, so
+  // docked ones dock again and none is left too big or out of reach.
+  Timer { id: refitLater; interval: 900; onTriggered: Quickshell.execDetached(["memora-window", "refit"]) }
+  Connections {
+    target: Hyprland
+    function onRawEvent(ev) { if (["monitoraddedv2", "monitorremovedv2", "monitorremoved"].indexOf(ev.name) >= 0) refitLater.restart() }
+  }
+  Connections {
+    target: Prefs
+    function onDockPositionChanged() { refitLater.restart() }
+    function onDockHidingChanged() { refitLater.restart() }
+    function onDockSizeChanged() { refitLater.restart() }
+  }
   Variants { model: Quickshell.screens; Wallpaper {} }
   Variants { model: Quickshell.screens; MenuBar {} }
   Variants { model: Quickshell.screens; Dock {} }
@@ -91,6 +104,9 @@ ShellRoot {
     function semiFullscreen(): void { Apps.semiFullscreen() }
     // Nearby Share for these files (one path per line).
     function share(paths: string): void { Shell.close(); Shell.shareFiles = paths.split("\n").filter(p => p !== "") }
+    function pin(): void { Apps.dispatch('hl.dsp.window.pin({ action = "toggle" })') }
+    // After screens changed (plugged in or out, scale, the Dock moved): windows follow.
+    function refit(): void { Quickshell.execDetached(["memora-window", "refit"]) }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {
       const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)

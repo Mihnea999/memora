@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import qs.core
 
 // Menu bar menus. App menus work for any app by sending the standard shortcut
@@ -186,7 +187,14 @@ Singleton {
       sep(),
       { text: "Move to Left Half", keys: "Super Left", enabled: hasWin, action: () => Apps.run("memora-window left") },
       { text: "Move to Right Half", keys: "Super Right", enabled: hasWin, action: () => Apps.run("memora-window right") },
+      { text: "Arrange All Windows", keys: "Super Alt A", action: () => Apps.run("memora-window arrange") },
+      { text: "Tile with Previous Window", enabled: hasWin, action: () => Apps.run("memora-window arrange pair") },
       { text: "Tile Window", keys: "Super T", enabled: hasWin, action: () => Apps.dispatch('hl.dsp.window.float({ action = "toggle" })') },
+      sep(),
+      { text: "Keep on Top", checked: hasWin && !!win.lastIpcObject && !!win.lastIpcObject.pinned, enabled: hasWin, action: () => Apps.dispatch('hl.dsp.window.pin({ action = "toggle" })') },
+      ...Hyprland.monitors.values.filter(mo => hasWin && win.lastIpcObject && mo.id !== win.lastIpcObject.monitor).map(mo => ({
+        text: "Move to " + (mo.lastIpcObject && mo.lastIpcObject.model ? mo.lastIpcObject.model : mo.name), keys: Hyprland.monitors.values.length === 2 ? "Super Shift →" : "",
+        action: () => Apps.run("memora-window screen '" + mo.name + "'") })),
       sep(),
       { text: "Show All Windows", enabled: Apps.windows.some(w => Apps.isMinimized(w)), action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) },
       sep(),

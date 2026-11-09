@@ -141,8 +141,25 @@ Singleton {
   function sel(addr) { return "address:" + (String(addr).startsWith("0x") ? addr : "0x" + addr) }
   function dispatch(lua) { Hyprland.dispatch(lua) }
 
+  // Windows docked together (memora-window keeps them in ~/.cache/memora/windows.json):
+  // bringing one forward brings the others too, so a split comes back whole.
+  property var docked: ({})
+  property FileView dockedFile: FileView {
+    path: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/memora/windows.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { apps.docked = JSON.parse(text()) } catch (e) { apps.docked = {} } }
+  }
+  function groupOf(w) {
+    const a = "0x" + addrKey(w.address), g = (docked[a] || {}).group
+    if (!g) return []
+    return windows.filter(x => x !== w && (docked["0x" + addrKey(x.address)] || {}).group === g && !isMinimized(x)
+      && x.workspace && w.workspace && x.workspace.id === w.workspace.id)
+  }
   function focus(w) {
     if (isMinimized(w)) return restore(w)
+    groupOf(w).forEach(x => dispatch('hl.dsp.window.alter_zorder({ mode = "top", window = "' + sel(x.address) + '" })'))
     dispatch('hl.dsp.focus({ window = "' + sel(w.address) + '" })')
     // Floating windows: also bring it in front of the others.
     dispatch('hl.dsp.window.alter_zorder({ mode = "top", window = "' + sel(w.address) + '" })')
