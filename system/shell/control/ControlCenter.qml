@@ -189,7 +189,7 @@ PanelWindow {
           text: "Sound"; font.weight: Font.Bold; x: 12; y: 10
           TapHandler { onTapped: Shell.openStatus("sound") }   // outputs, like the menu bar's Sound menu
         }
-        Slider { x: 12; y: 32; width: parent.width - 24; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.changeVolume(v) }
+        Slider { x: 12; y: 32; width: parent.width - 24; sym: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; value: Sys.volume; muted: Sys.muted; symToggles: true; onSymClicked: Sys.toggleMute(); onMoved: v => Sys.changeVolume(v) }
       }
 
       Module {

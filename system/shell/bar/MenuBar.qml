@@ -153,7 +153,8 @@ PanelWindow {
     BarButton {
       visible: !!Sys.sink
       tip: "Sound"
-      Sym { anchors.centerIn: parent; name: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; level: Sys.volume; width: 16; height: 16 }
+      // Muted shows in red, so it can't pass for "very low".
+      Sym { anchors.centerIn: parent; name: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; level: Sys.volume; width: 16; height: 16; color: Sys.muted ? Theme.red : Theme.text }
       menu: "sound"
       onScrolled: up => Sys.changeVolume(Sys.volume + (up ? 0.05 : -0.05))
     }

@@ -26,7 +26,7 @@ Kit.Page {
       label: "Output volume"; badge: "sound"; badgeColor: "#ff4fa0"; last: true
       RowLayout {
         spacing: 10
-        Slider { implicitWidth: 220; sym: Sys.muted ? "sound-off" : "sound"; value: Sys.muted ? 0 : Sys.volume; onMoved: v => Sys.changeVolume(v) }
+        Slider { implicitWidth: 220; sym: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; value: Sys.volume; muted: Sys.muted; symToggles: true; onSymClicked: Sys.toggleMute(); onMoved: v => Sys.changeVolume(v) }
         Kit.Switch { checked: !Sys.muted; onToggled: Sys.toggleMute() }
       }
     }

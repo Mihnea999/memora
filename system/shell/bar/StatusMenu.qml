@@ -253,17 +253,19 @@ PopupWindow {
         Layout.fillWidth: true; implicitHeight: 38
         Slider {
           anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; verticalCenter: parent.verticalCenter }
-          sym: Sys.muted ? "sound-off" : "sound"
-          value: Sys.muted ? 0 : Sys.volume
+          implicitHeight: 26
+          sym: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"
+          value: Sys.volume; muted: Sys.muted
+          symToggles: true; onSymClicked: Sys.toggleMute()
           onMoved: v => Sys.changeVolume(v)
         }
       }
       Section { text: "Alerts & System Sounds" }
       Item {
-        Layout.fillWidth: true; implicitHeight: 34
+        Layout.fillWidth: true; implicitHeight: 38
         Slider {
           anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; verticalCenter: parent.verticalCenter }
-          implicitHeight: 22
+          implicitHeight: 26
           sym: Prefs.alertVolume > 0 ? "bell" : "sound-off"
           value: Prefs.alertVolume
           onMoved: v => { Prefs.set("alertVolume", Math.round(v * 100) / 100); alertPreview.restart() }
@@ -275,7 +277,7 @@ PopupWindow {
         model: sm.streams
         delegate: Item {
           required property var modelData
-          Layout.fillWidth: true; implicitHeight: 46
+          Layout.fillWidth: true; implicitHeight: 54
           Image {
             id: appIcon
             x: 10; y: 4; width: 16; height: 16
@@ -288,10 +290,11 @@ PopupWindow {
           }
           Slider {
             anchors { left: parent.left; right: parent.right; leftMargin: 10; rightMargin: 10; bottom: parent.bottom; bottomMargin: 2 }
-            implicitHeight: 20
+            implicitHeight: 26
             readonly property var a: modelData.audio
             sym: !a || a.muted || a.volume === 0 ? "sound-off" : "sound"
-            value: !a || a.muted ? 0 : Math.min(1, a.volume)
+            value: a ? Math.min(1, a.volume) : 0; muted: !!a && a.muted
+            symToggles: true; onSymClicked: if (a) a.muted = !a.muted
             onMoved: v => { if (a) { a.muted = false; a.volume = v } }
           }
         }
