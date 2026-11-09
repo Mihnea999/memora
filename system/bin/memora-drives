@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""memora-drives — the drives in Files' sidebar, and mounting them for you.
+
+  memora-drives list              the drives you can use (JSON)
+  memora-drives mount ID          mount it (ID: its UUID, or /dev/NAME); prints where
+  memora-drives unmount ID        unmount it
+  memora-drives eject ID          unmount it and power the drive off (USB sticks, SSD cases)
+  memora-drives unlock ID [--remember]   an encrypted drive: the passphrase on stdin;
+                                  --remember keeps it in the Keyring, to open it at login
+  memora-drives pin ID on|off     mount it at every login (and whenever it is plugged in)
+  memora-drives watch             the background part, started with the desktop:
+                                  mounts the pinned drives, then USB drives as they're
+                                  plugged in (unless that's turned off)
+  memora-drives usb on|off        mount USB drives by themselves when plugged in
+
+Only filesystems that aren't the system's own show up: not /, /boot, swap or
+the partitions Memora runs from. Mounting goes through udisks, so it lands in
+/run/media/$USER/NAME and needs no password (polkit/50-memora-drives.rules).
+Settings: ~/.config/memora/drives.json.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+CONF = Path.home() / ".config/memora/drives.json"
+# Partitions nobody opens: EFI system, Microsoft reserved, Windows recovery, BIOS boot.
+HIDDEN_TYPES = {"c12a7328-f81f-11d2-ba4b-00a0c93ec93b", "e3c9e316-0b5c-4db8-817d-f92df00215ae", "de94bba4-06d1-4d40-a16a-bfd50179d6ac",
+                "21686148-6449-6e6f-744e-656564454649", "0xef", "0x27"}
+SYSTEM_MOUNTS = {"/", "/boot", "/boot/efi", "/efi", "/home", "/var", "/usr", "/nix", "/.snapshots", "/var/log", "/var/cache/pacman/pkg", "/swap"}
+
+
+def config():
+    c = {"pinned": [], "usb": True}
+    try:
+        c.update(json.loads(CONF.read_text()))
+    except (OSError, ValueError):
+        pass
+    return c
+
+
+def save(c):
+    CONF.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CONF.with_suffix(".tmp")
+    tmp.write_text(json.dumps(c, indent=1) + "\n")
+    tmp.replace(CONF)
+
+
+def human(b):
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if b < 1000 or u == "TB":
+            return f"{b:.0f} {u}" if u in ("B", "KB") else f"{b:.1f} {u}".replace(".0 ", " ")
+        b /= 1000
+
+
+def blocks():
+    out = subprocess.run(["lsblk", "-J", "-b", "-o", "NAME,PATH,TYPE,FSTYPE,LABEL,UUID,SIZE,MOUNTPOINTS,RM,HOTPLUG,TRAN,MODEL,PKNAME,PARTLABEL,RO,PARTTYPE"],
+                         capture_output=True, text=True).stdout
+    try:
+        return json.loads(out).get("blockdevices", [])
+    except ValueError:
+        return []
+
+
+def drives():
+    """Filesystems you can open, with what they're on."""
+    pinned = set(config()["pinned"])
+    found = []
+
+    def walk(dev, disk):
+        mps = [m for m in (dev.get("mountpoints") or []) if m]
+        kids = dev.get("children") or []
+        is_disk = dev.get("type") == "disk"
+        d = dev if is_disk else disk
+        fs = dev.get("fstype") or ""
+        if fs and fs not in ("swap", "LVM2_member", "linux_raid_member", "zfs_member") and not kids or fs == "crypto_LUKS":
+            system = any(m in SYSTEM_MOUNTS or m.startswith("/boot") or m.startswith("[SWAP]") for m in mps)
+            if (dev.get("parttype") or "").lower() in HIDDEN_TYPES:
+                system = True
+            if not system and not dev.get("ro") and (dev.get("size") or 0) > 16 * 1024 * 1024:
+                removable = bool((d or {}).get("rm") or (d or {}).get("hotplug") or (d or {}).get("tran") == "usb")
+                name = dev.get("label") or dev.get("partlabel") or ((d or {}).get("model") or "").strip() or dev.get("name")
+                found.append({
+                    "id": dev.get("uuid") or dev.get("path"), "path": dev.get("path"), "name": name,
+                    "size": human(dev.get("size") or 0), "fs": fs, "mounted": mps[0] if mps else "",
+                    "removable": removable, "locked": fs == "crypto_LUKS" and not kids,
+                    "pinned": (dev.get("uuid") or dev.get("path")) in pinned,
+                })
+        for k in kids:
+            walk(k, d)
+
+    for b in blocks():
+        loops = os.environ.get("MEMORA_DRIVES_LOOPS") == "1"   # for testing with disk images
+        if b.get("type") == "rom" or (b.get("name") or "").startswith("zram") or (b.get("type") == "loop" and not loops):
+            continue
+        walk(b, None)
+    # The system disk's other partitions are fine to show (a Windows partition),
+    # but not the ones the system mounted itself: done above. A LUKS container
+    # whose unlocked child shows up is listed once, as the child.
+    return [d for d in found if not (d["fs"] == "crypto_LUKS" and not d["locked"])]
+
+
+def find(ident):
+    for d in drives():
+        if ident in (d["id"], d["path"], d["name"]):
+            return d
+    return None
+
+
+def udisks(*args):
+    r = subprocess.run(["udisksctl", *args, "--no-user-interaction"], capture_output=True, text=True)
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def mount(d):
+    if d["mounted"]:
+        return d["mounted"]
+    if d["locked"]:
+        return None   # unlocking asks for its passphrase: Files does that with a dialog
+    code, out = udisks("mount", "-b", d["path"])
+    if code != 0:
+        return None
+    # "Mounted /dev/sdb1 at /run/media/me/Data"
+    return out.split(" at ", 1)[1].rstrip(".") if " at " in out else (find(d["id"]) or {}).get("mounted")
+
+
+# Passphrases of encrypted drives you chose to open at login live in the
+# Keyring (unlocked with your login password), never in a file.
+def secret_get(uuid):
+    r = subprocess.run(["secret-tool", "lookup", "memora-drive", uuid], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
+
+def secret_set(uuid, name, passphrase):
+    subprocess.run(["secret-tool", "store", "--label", f"Drive “{name}”", "memora-drive", uuid], input=passphrase, text=True)
+
+
+def secret_forget(uuid):
+    subprocess.run(["secret-tool", "clear", "memora-drive", uuid], capture_output=True)
+
+
+def unlock(d, passphrase):
+    """Open an encrypted drive; returns the now usable drive (the filesystem in it), or None."""
+    run = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp")
+    key = run / f"memora-drive-{os.getpid()}.key"
+    try:
+        fd = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(passphrase)
+        code, out = udisks("unlock", "-b", d["path"], "--key-file", str(key))
+    finally:
+        key.unlink(missing_ok=True)
+    if code != 0:
+        return None
+    # "Unlocked /dev/sdb1 as /dev/dm-3."
+    inner = out.rsplit(" as ", 1)[-1].rstrip(".") if " as " in out else ""
+    for _ in range(20):
+        for x in drives():
+            if x["path"] == inner or (inner and os.path.realpath(x["path"]) == os.path.realpath(inner)):
+                return x
+        time.sleep(0.2)
+    return None
+
+
+def notify(title, body, icon="drive-removable-media"):
+    subprocess.Popen(["notify-send", "-a", "Files", "-i", icon, "-h", "boolean:suppress-sound:true", title, body],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def watch():
+    """Mount pinned drives now and whenever they appear; USB drives as they're plugged in."""
+    seen = {d["id"] for d in drives()}
+    first = True
+    tried = set()   # encrypted drives tried once this session (a wrong saved passphrase isn't retried)
+    while True:
+        c = config()
+        pinned = set(c["pinned"])
+        now = drives()
+        for d in now:
+            new = d["id"] not in seen
+            if d["mounted"]:
+                continue
+            if d["locked"]:
+                # Pinned and its passphrase remembered: open it too.
+                if d["id"] in pinned and d["id"] not in tried:
+                    tried.add(d["id"])
+                    pw = secret_get(d["id"])
+                    inner = unlock(d, pw) if pw else None
+                    if inner:
+                        mount(inner)
+                continue
+            if d["id"] in pinned or (new and not first and d["removable"] and c.get("usb", True)):
+                where = mount(d)
+                if where and not first:
+                    notify(d["name"], f"Ready in Files · {d['size']}")
+        seen = {d["id"] for d in now}
+        first = False
+        time.sleep(3)
+
+
+def main():
+    a = sys.argv[1:]
+    cmd = a[0] if a else ""
+    if cmd == "list":
+        print(json.dumps(drives(), indent=1))
+    elif cmd in ("mount", "unmount", "eject") and len(a) > 1:
+        d = find(a[1])
+        if not d:
+            sys.exit("That drive isn't here any more.")
+        if cmd == "mount":
+            where = mount(d)
+            if not where:
+                sys.exit(f"Couldn't open {d['name']}.")
+            print(where)
+        else:
+            if d["mounted"]:
+                code, out = udisks("unmount", "-b", d["path"])
+                if code != 0:
+                    sys.exit(f"{d['name']} is in use: close the files and apps using it, then try again." if "busy" in out.lower() else out)
+            if cmd == "eject" and d["removable"]:
+                # The whole drive, so it can be pulled out safely.
+                disk = subprocess.run(["lsblk", "-no", "PKNAME", d["path"]], capture_output=True, text=True).stdout.split()
+                if disk:
+                    udisks("power-off", "-b", "/dev/" + disk[0])
+                notify(d["name"], "You can unplug it now.")
+    elif cmd == "unlock" and len(a) > 1:
+        d = find(a[1])
+        if not d or not d["locked"]:
+            sys.exit("That drive isn't locked.")
+        pw = sys.stdin.read().rstrip("\n")
+        inner = unlock(d, pw)
+        if not inner:
+            sys.exit("Wrong passphrase.")
+        if "--remember" in a:
+            secret_set(d["id"], d["name"], pw)
+            c = config()
+            c["pinned"] = [p for p in c["pinned"] if p != d["id"]] + [d["id"]]
+            save(c)
+        where = mount(inner)
+        print(where or "")
+    elif cmd == "pin" and len(a) > 2:
+        d = find(a[1])
+        c = config()
+        ident = d["id"] if d else a[1]
+        c["pinned"] = [p for p in c["pinned"] if p != ident] + ([ident] if a[2] in ("on", "1", "true") else [])
+        save(c)
+        if a[2] not in ("on", "1", "true"):
+            secret_forget(ident)
+        if d and a[2] in ("on", "1", "true"):
+            mount(d)
+    elif cmd == "usb" and len(a) > 1:
+        c = config()
+        c["usb"] = a[1] in ("on", "1", "true")
+        save(c)
+    elif cmd == "watch":
+        watch()
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

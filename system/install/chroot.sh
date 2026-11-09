@@ -223,6 +223,8 @@ WantedBy=multi-user.target
 UNIT
 # Plain-words password prompts for the changes System Settings makes.
 install -Dm644 $MEMORA_PATH/polkit/org.memora.admin.policy /usr/share/polkit-1/actions/org.memora.admin.policy
+# Drives open from Files without a password prompt each time (memora-drives).
+install -Dm644 $MEMORA_PATH/polkit/50-memora-drives.rules /etc/polkit-1/rules.d/50-memora-drives.rules
 # Look for updates in the background and say when there are some.
 install -Dm644 -t /usr/lib/systemd/user $MEMORA_PATH/units/memora-update-check.service $MEMORA_PATH/units/memora-update-check.timer
 systemctl --global enable memora-update-check.timer

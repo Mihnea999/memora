@@ -51,3 +51,8 @@ flatpak
 python-gobject
 python-cryptography
 python-zeroconf
+udisks2
+exfatprogs
+ntfs-3g
+dosfstools
+libsecret

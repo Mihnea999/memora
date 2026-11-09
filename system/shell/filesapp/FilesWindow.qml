@@ -84,6 +84,52 @@ FloatingWindow {
     sh("gio trash -- " + items.map(q).join(" ") + " && setsid -f memora-sound trash >/dev/null 2>&1")
     selected = ({})
   }
+  // ---- drives (memora-drives): SSDs, partitions and USB sticks to open -----------
+  property var drives: []
+  Process {
+    id: driveList
+    command: ["memora-drives", "list"]
+    stdout: StdioCollector { onStreamFinished: { try { win.drives = JSON.parse(text) } catch (e) {} } }
+  }
+  Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: win.visible; onTriggered: if (!driveList.running) driveList.running = true }
+  property string driveError: ""
+  Timer { id: driveErrorTimer; interval: 5000; onTriggered: win.driveError = "" }
+  Component {
+    id: driveCmd
+    Process {
+      id: dp
+      property var then: null
+      property string out: ""
+      property bool outDone: false
+      property int code: -1
+      running: true
+      stdout: StdioCollector { onStreamFinished: { dp.out = text.trim(); dp.outDone = true; dp.finish() } }
+      stderr: StdioCollector { id: derr }
+      onExited: c => { code = c; finish() }
+      // Both the output and the exit are in (they come in either order).
+      function finish() {
+        if (code < 0 || !outDone) return
+        driveList.running = true
+        if (code !== 0) { win.driveError = derr.text.trim() || "Couldn't do that."; driveErrorTimer.restart() }
+        else if (then) then(out)
+        destroy()
+      }
+    }
+  }
+  function driveRun(args, then, input) {
+    const p = driveCmd.createObject(win, { command: ["memora-drives"].concat(args), then: then || null, stdinEnabled: input !== undefined })
+    if (input !== undefined) { p.write(input + "\n"); p.stdinEnabled = false }
+  }
+  function openDrive(d) {
+    if (d.locked) return unlockSheet.ask(d)
+    if (d.mounted) return go(d.mounted)
+    driveRun(["mount", d.id], where => { if (where) go(where) })
+  }
+  function ejectDrive(d) {
+    if (d.mounted && (path === d.mounted || path.startsWith(d.mounted + "/"))) go(app.home)
+    driveRun([d.removable ? "eject" : "unmount", d.id])
+  }
+
   function emptyTrash() {
     confirm.ask({
       title: "Empty the Trash?", message: "Everything in the Trash will be deleted. You can't undo this action.", action: "Empty Trash",
@@ -223,7 +269,61 @@ FloatingWindow {
         Header { text: "Locations" }
         Place { label: "Computer"; target: "/"; icon: "folder" }
         Place { label: "Trash"; target: win.trashDir; icon: "user-trash" }
+        Header { visible: win.drives.length > 0; text: "Drives" }
+        Repeater { model: win.drives; delegate: DriveItem { required property var modelData; d: modelData } }
+        Txt { visible: win.driveError !== ""; x: 16; width: places.width - 28; text: win.driveError; color: Theme.red; font.pixelSize: Theme.small - 0.5; wrapMode: Text.Wrap }
       }
+    }
+  }
+
+  // A drive: click opens it (mounting, or asking an encrypted one's passphrase),
+  // ⏏ puts it away, right click for "Open at Login".
+  component DriveItem: Item {
+    id: dr
+    property var d
+    readonly property bool here: !!d.mounted && (win.path === d.mounted || win.path.startsWith(d.mounted + "/"))
+    width: places.width; height: 30
+    Rectangle {
+      anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
+      radius: 7
+      color: dr.here ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.35 : 0.18) : (dh.hovered ? Theme.hover : "transparent")
+    }
+    Image { id: di; x: 16; anchors.verticalCenter: parent.verticalCenter; width: 18; height: 18; sourceSize: Qt.size(36, 36); source: Quickshell.iconPath(dr.d.removable ? "drive-removable-media" : "drive-harddisk", "drive-harddisk") }
+    Txt {
+      anchors { left: di.right; leftMargin: 9; right: tail.left; rightMargin: 4; verticalCenter: parent.verticalCenter }
+      text: dr.d.name; elide: Text.ElideRight
+      opacity: dr.d.mounted ? 1 : 0.75
+    }
+    Row {
+      id: tail
+      anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+      spacing: 4
+      Sym { visible: dr.d.locked; name: "lock"; width: 11; height: 11; color: Theme.textDim; anchors.verticalCenter: parent.verticalCenter }
+      Txt { visible: !dr.d.mounted && !dr.d.locked && dh.hovered; text: dr.d.size; color: Theme.textDim; font.pixelSize: Theme.small - 1; anchors.verticalCenter: parent.verticalCenter }
+      Rectangle {
+        visible: !!dr.d.mounted
+        width: 20; height: 20; radius: 10
+        color: eh.hovered ? Theme.pressed : "transparent"
+        Txt { anchors.centerIn: parent; text: "⏏"; color: Theme.textDim; font.pixelSize: 13 }
+        HoverHandler { id: eh; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: win.ejectDrive(dr.d) }
+        Tip { text: dr.d.removable ? "Eject" : "Unmount" }
+      }
+    }
+    HoverHandler { id: dh }
+    TapHandler { onTapped: win.openDrive(dr.d) }
+    TapHandler {
+      acceptedButtons: Qt.RightButton
+      onTapped: ev => menu.showItems(dr, ev.position.x, ev.position.y, [
+        { text: dr.d.mounted ? "Open" : "Open", action: () => win.openDrive(dr.d) },
+        { text: "Open in New Window", enabled: !!dr.d.mounted, action: () => app.openWindow(dr.d.mounted) },
+        { separator: true },
+        { text: (dr.d.pinned ? "✓  " : "") + "Open at Login", action: () => {
+            if (dr.d.locked && !dr.d.pinned) unlockSheet.ask(dr.d, true)
+            else win.driveRun(["pin", dr.d.id, dr.d.pinned ? "off" : "on"]) } },
+        { separator: true },
+        { text: dr.d.removable ? "Eject" : "Unmount", enabled: !!dr.d.mounted, action: () => win.ejectDrive(dr.d) }
+      ])
     }
   }
 
@@ -760,6 +860,15 @@ FloatingWindow {
       visible = true
       if (f && !f.dir) openWith.load(f.path)
     }
+    function showItems(item, x, y, list) {
+      target = null
+      chooser = false
+      const p = item.mapToItem(menu, x, y)
+      panel.x = Math.min(p.x, menu.width - panel.width - 10)
+      panel.y = Math.min(p.y, menu.height - 300)
+      items = list
+      visible = true
+    }
     function folderMenu() {
       return [
         { text: "New Folder", keys: "Ctrl Shift N", action: () => win.newFolder() },
@@ -960,4 +1069,76 @@ FloatingWindow {
     }
   }
   ConfirmSheet { id: confirm }
+
+  // An encrypted drive's passphrase, asked once; "Remember" keeps it in the
+  // Keyring and opens the drive at every login.
+  Item {
+    id: unlockSheet
+    anchors.fill: parent
+    visible: false
+    z: 60
+    property var d: ({})
+    property bool remember: true
+    property string error: ""
+    function ask(drive, pin) { d = drive; error = ""; remember = true; pass.text = ""; visible = true; pass.forceActiveFocus() }
+    function submit() {
+      if (!pass.text) return
+      error = ""
+      const pw = pass.text
+      win.driveRun(["unlock", d.id].concat(remember ? ["--remember"] : []), where => { unlockSheet.visible = false; if (where) win.go(where) }, pw)
+      pass.text = ""
+    }
+    Connections { target: win; function onDriveErrorChanged() { if (unlockSheet.visible && win.driveError) { unlockSheet.error = win.driveError; win.driveError = "" } } }
+    Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.35); TapHandler { onTapped: unlockSheet.visible = false } }
+    Rectangle {
+      anchors.centerIn: parent
+      width: 380; height: col.implicitHeight + 40; radius: 16
+      color: Theme.dark ? "#2a2a2e" : "#f6f6f8"; border.color: Theme.separator
+      Column {
+        id: col
+        x: 20; y: 20; width: parent.width - 40
+        spacing: 12
+        Txt { text: "Unlock “" + (unlockSheet.d.name || "") + "”"; font.weight: Font.Bold; font.pixelSize: Theme.large }
+        Txt { width: parent.width; text: "This drive is encrypted. Type its passphrase to open it."; color: Theme.textDim; wrapMode: Text.Wrap; font.pixelSize: Theme.small }
+        Rectangle {
+          width: parent.width; height: 32; radius: 8; color: Theme.field
+          border.color: pass.activeFocus ? Theme.accent : Theme.separator; border.width: pass.activeFocus ? 2 : 1
+          TextInput {
+            id: pass
+            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+            verticalAlignment: TextInput.AlignVCenter
+            echoMode: TextInput.Password; passwordCharacter: "•"
+            color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.fontSize
+            Keys.onReturnPressed: unlockSheet.submit()
+            Keys.onEscapePressed: unlockSheet.visible = false
+          }
+        }
+        Row {
+          spacing: 8
+          Rectangle {
+            width: 18; height: 18; radius: 5; anchors.verticalCenter: parent.verticalCenter
+            color: unlockSheet.remember ? Theme.accent : "transparent"; border.color: unlockSheet.remember ? Theme.accent : Theme.separator; border.width: 1.5
+            Sym { visible: unlockSheet.remember; anchors.centerIn: parent; name: "check"; width: 11; height: 11; color: "#ffffff" }
+          }
+          Txt { text: "Remember and open at login"; anchors.verticalCenter: parent.verticalCenter }
+          TapHandler { onTapped: unlockSheet.remember = !unlockSheet.remember }
+        }
+        Txt { visible: unlockSheet.error !== ""; text: unlockSheet.error; color: Theme.red; font.pixelSize: Theme.small }
+        Row {
+          anchors.right: parent.right
+          spacing: 8
+          Rectangle {
+            width: ct.implicitWidth + 28; height: 30; radius: 8; color: ch.hovered ? Theme.pressed : Theme.hover
+            Txt { id: ct; anchors.centerIn: parent; text: "Cancel" }
+            HoverHandler { id: ch } TapHandler { onTapped: unlockSheet.visible = false }
+          }
+          Rectangle {
+            width: ut.implicitWidth + 28; height: 30; radius: 8; color: Theme.accent; opacity: pass.text ? 1 : 0.5
+            Txt { id: ut; anchors.centerIn: parent; text: "Unlock"; color: "#ffffff"; font.weight: Font.Bold }
+            TapHandler { onTapped: unlockSheet.submit() }
+          }
+        }
+      }
+    }
+  }
 }
