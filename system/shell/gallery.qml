@@ -3,6 +3,7 @@
 //@ pragma IconTheme Memora
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import QtMultimedia
 import Quickshell
 import Quickshell.Io
@@ -179,7 +180,18 @@ ShellRoot {
     viewer.reset()
   }
   readonly property var current: open >= 0 && open < shown.length ? shown[open] : null
-  function close() { open = -1; video.stop(); info = false; rescan() }
+  function close() {
+    const it = current
+    open = -1; video.stop(); info = false; rescan()
+    if (it && !it.video) Qt.callLater(() => hero.back(it))
+  }
+  // Tiles on screen, by index, so a photo can grow out of its tile and back into it.
+  property var tiles: ({})
+  function openFrom(tile, i) {
+    const it = shown[i]
+    if (it && !it.video && Prefs.animations) hero.grow(tile.mapToItem(null, 0, 0, tile.width, tile.height), it.path)
+    show(i)
+  }
   property bool info: false
   property bool chrome: true
   Timer { id: hideChrome; interval: 2600; onTriggered: if (app.current && app.current.video && video.playbackState === MediaPlayer.PlayingState) app.chrome = false }
@@ -320,7 +332,8 @@ ShellRoot {
     implicitHeight: 800
     minimumSize: Qt.size(560, 440)
     color: "transparent"
-    Rectangle { anchors.fill: parent; color: app.current ? "#000000" : Theme.window }
+    Rectangle { anchors.fill: parent; color: Theme.window }
+    Rectangle { anchors.fill: parent; color: "#000000"; opacity: app.current ? 1 : 0; Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Theme.easing } } }
 
     Shortcut { sequence: "Right"; enabled: !!app.current; onActivated: app.show(app.open + 1) }
     Shortcut { sequence: "Left"; enabled: !!app.current; onActivated: app.show(app.open - 1) }
@@ -418,7 +431,7 @@ ShellRoot {
             const l = app.album === "" ? app.monthOf(it.time) : ""
             if (l !== label || !row || row.items.length === grid.cols) {
               if (l !== label) { rows.push({ header: l, items: [] }); label = l }
-              row = { header: "", items: [] }; rows.push(row)
+              row = { header: "", items: [], month: l }; rows.push(row)
             }
             row.items.push(i)
           })
@@ -481,6 +494,20 @@ ShellRoot {
         }
       }
 
+      // The month you're in, floating at the top while you scroll.
+      Rectangle {
+        readonly property var row: grid.visible && app.album === "" ? grid.model[grid.indexAt(20, grid.contentY + 4)] : null
+        readonly property string month: row ? (row.month || row.header || "") : ""
+        visible: opacity > 0
+        opacity: month !== "" && grid.contentY > 60 ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+        anchors { horizontalCenter: parent.horizontalCenter; top: head.bottom; topMargin: 8 }
+        width: mt.implicitWidth + 28; height: 30; radius: 15
+        color: Theme.dark ? Qt.rgba(0.12, 0.12, 0.14, 0.88) : Qt.rgba(1, 1, 1, 0.92)
+        border.color: Theme.separator
+        Txt { id: mt; anchors.centerIn: parent; text: parent.month; font.weight: Font.Bold }
+      }
+
       // ---- Albums
       GridView {
         id: albumGrid
@@ -535,6 +562,25 @@ ShellRoot {
       function zoomBy(f) { zoom = Math.max(1, Math.min(12, zoom * f)); if (zoom === 1) { px = 0; py = 0 } }
       Behavior on zoom { NumberAnimation { duration: Theme.normal; easing.type: Theme.easing } }
       HoverHandler { onPointChanged: { app.chrome = true; hideChrome.restart() } }
+
+      // The photo itself, blurred and dimmed, fills the space around it.
+      Image {
+        id: ambientSrc
+        anchors.fill: parent
+        visible: false
+        source: img.source
+        sourceSize: Qt.size(96, 96)
+        fillMode: Image.PreserveAspectCrop; asynchronous: true
+      }
+      MultiEffect {
+        anchors.fill: parent
+        source: ambientSrc
+        scale: 1.2
+        blurEnabled: true; blur: 1.0; blurMax: 64
+        brightness: -0.38; saturation: 0.25
+        opacity: img.visible && ambientSrc.status === Image.Ready ? 0.6 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.slow } }
+      }
 
       AnimatedImage {
         id: img
@@ -649,6 +695,48 @@ ShellRoot {
         }
       }
 
+      // Every photo, small, along the bottom: the one shown in the middle, bigger.
+      ListView {
+        id: strip
+        visible: img.visible && app.shown.length > 1
+        opacity: app.chrome ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.normal } }
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 14 }
+        width: Math.min(parent.width - 140, app.shown.length * 44 + 30)
+        height: 56
+        orientation: ListView.Horizontal
+        spacing: 3
+        clip: true
+        model: app.shown.length
+        currentIndex: app.open
+        highlightRangeMode: ListView.StrictlyEnforceRange
+        preferredHighlightBegin: width / 2 - 30; preferredHighlightEnd: width / 2 + 30
+        highlightMoveDuration: 260
+        boundsBehavior: Flickable.StopAtBounds
+        onCurrentIndexChanged: if (currentIndex !== app.open && currentIndex >= 0 && moving) app.show(currentIndex)
+        delegate: Item {
+          required property int index
+          readonly property var it: app.shown[index] || ({})
+          readonly property bool here: index === app.open
+          width: here ? 60 : 40; height: 56
+          Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+          Rectangle {
+            anchors.centerIn: parent
+            width: parent.width; height: parent.here ? 52 : 44; radius: 6; clip: true
+            color: Qt.rgba(1, 1, 1, 0.08)
+            border.width: parent.here ? 2 : 0; border.color: "#ffffff"
+            Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Image {
+              anchors.fill: parent; anchors.margins: parent.border.width
+              fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(120, 120)
+              source: it.video ? (app.thumbs[it.path] ? "file://" + app.thumbs[it.path].img : "") : (it.path ? "file://" + it.path : "")
+              opacity: parent.parent.here ? 1 : 0.6
+            }
+          }
+          TapHandler { onTapped: app.show(index) }
+        }
+      }
+
       // Video controls at the bottom.
       Rectangle {
         visible: videoOut.visible
@@ -711,12 +799,70 @@ ShellRoot {
         }
       }
     }
+  
+    // A photo grows out of its tile into the window, and goes back into it.
+    Item {
+      id: hero
+      anchors.fill: parent
+      z: 100
+      visible: anim.running
+      property string src
+      property bool backwards: false
+      Rectangle {
+        id: box
+        clip: true; color: "transparent"
+        radius: hero.backwards ? 0 : 0
+        Image {
+          id: himg
+          anchors.fill: parent
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: false; cache: true; smooth: true
+          sourceSize: Qt.size(1600, 1600)
+          source: hero.src ? "file://" + hero.src : ""
+        }
+      }
+      ParallelAnimation {
+        id: anim
+        NumberAnimation { id: ax; target: box; property: "x"; duration: Prefs.motion(380); easing.type: Easing.OutQuint }
+        NumberAnimation { id: ay; target: box; property: "y"; duration: Prefs.motion(380); easing.type: Easing.OutQuint }
+        NumberAnimation { id: aw; target: box; property: "width"; duration: Prefs.motion(380); easing.type: Easing.OutQuint }
+        NumberAnimation { id: ah; target: box; property: "height"; duration: Prefs.motion(380); easing.type: Easing.OutQuint }
+      }
+      // Where the photo sits when it fills the window (as the viewer shows it).
+      function fit() {
+        const sw = Math.max(1, himg.implicitWidth), sh = Math.max(1, himg.implicitHeight)
+        const f = Math.min(win.width / sw, win.height / sh, 1)
+        return Qt.rect((win.width - sw * f) / 2, (win.height - sh * f) / 2, sw * f, sh * f)
+      }
+      function run(from, to) {
+        anim.stop()
+        box.x = from.x; box.y = from.y; box.width = from.width; box.height = from.height
+        ax.to = to.x; ay.to = to.y; aw.to = to.width; ah.to = to.height
+        anim.start()
+      }
+      function grow(r, path) { backwards = false; src = path; run(r, fit()) }
+      // Back into its tile, if that tile is on screen; else the viewer just fades.
+      function back(it) {
+        if (!Prefs.animations) return
+        const i = app.shown.indexOf(it)
+        const t = app.tiles[i]
+        if (!t) return
+        const r = t.mapToItem(null, 0, 0, t.width, t.height)
+        if (r.y + r.height < 56 || r.y > win.height) return
+        backwards = true; src = it.path; run(fit(), r)
+      }
+    }
   }
 
   // A square in the grid: the picture (or the video's first frame, with its length).
   component Tile: Item {
     id: tile
     property int index
+    Component.onCompleted: app.tiles[index] = tile
+    Component.onDestruction: if (app.tiles[index] === tile) delete app.tiles[index]
+    // pressed: sinks a little, as if touched
+    scale: tp.pressed && !app.selecting ? 0.96 : 1
+    Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
     readonly property var it: app.shown[index] || ({})
     Rectangle { anchors.fill: parent; color: Theme.field }
     Image {
@@ -754,8 +900,9 @@ ShellRoot {
     }
     HoverHandler { id: th; cursorShape: Qt.PointingHandCursor }
     TapHandler {
+      id: tp
       longPressThreshold: 0.45
-      onTapped: app.selecting ? app.toggleSel(tile.it.path) : app.show(tile.index)
+      onTapped: app.selecting ? app.toggleSel(tile.it.path) : app.openFrom(tile, tile.index)
       onLongPressed: { if (!app.selecting) app.startSelect(tile.it.path); else app.toggleSel(tile.it.path) }
     }
   }
