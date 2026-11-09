@@ -149,6 +149,7 @@ Scope {
   // The windows shown, laid out the way they sit on the screen: in bands from
   // top to bottom, each band from left to right.
   function spatial(list, cols) {
+    cols = Math.max(1, Math.floor(cols) || 1)   // never 0: the loop below steps by it
     const c = w => [w.lastIpcObject.at[0] + w.lastIpcObject.size[0] / 2, w.lastIpcObject.at[1] + w.lastIpcObject.size[1] / 2]
     const byY = list.slice().sort((a, b) => c(a)[1] - c(b)[1])
     const out = []
