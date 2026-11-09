@@ -1,2 +1,3 @@
 module qs.switcher
 Switcher 1.0 Switcher.qml
+ShortcutSheet 1.0 ShortcutSheet.qml

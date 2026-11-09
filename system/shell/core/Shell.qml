@@ -76,6 +76,9 @@ Singleton {
   // The app chosen in the app switcher (Super+Tab), and Q/H pressed meanwhile.
   property string switcherApp: ""
   property string switcherAction: ""
+  // When the Super shortcuts sheet last went away: letting Super go then
+  // doesn't open Apps.
+  property real sheetClosedAt: 0
 
   // Width of the Memora AI notch in the middle of the menu bar (on the focused
   // screen), so the bar keeps its menus clear of it.

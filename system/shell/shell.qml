@@ -97,6 +97,7 @@ ShellRoot {
   Variants { model: Quickshell.screens; OsdView {} }
   PolkitDialog {}
   Switcher {}
+  ShortcutSheet {}
   Lock {}
   Snap {}
   Divider {}

@@ -128,7 +128,7 @@ Scope {
     function commit(): void { sw.commit() }
     function cancel(): void { sw.open = false }
     // Super let go: finish switching, or (a tap on its own) open Apps.
-    function superUp(): void { if (sw.open) sw.commit(); else Shell.toggle("launchpad") }
+    function superUp(): void { if (sw.open) sw.commit(); else if (Date.now() - Shell.sheetClosedAt > 700) Shell.toggle("launchpad") }
   }
 
   Variants {
