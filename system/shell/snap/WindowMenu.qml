@@ -36,7 +36,7 @@ Scope {
     command: ["hyprctl", "-j", "cursorpos"]
     stdout: StdioCollector { onStreamFinished: { try { const c = JSON.parse(text); wm.at = Qt.point(c.x, c.y); Shell.close(); wm.open = true } catch (e) {} } }
   }
-  Connections { target: Shell; function onOpenChanged() { if (Shell.open !== "") wm.open = false } }
+  Connections { target: Shell; function onOpenChanged() { if (Shell.open !== "") wm.open = false } function onClosing() { wm.open = false } }
 
   readonly property var items: {
     if (!open || !win) return []

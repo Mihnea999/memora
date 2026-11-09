@@ -19,7 +19,8 @@ Singleton {
 
   function toggle(name) { open = (open === name) ? "" : name }
   function show(name) { open = name }
-  function close() { open = ""; menu = "" }
+  signal closing()               // everything shell-drawn goes away (the window menu too)
+  function close() { open = ""; menu = ""; closing() }
 
   // A status menu (Wi-Fi, Bluetooth, Battery, Sound; bar/StatusMenu.qml) at the
   // right of the menu bar, e.g. from Control Center.
