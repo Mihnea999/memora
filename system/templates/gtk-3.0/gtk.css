@@ -9,6 +9,9 @@ headerbar button.titlebutton {
    (Chromium) always draws its own at. */
 headerbar button.titlebutton image { -gtk-icon-transform: scale(0.6); }
 headerbar:hover button.titlebutton { color: rgba(0,0,0,0.55); }
+/* The Browser (Chromium) draws each button on its own and only tells it when the
+   pointer is on that button, not on the bar: show the symbol then too. */
+headerbar button.titlebutton:hover, button.titlebutton:hover { color: rgba(0,0,0,0.55); }
 headerbar button.titlebutton.close { background-color: #ff5f57; }
 headerbar button.titlebutton.minimize { background-color: #febc2e; }
 headerbar button.titlebutton.maximize { background-color: #28c840; }

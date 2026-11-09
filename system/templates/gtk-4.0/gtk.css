@@ -14,5 +14,8 @@ windowcontrols > button.close > image { background: #ff5f57; }
 windowcontrols > button.minimize > image { background: #febc2e; }
 windowcontrols > button.maximize > image { background: #28c840; }
 windowcontrols:hover > button > image { color: rgba(0,0,0,0.55); }
+/* The Browser (Chromium, GTK 4) says hover only for the button under the
+   pointer, not for the group: show the symbol then too. */
+windowcontrols > button:hover > image { color: rgba(0,0,0,0.55); }
 windowcontrols > button:backdrop > image { background: alpha(#{{fg}}, 0.16); }
 
