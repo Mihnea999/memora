@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Services.UPower
 
 // Which shell surface is open. Only one at a time, like a desktop: opening the
 // Control Center closes a menu, opening Launchpad closes Spotlight, and so on.
@@ -110,6 +111,29 @@ Singleton {
       if (fsProbe.running) fsProbe.again = true
       else fsProbe.running = true
     }
+  }
+
+  // ---- the battery: warnings when it runs low, Low Power while unplugged --------
+  readonly property var battery: UPower.displayDevice && UPower.displayDevice.isLaptopBattery ? UPower.displayDevice : null
+  readonly property int batteryPct: battery ? Math.round(battery.percentage * 100) : 100
+  readonly property bool discharging: !!battery && UPower.onBattery
+  property int warnedAt: 101          // the lowest level already warned about since it was last charging
+  onBatteryPctChanged: batteryWarn()
+  onDischargingChanged: {
+    if (!discharging) warnedAt = 101
+    else batteryWarn()
+    if (s.main && battery && Prefs.lowPowerOnBattery)
+      Quickshell.execDetached(["powerprofilesctl", "set", discharging ? "power-saver" : "balanced"])
+  }
+  function batteryWarn() {
+    if (!s.main || !discharging) return
+    const level = [5, 10, 20].find(l => batteryPct <= l && l < warnedAt)
+    if (level === undefined) return
+    warnedAt = level
+    const left = battery.timeToEmpty > 0 ? " · about " + Math.max(1, Math.round(battery.timeToEmpty / 60)) + " min left" : ""
+    Quickshell.execDetached(["notify-send", "-a", "Battery", "-i", "battery-caution", "-u", level <= 10 ? "critical" : "normal",
+      level <= 5 ? "Battery almost empty" : "Battery low",
+      batteryPct + "% remaining" + left + (level <= 5 ? ". Plug it in now, or it will go to sleep." : ".")])
   }
 
   // Leaving full screen puts a window back as it was. Chromium (the Browser,

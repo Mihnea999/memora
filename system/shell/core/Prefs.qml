@@ -15,6 +15,8 @@ Singleton {
   property string wallpaper: ""        // a picture of yours; empty: the set below
   property string wallpaperSet: "ember"   // ember | tide | horizon | dunes | silk, follows light/dark
   property var wallpaperRecent: []     // your pictures used lately, newest first
+  property bool batteryPercent: true   // the percentage next to the battery in the menu bar
+  property bool lowPowerOnBattery: false   // Low Power mode while unplugged
   // Motion
   property bool animations: true
   property real animationSpeed: 1.0    // 0.5 slow … 2 fast
@@ -54,7 +56,7 @@ Singleton {
   property bool snapAssist: true       // after docking a window, offer others for the rest of the screen
   property bool snapLayouts: true      // drag a window to the top middle for a choice of layouts
 
-  readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet", "wallpaperRecent",
+  readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet", "wallpaperRecent", "batteryPercent", "lowPowerOnBattery",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockDots", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
     "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "alertSound", "alertVolume", "startupSound", "uiSounds", "volumeFeedback", "updateCheck", "desktops", "snapAssist", "snapLayouts"]

@@ -72,11 +72,21 @@ PanelWindow {
             anchors.margins: 10
             spacing: 4
             Toggle {
+              visible: Host.hasWifi
               sym: Net.wifiEnabled ? "wifi" : "wifi-off"; title: "Wi-Fi"
               sub: !Net.wifiEnabled ? "Off" : (Net.online ? Net.label : "Not connected")
               on: Net.wifiEnabled
               onToggled: Sys.setWifi(!Net.wifiEnabled)
               onOpened: Shell.openStatus("wifi")
+            }
+            // No Wi-Fi in this computer (a desktop on a cable): its network instead.
+            Toggle {
+              visible: !Host.hasWifi
+              sym: "globe"; title: "Network"
+              sub: Net.online ? "Connected" : "Not connected"
+              on: Net.online
+              onToggled: { Shell.close(); Quickshell.execDetached(["memora-settings", "network"]) }
+              onOpened: { Shell.close(); Quickshell.execDetached(["memora-settings", "network"]) }
             }
             Toggle {
               sym: "bluetooth"; title: "Bluetooth"

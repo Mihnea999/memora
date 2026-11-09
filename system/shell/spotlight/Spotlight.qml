@@ -58,7 +58,7 @@ PanelWindow {
   readonly property var settingsPages: [
     ["Wi-Fi", "wifi"], ["Bluetooth", "bluetooth"], ["Sound", "sound"], ["Displays", "displays"],
     ["Appearance", "appearance"], ["Wallpaper", "wallpaper"], ["Dock & Menu Bar", "dock"], ["Windows & Desktops", "windows"], ["Animations", "animations"],
-    ["Keyboard", "keyboard"], ["Mouse & Trackpad", "mouse"], ["Battery & Energy", "battery"], ["Keep Awake", "battery"],
+    ["Keyboard", "keyboard"], ["Mouse & Trackpad", "mouse"], ["Trackpad", "mouse"], ["Battery", "battery"], ["Energy", "battery"], ["Keep Awake", "battery"],
     ["Date & Time", "datetime"], ["Users", "users"], ["Privacy & Security", "privacy"], ["Memora AI", "ai"], ["Software Update", "update"], ["About", "about"]
   ]
 

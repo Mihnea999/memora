@@ -220,6 +220,7 @@ PopupWindow {
         }
       }
       Sep {}
+      Action { text: "Show Percentage"; checked: Prefs.batteryPercent; onClicked: Prefs.set("batteryPercent", !Prefs.batteryPercent) }
       Action { text: "Battery Settings…"; onClicked: sm.settings("battery") }
     }
   }

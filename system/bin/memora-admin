@@ -4,6 +4,8 @@
 # so the password dialog says in plain words what is about to happen.
 #   memora-admin firewall on|off
 #   memora-admin update URL VERSION
+#   memora-admin charge-limit on|off   stop charging at 80% (or Lenovo's Conservation
+#                                      Mode), kept across restarts
 set -euo pipefail
 [[ $EUID -eq 0 ]] || exec pkexec "$(readlink -f "$0")" "$@"
 case "${1:-}" in
@@ -14,5 +16,15 @@ case "${1:-}" in
       *) exit 2 ;;
     esac ;;
   update) shift; exec /usr/share/memora/bin/memora-update --root-part "$@" ;;
-  *) echo "usage: memora-admin firewall on|off | update [URL VERSION]"; exit 2 ;;
+  charge-limit)
+    case "${2:-}" in on|off|apply) ;; *) exit 2 ;; esac
+    mkdir -p /etc/memora
+    [[ $2 == apply ]] && set -- "$1" "$(cat /etc/memora/charge-limit 2>/dev/null || echo off)" || echo "$2" > /etc/memora/charge-limit
+    for f in /sys/class/power_supply/BAT*/charge_control_end_threshold; do
+      [[ -w $f ]] && echo "$([[ $2 == on ]] && echo 80 || echo 100)" > "$f" || true
+    done
+    for f in /sys/bus/platform/drivers/ideapad_acpi/*/conservation_mode; do
+      [[ -w $f ]] && echo "$([[ $2 == on ]] && echo 1 || echo 0)" > "$f" || true
+    done ;;
+  *) echo "usage: memora-admin firewall on|off | update [URL VERSION] | charge-limit on|off"; exit 2 ;;
 esac

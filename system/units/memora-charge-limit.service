@@ -1,0 +1,10 @@
+[Unit]
+Description=Memora: keep the battery charge limit chosen in Battery settings
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/memora/bin/memora-admin charge-limit apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

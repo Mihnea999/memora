@@ -127,12 +127,26 @@ PanelWindow {
 
     BarButton {
       visible: UPower.displayDevice && UPower.displayDevice.isLaptopBattery
-      implicitWidth: 34
-      tip: visible ? Math.round(UPower.displayDevice.percentage * 100) + "%" : ""
-      Sym {
-        anchors.centerIn: parent; name: "battery"; width: 22; height: 22
-        level: UPower.displayDevice ? UPower.displayDevice.percentage : 1
-        charging: UPower.displayDevice && UPower.displayDevice.state === UPowerDeviceState.Charging
+      implicitWidth: batRow.implicitWidth + 12
+      tip: visible && !Prefs.batteryPercent ? Math.round(UPower.displayDevice.percentage * 100) + "%" : ""
+      Row {
+        id: batRow
+        anchors.centerIn: parent
+        spacing: 5
+        Txt {
+          visible: Prefs.batteryPercent
+          anchors.verticalCenter: parent.verticalCenter
+          text: UPower.displayDevice ? Math.round(UPower.displayDevice.percentage * 100) + "%" : ""
+          font.pixelSize: Theme.small + 0.5
+          // Low and not charging: red, as on a Mac.
+          color: UPower.displayDevice && UPower.displayDevice.percentage <= 0.1 && UPower.displayDevice.state !== UPowerDeviceState.Charging ? Theme.red : Theme.text
+        }
+        Sym {
+          anchors.verticalCenter: parent.verticalCenter
+          name: "battery"; width: 22; height: 22
+          level: UPower.displayDevice ? UPower.displayDevice.percentage : 1
+          charging: UPower.displayDevice && UPower.displayDevice.state === UPowerDeviceState.Charging
+        }
       }
       menu: "battery"
     }
@@ -146,8 +160,10 @@ PanelWindow {
 
     BarButton {
       tip: Net.label
-      Sym { anchors.centerIn: parent; name: Net.online ? "wifi" : "wifi-off"; level: Net.strength; width: 17; height: 17 }
-      menu: "wifi"
+      // A computer on a cable (no Wi-Fi in it) shows its network as a globe.
+      Sym { anchors.centerIn: parent; name: !Host.hasWifi ? "globe" : (Net.online ? "wifi" : "wifi-off"); level: Net.strength; width: Host.hasWifi ? 17 : 15; height: Host.hasWifi ? 17 : 15; opacity: Host.hasWifi || Net.online ? 1 : 0.45 }
+      menu: Host.hasWifi ? "wifi" : ""
+      onClicked: if (!Host.hasWifi) Apps.run("memora-settings network")
     }
 
     BarButton {

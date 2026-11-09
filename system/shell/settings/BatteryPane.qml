@@ -8,7 +8,7 @@ import qs.settings
 
 Kit.Page {
   id: p
-  title: "Battery & Energy"
+  title: Host.isLaptop ? "Battery" : "Energy"
   readonly property var dev: UPower.displayDevice
   readonly property bool has: dev && dev.isLaptopBattery
   property string profile: ""
@@ -25,14 +25,44 @@ Kit.Page {
   function hm(s) { if (!s) return ""; const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return (h ? h + " h " : "") + m + " min" }
 
   Kit.Group {
+    visible: p.has          // a desktop has nothing to show here
     Kit.Row {
       label: p.has ? Math.round(p.dev.percentage * 100) + "%" : "No battery"
       badge: "battery"; badgeColor: "#34c759"
       detail: !p.has ? "This computer runs on mains power" : (p.dev.state === UPowerDeviceState.Charging ? "Charging · full in " + p.hm(p.dev.timeToFull) : (p.dev.state === UPowerDeviceState.FullyCharged ? "Fully charged" : p.hm(p.dev.timeToEmpty) + " remaining"))
-      last: true
+      last: !p.has
       Sym { visible: p.has; name: "battery"; level: p.has ? p.dev.percentage : 0; width: 34; height: 34 }
     }
+    // How worn it is, from the battery itself.
+    Kit.Row {
+      visible: p.has && Host.batteryHealth > 0
+      label: "Health"
+      detail: Host.batteryHealth >= 80 ? "Normal" : "Holds noticeably less than when new"
+      last: !p.has || Host.batteryHealth <= 0
+      Kit.Value { text: Host.batteryHealth + "%" + (Host.batteryCycles > 0 ? " · " + Host.batteryCycles + " cycles" : "") }
+    }
   }
+  Kit.Group {
+    visible: p.has
+    header: "Charging"
+    // Stopping at 80% makes a battery that is mostly plugged in last years longer.
+    Kit.Row {
+      visible: Host.chargeLimit >= 0 || Host.conservation >= 0
+      label: "Optimized charging"
+      detail: Host.conservation >= 0 ? "Stops charging early (Lenovo Conservation Mode)" : "Stops charging at 80%"
+      Kit.Switch {
+        checked: Host.conservation === 1 || (Host.chargeLimit > 0 && Host.chargeLimit < 100)
+        onToggled: on => { chargeSet.exec(["memora-admin", "charge-limit", on ? "on" : "off"]) }
+      }
+    }
+    Kit.Row {
+      label: "Low Power on battery"
+      detail: "Uses less energy whenever it's unplugged"
+      last: true
+      Kit.Switch { checked: Prefs.lowPowerOnBattery; onToggled: on => Prefs.set("lowPowerOnBattery", on) }
+    }
+  }
+  Kit.Cmd { id: chargeSet; onDone: Host.refreshHardware() }
   Kit.Group {
     header: "Energy mode"
     visible: p.profile !== ""

@@ -16,8 +16,10 @@ ShellRoot {
   property string pane: (Quickshell.env("MEMORA_SETTINGS_PANE") || "wifi")
   property string search: ""
 
+  // What this computer has decides what's listed (Host.qml): a desktop has no
+  // Battery or Trackpad pane, one without Wi-Fi no Wi-Fi pane.
   readonly property var panes: [
-    { id: "wifi", title: "Wi-Fi", sym: "wifi", color: "#2f7bff", group: 1 },
+    { id: "wifi", title: "Wi-Fi", sym: "wifi", color: "#2f7bff", group: 1, hide: !Host.hasWifi },
     { id: "bluetooth", title: "Bluetooth", sym: "bluetooth", color: "#2f7bff", group: 1 },
     { id: "network", title: "Network", sym: "globe", color: "#3c9bf0", group: 1 },
     { id: "nearby", title: "Nearby Share", sym: "share", color: "#2f7bff", group: 1 },
@@ -30,8 +32,8 @@ ShellRoot {
     { id: "animations", title: "Animations", sym: "play", color: "#ff6b8a", group: 3 },
     { id: "displays", title: "Displays", sym: "display", color: "#2f7bff", group: 3 },
     { id: "keyboard", title: "Keyboard", sym: "keyboard", color: "#8a8d96", group: 4 },
-    { id: "mouse", title: "Mouse & Trackpad", sym: "mouse", color: "#8a8d96", group: 4 },
-    { id: "battery", title: "Battery & Energy", sym: "battery", color: "#34c759", group: 4 },
+    { id: "mouse", title: Host.hasTouchpad ? "Trackpad & Mouse" : "Mouse", sym: "mouse", color: "#8a8d96", group: 4 },
+    { id: "battery", title: Host.isLaptop ? "Battery" : "Energy", sym: "battery", color: "#34c759", group: 4 },
     { id: "datetime", title: "Date & Time", sym: "clock", color: "#8a8d96", group: 5 },
     { id: "users", title: "Users", sym: "user", color: "#2f7bff", group: 5 },
     { id: "privacy", title: "Privacy & Security", sym: "shield", color: "#34c759", group: 5 },
@@ -39,7 +41,7 @@ ShellRoot {
     { id: "update", title: "Software Update", sym: "download", color: "#2f7bff", group: 6 },
     { id: "about", title: "About", sym: "info", color: "#8a8d96", group: 6 }
   ]
-  readonly property var visiblePanes: search ? panes.filter(p => p.title.toLowerCase().indexOf(search.toLowerCase()) >= 0) : panes
+  readonly property var visiblePanes: panes.filter(p => !p.hide && (!search || p.title.toLowerCase().indexOf(search.toLowerCase()) >= 0))
 
   readonly property var paneFiles: ({
     wifi: "Wifi", bluetooth: "BluetoothPane", network: "NetworkPane", nearby: "NearbyPane", notifications: "NotificationsPane",

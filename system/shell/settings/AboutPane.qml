@@ -19,6 +19,7 @@ Kit.Page {
     }
   }
   Kit.Group {
+    Kit.Row { visible: Host.model !== ""; label: Host.isLaptop ? "Laptop" : "Computer"; Kit.Value { text: Host.model; width: 360; elide: Text.ElideRight } }
     Kit.Row { label: "Name"; Kit.Value { text: Host.hostname } }
     Kit.Row { label: "Processor"; Kit.Value { text: Host.cpu; width: 360; elide: Text.ElideLeft } }
     Kit.Row { label: "Memory"; Kit.Value { text: Host.memory } }
