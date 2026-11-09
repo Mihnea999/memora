@@ -49,3 +49,5 @@ ydotool
 adw-gtk-theme
 flatpak
 python-gobject
+python-cryptography
+python-zeroconf

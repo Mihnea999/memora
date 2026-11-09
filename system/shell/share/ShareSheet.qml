@@ -9,15 +9,16 @@ import qs.ui
 
 // Nearby Share: "Share…" on files (Files, the Gallery, `memora-shell share`)
 // opens this sheet with the phones and computers around you; click one and the
-// files go to it, with a ring filling around it, like AirDrop. They need the
-// LocalSend app (free on Android, iPhone, Windows, Mac and Linux) and the same
-// network. The sending and the service are bin/memora-share.
+// files go to it, with a ring filling around it, like AirDrop. Android phones
+// and tablets come through Quick Share (built in), everything else through the
+// LocalSend app, on the same network. The sending and the service are
+// bin/memora-share and nearby/quickshare.py.
 Scope {
   id: sheet
   readonly property var files: Shell.shareFiles
   readonly property bool active: files.length > 0
   property var devices: []
-  property var jobs: ({})             // device id -> { state: waiting|sending|done|error, progress, msg }
+  property var jobs: ({})             // device id -> { state: waiting|sending|done|error, progress, msg, pin }
 
   function close() { Shell.shareFiles = []; jobs = ({}) }
   function setJob(id, o) { const j = Object.assign({}, jobs); j[id] = Object.assign({}, j[id] || {}, o); jobs = j }
@@ -47,6 +48,7 @@ Scope {
       stdout: SplitParser {
         onRead: line => {
           if (line === "WAITING") sheet.setJob(devId, { state: "waiting" })
+          else if (line.startsWith("PIN ")) sheet.setJob(devId, { pin: line.slice(4) })
           else if (line.startsWith("PROGRESS ")) sheet.setJob(devId, { state: "sending", progress: parseInt(line.slice(9)) / 100 })
           else if (line === "DONE") sheet.setJob(devId, { state: "done", progress: 1 })
           else if (line.startsWith("ERROR ")) sheet.setJob(devId, { state: "error", msg: line.slice(6) })
@@ -177,7 +179,7 @@ Scope {
               Txt {
                 anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
                 width: parent.width; horizontalAlignment: Text.AlignHCenter
-                text: !dv.job ? "" : dv.job.state === "waiting" ? "Waiting…" : dv.job.state === "sending" ? Math.round(dv.job.progress * 100) + "%" : dv.job.state === "done" ? "Sent" : dv.job.msg
+                text: !dv.job ? dv.modelData.model === "Quick Share" ? "Quick Share" : "" : dv.job.state === "waiting" ? (dv.job.pin ? "PIN " + dv.job.pin : "Waiting…") : dv.job.state === "sending" ? Math.round(dv.job.progress * 100) + "%" : dv.job.state === "done" ? "Sent" : dv.job.msg
                 color: dv.job && dv.job.state === "error" ? Theme.red : (dv.job && dv.job.state === "done" ? Theme.green : Theme.textDim)
                 font.pixelSize: Theme.small - 1; elide: Text.ElideRight
               }
@@ -203,7 +205,7 @@ Scope {
           Txt { Layout.alignment: Qt.AlignHCenter; text: "Looking for devices nearby…"; font.weight: Font.Bold }
           Txt {
             Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-            text: "On the phone or computer, open LocalSend (free for Android, iPhone, Windows, Mac and Linux) on the same Wi-Fi."
+            text: "Android: on the same Wi-Fi, set Quick Share to Everyone. iPhone, Windows and Mac: open LocalSend (free) on the same Wi-Fi."
             color: Theme.textDim; font.pixelSize: Theme.small
           }
         }
