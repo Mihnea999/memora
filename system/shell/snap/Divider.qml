@@ -5,53 +5,65 @@ import Quickshell.Hyprland
 import qs.core
 import qs.ui
 
-// Windows docked side by side share the line between them: rest the pointer
-// on the gap and a handle appears; drag it and both windows resize together.
-// Double-click it to split the screen evenly again.
+// Windows docked next to each other share the line between them: rest the
+// pointer on the gap and a handle appears; drag it and every window along the
+// line resizes together (halves, thirds, a half beside two quarters, quarters,
+// windows above and below each other). Double-click it to split evenly again.
 Scope {
   id: dv
   // Keep window positions fresh (Hyprland has no event for resizing).
   Timer { interval: 1200; repeat: true; running: Prefs.snapping; onTriggered: if (!dv.dragging) Hyprland.refreshToplevels() }
   property bool dragging: false
 
-  // Pairs of windows on the current desktop that touch along a vertical seam.
-  readonly property var pairs: {
+  function geo(w) { const o = w.lastIpcObject; return { w: w, x: o.at[0], y: o.at[1], r: o.at[0] + o.size[0], b: o.at[1] + o.size[1], mon: o.monitor } }
+
+  // Seams on the current desktop: { vertical, at (the line), gap, from, to, before: [g], after: [g], mon }.
+  readonly property var seams: {
     const ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
-    const list = Apps.windows.filter(w => w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws
-      && w.lastIpcObject.floating && !w.lastIpcObject.fullscreen && !Apps.isMinimized(w))
-    const out = []
-    for (const a of list) for (const b of list) {
-      if (a === b) continue
-      const A = a.lastIpcObject, B = b.lastIpcObject
-      const gap = B.at[0] - (A.at[0] + A.size[0])
-      const sameRow = Math.abs(A.at[1] - B.at[1]) <= 8 && Math.abs(A.size[1] - B.size[1]) <= 8
-      if (!(gap >= 0 && gap <= 24 && sameRow)) continue
-      // Not while another window lies over the line between them.
-      const sx = A.at[0] + A.size[0], covered = list.some(c => {
-        if (c === a || c === b) return false
-        const C = c.lastIpcObject
-        return C.at[0] < sx + gap + 8 && C.at[0] + C.size[0] > sx - 8 && C.at[1] < A.at[1] + A.size[1] && C.at[1] + C.size[1] > A.at[1]
-      })
-      if (!covered) out.push({ a: a, b: b, x: sx, gap: gap, y: A.at[1], h: A.size[1], mon: A.monitor })
+    const list = Apps.windows.filter(w => w.lastIpcObject && w.lastIpcObject.at && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws
+      && w.lastIpcObject.floating && !w.lastIpcObject.fullscreen && !w.lastIpcObject.pinned && !Apps.isMinimized(w)).map(geo)
+    const out = [], seen = {}
+    for (const vertical of [true, false]) {
+      const lo = g => vertical ? g.x : g.y, hi = g => vertical ? g.r : g.b
+      const s0 = g => vertical ? g.y : g.x, s1 = g => vertical ? g.b : g.r
+      for (const a of list) {
+        const line = hi(a)
+        const key = (vertical ? "v" : "h") + Math.round(line / 6) + ":" + a.mon
+        if (seen[key]) continue
+        const before = list.filter(g => Math.abs(hi(g) - line) <= 4)
+        const after = list.filter(g => lo(g) - line >= 0 && lo(g) - line <= 24 && before.some(b => s0(b) < s1(g) - 8 && s0(g) < s1(b) - 8))
+        if (!after.length) continue
+        const near = before.filter(b => after.some(g => s0(b) < s1(g) - 8 && s0(g) < s1(b) - 8))
+        // Both sides span the same stretch of the line.
+        const from = Math.min(...near.map(s0)), to = Math.max(...near.map(s1))
+        const from2 = Math.min(...after.map(s0)), to2 = Math.max(...after.map(s1))
+        if (Math.abs(from - from2) > 10 || Math.abs(to - to2) > 10) continue
+        const gap = Math.min(...after.map(lo)) - line
+        // Not while another window lies over the line.
+        const covered = list.some(c => near.indexOf(c) < 0 && after.indexOf(c) < 0
+          && lo(c) < line + gap + 8 && hi(c) > line - 8 && s0(c) < to && s1(c) > from)
+        if (covered) continue
+        seen[key] = true
+        out.push({ vertical: vertical, at: line, gap: gap, from: from, to: to, before: near, after: after, mon: a.mon })
+      }
     }
     return out
   }
 
-  function sel(w) { return 'window = "address:0x' + String(w.address).replace(/^0x/, "") + '"' }
-  // Put the seam at screen x (logical), keeping both windows at least 280 wide.
-  function moveSeam(p, x) {
-    const A = p.a.lastIpcObject, B = p.b.lastIpcObject
-    const left = A.at[0], right = B.at[0] + B.size[0]
-    x = Math.max(left + 280, Math.min(right - 280 - p.gap, x))
-    const aw = Math.round(x - left), bx = Math.round(x + p.gap), bw = Math.round(right - bx)
+  function sel(g) { return 'window = "address:0x' + String(g.w.address).replace(/^0x/, "") + '"' }
+  // Put the seam at `pos` (screen pixels along its axis), keeping every window at least 240 wide/tall.
+  function moveSeam(s, pos) {
+    const lo = g => s.vertical ? g.x : g.y, hi = g => s.vertical ? g.r : g.b
+    const minPos = Math.max(...s.before.map(g => lo(g) + 240)), maxPos = Math.min(...s.after.map(g => hi(g) - 240)) - s.gap
+    pos = Math.round(Math.max(minPos, Math.min(maxPos, pos)))
+    const place = () => {
+      s.before.forEach(g => Hyprland.dispatch('hl.dsp.window.move({ x = ' + g.x + ', y = ' + g.y + ', ' + sel(g) + ' })'))
+      s.after.forEach(g => Hyprland.dispatch('hl.dsp.window.move({ x = ' + (s.vertical ? pos + s.gap : g.x) + ', y = ' + (s.vertical ? g.y : pos + s.gap) + ', ' + sel(g) + ' })'))
+    }
     // Hyprland resizes around the middle, so each window is put back in place
     // after it is resized (again a moment later, once the app has redrawn).
-    const place = () => {
-      Hyprland.dispatch('hl.dsp.window.move({ x = ' + left + ', y = ' + A.at[1] + ', ' + sel(p.a) + ' })')
-      Hyprland.dispatch('hl.dsp.window.move({ x = ' + bx + ', y = ' + B.at[1] + ', ' + sel(p.b) + ' })')
-    }
-    Hyprland.dispatch('hl.dsp.window.resize({ x = ' + aw + ', y = ' + A.size[1] + ', ' + sel(p.a) + ' })')
-    Hyprland.dispatch('hl.dsp.window.resize({ x = ' + bw + ', y = ' + B.size[1] + ', ' + sel(p.b) + ' })')
+    s.before.forEach(g => Hyprland.dispatch('hl.dsp.window.resize({ x = ' + (s.vertical ? pos - g.x : g.r - g.x) + ', y = ' + (s.vertical ? g.b - g.y : pos - g.y) + ', ' + sel(g) + ' })'))
+    s.after.forEach(g => Hyprland.dispatch('hl.dsp.window.resize({ x = ' + (s.vertical ? g.r - pos - s.gap : g.r - g.x) + ', y = ' + (s.vertical ? g.b - g.y : g.b - pos - s.gap) + ', ' + sel(g) + ' })'))
     place()
     settle.fn = place; settle.restart()
   }
@@ -63,7 +75,7 @@ Scope {
       id: win
       required property var modelData
       screen: modelData
-      readonly property var mine: dv.pairs.filter(p => {
+      readonly property var mine: dv.seams.filter(p => {
         const m = Hyprland.monitors.values.find(x => x.name === modelData.name)
         return m && p.mon === m.id
       })
@@ -74,7 +86,7 @@ Scope {
       WlrLayershell.layer: WlrLayer.Top
       WlrLayershell.namespace: "memora-snap"
       // Only the seams take the pointer.
-      mask: Region { regions: handles.children.map(h => h.region) }
+      mask: Region { regions: handles.children.filter(h => h.region).map(h => h.region) }
 
       Item {
         id: handles
@@ -84,39 +96,43 @@ Scope {
           delegate: Item {
             id: h
             required property var modelData
-            readonly property var p: modelData
-            property real dragX: 0
-            x: p.x - win.modelData.x + p.gap / 2 - width / 2 + (sd.active ? dragX : 0)
-            y: p.y - win.modelData.y
-            width: Math.max(12, p.gap + 6); height: p.h
+            readonly property var s: modelData
+            property real drag: 0
+            readonly property real thick: Math.max(12, s.gap + 6)
+            x: s.vertical ? s.at - win.modelData.x + s.gap / 2 - thick / 2 + (sd.active ? drag : 0) : s.from - win.modelData.x
+            y: s.vertical ? s.from - win.modelData.y : s.at - win.modelData.y + s.gap / 2 - thick / 2 + (sd.active ? drag : 0)
+            width: s.vertical ? thick : s.to - s.from
+            height: s.vertical ? s.to - s.from : thick
             property Region region: Region { item: h }
-            // The handle itself: a small glass pill in the middle of the seam.
+            // The handle itself: a small pill in the middle of the seam.
             Rectangle {
               anchors.centerIn: parent
-              width: 6; height: Math.min(80, parent.height * 0.25); radius: 3
+              width: h.s.vertical ? 6 : Math.min(80, parent.width * 0.25); height: h.s.vertical ? Math.min(80, parent.height * 0.25) : 6; radius: 3
               color: sd.active ? Theme.accent : (Theme.dark ? Qt.rgba(1, 1, 1, 0.75) : Qt.rgba(0, 0, 0, 0.45))
               opacity: hov.hovered || sd.active ? 1 : 0
               scale: hov.hovered || sd.active ? 1 : 0.6
               Behavior on opacity { NumberAnimation { duration: Theme.fast } }
               Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutBack } }
             }
-            HoverHandler { id: hov; cursorShape: Qt.SplitHCursor }
+            HoverHandler { id: hov; cursorShape: h.s.vertical ? Qt.SplitHCursor : Qt.SplitVCursor }
             DragHandler {
               id: sd
               target: null
-              xAxis.enabled: true; yAxis.enabled: false
-              onActiveChanged: { dv.dragging = active; if (!active) { h.dragX = 0; Qt.callLater(() => Hyprland.refreshToplevels()) } }
-              onTranslationChanged: if (active) { h.dragX = translation.x; throttle.restart() }
+              xAxis.enabled: h.s.vertical; yAxis.enabled: !h.s.vertical
+              onActiveChanged: { dv.dragging = active; if (!active) { h.drag = 0; Qt.callLater(() => Hyprland.refreshToplevels()) } }
+              onTranslationChanged: if (active) { h.drag = h.s.vertical ? translation.x : translation.y; throttle.restart() }
             }
-            Timer { id: throttle; interval: 30; onTriggered: dv.moveSeam(h.p, h.p.x + h.dragX) }
+            Timer { id: throttle; interval: 30; onTriggered: dv.moveSeam(h.s, h.s.at + h.drag) }
             TapHandler {
               onDoubleTapped: {
-                const A = h.p.a.lastIpcObject, B = h.p.b.lastIpcObject
-                dv.moveSeam(h.p, (A.at[0] + B.at[0] + B.size[0] - h.p.gap) / 2)
+                // Evenly: the line halfway between the two outer edges.
+                const lo = Math.min(...h.s.before.map(g => h.s.vertical ? g.x : g.y))
+                const hi = Math.max(...h.s.after.map(g => h.s.vertical ? g.r : g.b))
+                dv.moveSeam(h.s, (lo + hi - h.s.gap) / 2)
                 Qt.callLater(() => Hyprland.refreshToplevels())
               }
             }
-            Tip { text: "Drag to resize both · double-click to split evenly"; delay: 900 }
+            Tip { text: "Drag to resize the windows on both sides · double-click to split evenly"; delay: 900 }
           }
         }
       }

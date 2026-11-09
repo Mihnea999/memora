@@ -63,7 +63,7 @@ Kit.Page {
       Kit.Switch { checked: Prefs.snapAssist; onToggled: on => Prefs.set("snapAssist", on) }
     }
     Kit.Row {
-      label: "Resize side by side"; last: true
+      label: "Resize docked windows together"; detail: "Drag the line between them, side by side or above each other"; last: true
       Kit.Value { text: Prefs.snapping ? "On" : "Off" }
     }
   }
