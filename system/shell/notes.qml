@@ -280,7 +280,8 @@ ShellRoot {
       color: Theme.sidebar
       border.color: Theme.separator
       WindowControls { x: 14; y: 14; window: win; onCloseRequested: { app.saveNow(); Qt.quit() } }
-      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }
+      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) } }
       Column {
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 48 }
         spacing: 1
@@ -310,6 +311,7 @@ ShellRoot {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: 52
         DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
         WindowControls { visible: !app.showFolders; x: 10; y: 19; window: win; onCloseRequested: { app.saveNow(); Qt.quit() } }
         Row {
           anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
@@ -393,6 +395,7 @@ ShellRoot {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: 52
         DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
         Row {
           anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
           spacing: 2

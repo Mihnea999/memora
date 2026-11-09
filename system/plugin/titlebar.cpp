@@ -293,6 +293,21 @@ class CMemoraBar : public IHyprWindowDecoration {
     }
 
     void onButton(const IPointer::SButtonEvent& e, Event::SCallbackInfo& info) {
+        // Right click on the bar: the window's menu (the shell's snap/WindowMenu.qml).
+        if (e.button == BTN_RIGHT && e.state == WL_POINTER_BUTTON_STATE_PRESSED && pointerHere()) {
+            auto w = m_window.lock();
+            if (w && !w->hasPopupAt(g_pInputManager->getMouseCoordsInternal())) {
+                info.cancelled = true;
+                m_rightSwallowed = true;
+                Config::Supplementary::executor()->spawn(std::format("memora-shell window-menu 0x{:x}", (uintptr_t)w.get()));
+            }
+            return;
+        }
+        if (e.button == BTN_RIGHT && e.state != WL_POINTER_BUTTON_STATE_PRESSED && m_rightSwallowed) {
+            m_rightSwallowed = false;
+            info.cancelled = true;
+            return;
+        }
         if (e.button != BTN_LEFT)
             return;
         auto w = m_window.lock();
@@ -351,7 +366,7 @@ class CMemoraBar : public IHyprWindowDecoration {
     PHLWINDOWREF                          m_window;
     CBox                                  m_assigned;
     CHyprSignalListener                   m_button, m_move;
-    bool                                  m_hover = false, m_dragging = false, m_dragPending = false, m_swallowed = false;
+    bool                                  m_hover = false, m_dragging = false, m_dragPending = false, m_swallowed = false, m_rightSwallowed = false;
     int                                   m_pressed = -1;
     Vector2D                              m_downAt;
     std::chrono::steady_clock::time_point m_lastDown;

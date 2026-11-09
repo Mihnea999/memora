@@ -88,6 +88,7 @@ ShellRoot {
         anchors { left: lights.right; right: parent.right; top: parent.top }
         height: 40
         DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
       }
 
       Rectangle {
@@ -167,6 +168,7 @@ ShellRoot {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: 40
         DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
       }
       // Each pane settles in: a short rise and fade.
       Loader {

@@ -75,6 +75,7 @@ ShellRoot {
   Lock {}
   Snap {}
   Divider {}
+  WindowMenu {}
   Genie {}
   Alert {}
   ShareSheet {}

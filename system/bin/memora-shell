@@ -14,6 +14,8 @@ case "${1:-}" in
   osd) exec qs -p "$dir" ipc call osd "$2" "${3:-up}" ;;
   lock) exec qs -p "$dir" ipc call lock lock ;;
   snap) exec qs -p "$dir" ipc call snap "${2:-end}" ;;
+  window-menu) exec qs -p "$dir" ipc call windowmenu show "${2:-0}" ;;
+  window-menu-keys) exec qs -p "$dir" ipc call windowmenu keys "${2:-0}" ;;
   minimize) exec qs -p "$dir" ipc call shell minimize ;;
   project) exec qs -p "$dir" ipc call display project ;;
   super-up) exec qs -p "$dir" ipc call switcher superUp ;;

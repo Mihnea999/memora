@@ -116,6 +116,7 @@ ShellRoot {
       anchors { left: parent.left; right: parent.right; top: parent.top }
       height: 54
       DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
       WindowControls { x: 16; anchors.verticalCenter: parent.verticalCenter; window: win; onCloseRequested: Qt.quit() }
       Column {
         x: 90; anchors.verticalCenter: parent.verticalCenter

@@ -248,7 +248,8 @@ FloatingWindow {
     color: Theme.sidebar
     border.color: Theme.separator
     WindowControls { x: 14; y: 14; window: win; onCloseRequested: win.closeMe() }
-    Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }
+    Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) } }
 
     Flickable {
       anchors { fill: parent; topMargin: 44; bottomMargin: 8 }
@@ -355,6 +356,7 @@ FloatingWindow {
     anchors { left: side.right; right: parent.right; top: parent.top }
     height: 52
     DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
     Row {
       x: 14; anchors.verticalCenter: parent.verticalCenter
       spacing: 2

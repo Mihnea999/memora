@@ -59,6 +59,7 @@ b(S .. " + LEFT", run("memora-window key left"), "Left half, then two-thirds, th
 b(S .. " + RIGHT", run("memora-window key right"), "Right half, then two-thirds, then a third")
 b(S .. " + DOWN", run("memora-window key down"), "Bottom quarter, or back to its own size")
 b(S .. " + C", run("memora-window center"), "Center window")
+b("ALT + SPACE", run("memora-shell window-menu-keys"), "The window's menu (move, dock, desktops, close)")
 b(S .. " + ALT + A", run("memora-window arrange"), "Arrange all windows of this desktop")
 b(S .. " + SHIFT + LEFT", run("memora-window screen left"), "Move the window to the screen on the left")
 b(S .. " + SHIFT + RIGHT", run("memora-window screen right"), "Move the window to the screen on the right")

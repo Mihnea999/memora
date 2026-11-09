@@ -187,7 +187,8 @@ ShellRoot {
       color: Theme.sidebar
       border.color: Theme.separator
       WindowControls { x: 14; y: 14; window: win; onCloseRequested: Qt.quit() }
-      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }
+      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) } }
 
       Rectangle {
         id: search
@@ -242,7 +243,8 @@ ShellRoot {
     Item {
       id: main
       anchors { left: side.right; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 6 }
-      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() } }
+      Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
+        TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) } }
 
       Flickable {
         id: flick
