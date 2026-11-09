@@ -5,8 +5,10 @@ import Quickshell.Wayland
 import Quickshell.Io
 import qs.core
 import qs.ui
+import "Convert.js" as Conv
 
-// Spotlight: one field for apps, files, quick maths, settings and asking the AI.
+// Spotlight: one field for apps, files, quick answers (maths, units, money,
+// number bases, dates, the time in other cities), settings and asking the AI.
 PanelWindow {
   id: sp
   required property var modelData
@@ -60,12 +62,37 @@ PanelWindow {
     ["Date & Time", "datetime"], ["Users", "users"], ["Privacy & Security", "privacy"], ["Memora AI", "ai"], ["Software Update", "update"], ["About", "about"]
   ]
 
-  function calc(q) {
-    if (!/^[\d\s.+\-*/%()^,]+$/.test(q) || !/\d/.test(q) || !/[+\-*/%^]/.test(q)) return null
-    try {
-      const v = Function('"use strict"; return (' + q.replace(/\^/g, "**").replace(/,/g, ".") + ")")()
-      return (typeof v === "number" && isFinite(v)) ? String(Math.round(v * 1e10) / 1e10) : null
-    } catch (e) { return null }
+  // Exchange rates (the European Central Bank's, via frankfurter.app), fetched
+  // once a day when a money question needs them; kept in ~/.cache.
+  property var rates: null
+  FileView {
+    path: Quickshell.env("HOME") + "/.cache/memora/rates.json"
+    watchChanges: true; printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { const r = JSON.parse(text()); if (r && r.rates) sp.rates = r } catch (e) {} }
+  }
+  Process {
+    id: rateProc
+    command: ["bash", "-c", "d=~/.cache/memora; mkdir -p $d; curl -sfL --max-time 8 'https://api.frankfurter.dev/v1/latest?base=EUR' -o $d/rates.json.new && jq -e '.rates.USD' $d/rates.json.new >/dev/null && mv $d/rates.json.new $d/rates.json; rm -f $d/rates.json.new"]
+  }
+  property double ratesAsked: 0
+  function needRates() {
+    const fresh = rates && rates.date && (Date.now() - Date.parse(rates.date)) < 3 * 86400000
+    if (fresh || rateProc.running || Date.now() - ratesAsked < 60000) return
+    ratesAsked = Date.now(); rateProc.running = true
+  }
+  readonly property var answers: {
+    const a = Conv.answer(query, rates, new Date())
+    const money = rates ? Conv.answer(query, null, new Date()) : a   // a money question asks for rates when they're missing
+    if (money.length && money[0].needRates) Qt.callLater(needRates)   // or more than a few days old
+    return a.length && a[0].needRates ? [] : a
+  }
+  // The time somewhere else: "time in tokyo", "ora in londra".
+  property var clock: null            // { city, text }
+  Process {
+    id: clockProc
+    property string city
+    stdout: StdioCollector { onStreamFinished: { const t = text.trim(); sp.clock = t ? { city: clockProc.city, text: t } : null } }
   }
 
   readonly property var results: {
@@ -78,8 +105,8 @@ PanelWindow {
     if (!q) return []
     const lq = q.toLowerCase()
     const out = []
-    const c = calc(q)
-    if (c !== null) out.push({ kind: "calc", title: c, sub: q + " =", icon: "org.gnome.Calculator", run: () => Apps.run("printf %s '" + c + "' | wl-copy") })
+    answers.forEach(a => out.push({ kind: "calc", title: a.title, sub: a.sub + "   ·   Enter copies", icon: "org.gnome.Calculator", run: () => Quickshell.execDetached(["wl-copy", "--", a.copy]) }))
+    if (clock && Conv.timeQuery(q) === clock.city) out.push({ kind: "calc", title: clock.text.split("|")[0], sub: clock.text.split("|")[1], iconName: "preferences-system-time", run: () => Quickshell.execDetached(["wl-copy", "--", clock.text.split("|")[0]]) })
     const apps = Apps.all.filter(e => (Apps.displayName(e) + " " + e.name).toLowerCase().indexOf(lq) >= 0 || (e.keywords || []).some(k => k.toLowerCase().indexOf(lq) >= 0) || (e.genericName || "").toLowerCase().indexOf(lq) >= 0)
     apps.sort((a, b) => (a.name.toLowerCase().startsWith(lq) ? 0 : 1) - (b.name.toLowerCase().startsWith(lq) ? 0 : 1))
     apps.slice(0, 6).forEach(e => out.push({ kind: "app", title: Apps.displayName(e), sub: e.comment || e.genericName || "Application", icon: e.id, run: () => Apps.launch(e.id) }))
@@ -100,6 +127,21 @@ PanelWindow {
     interval: 220
     onTriggered: {
       const q = sp.query.trim()
+      const city = Conv.timeQuery(q)
+      if (city.length >= 3) {
+        clockProc.running = false; clockProc.city = city
+        // Zones are named after cities (Asia/Tokyo, America/New_York); a few names people type differently.
+        const alias = { "new york": "new_york", "ny": "new_york", "nyc": "new_york", "la": "los_angeles", "los angeles": "los_angeles", "sf": "los_angeles",
+          "san francisco": "los_angeles", "londra": "london", "paris": "paris", "roma": "rome", "viena": "vienna", "varsovia": "warsaw", "praga": "prague",
+          "moscova": "moscow", "beijing": "shanghai", "china": "shanghai", "japonia": "tokyo", "japan": "tokyo", "india": "kolkata", "delhi": "kolkata",
+          "mumbai": "kolkata", "bucuresti": "bucharest", "bucurești": "bucharest", "romania": "bucharest", "româmia": "bucharest", "uk": "london",
+          "germany": "berlin", "germania": "berlin", "spain": "madrid", "spania": "madrid", "italy": "rome", "italia": "rome", "usa": "new_york", "sua": "new_york",
+          "australia": "sydney", "dubai": "dubai", "chicago": "chicago", "toronto": "toronto", "mexic": "mexico_city", "mexico": "mexico_city" }
+        const key = (alias[city] || city).replace(/\s+/g, "_")
+        clockProc.command = ["bash", "-c", "z=$(timedatectl list-timezones 2>/dev/null | grep -i -m1 \"/$1$\"); [ -n \"$z\" ] || exit 0; " +
+          "TZ=$z date '+%H:%M|%A %-d %B, '\"${z##*/}\" | tr _ ' '", "_", key]
+        clockProc.running = true
+      } else sp.clock = null
       if (q.length < 2) { sp.files = []; return }
       finder.running = false
       finder.command = ["bash", "-c", "find \"$HOME\" -maxdepth 4 -not -path '*/.*' -iname \"*$1*\" 2>/dev/null | head -20", "_", q]
