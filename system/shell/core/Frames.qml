@@ -27,16 +27,15 @@ Singleton {
 
   // Windows that never get a frame of their own: the shell's helpers, PiP.
   function skip(o) {
-    return !o || !o.class || Apps.helperClasses.indexOf(o.class) >= 0 || o.pinned || (o.title || "").match(/^Picture[ -]in[ -]picture/i)
+    const c = o ? (o.cls || o.class) : ""
+    return !o || !c || Apps.helperClasses.indexOf(c) >= 0 || o.pinned || (o.title || "").match(/^Picture[ -]in[ -]picture/i)
   }
   function monOf(o) { return Hyprland.monitors.values.find(m => m.id === o.monitor) || null }
   function descOf(m) { const o = m && m.lastIpcObject; return o ? (o.description || m.name) : (m ? m.name : "") }
 
-  Connections {
-    target: Apps
-    enabled: f.on
-    function onWindowsChanged() { track.restart() }
-  }
+  // Windows move and resize without events: look every second, and soon after
+  // anything happens to a window.
+  Timer { interval: 1000; repeat: true; running: f.on; onTriggered: f.remember() }
   Timer { id: track; interval: 250; onTriggered: f.remember() }
   function remember() {
     const k = Object.assign({}, known)
@@ -126,6 +125,7 @@ Singleton {
       } else if (ev.name === "openwindow") {
         f.placeReopened(ev.data.split(",")[0], ev.data.split(",")[2])
       }
+      if (["openwindow", "closewindow", "movewindowv2", "activewindowv2"].indexOf(ev.name) >= 0) track.restart()
     }
   }
   // A screen came back: its windows go home, where they were on it.
