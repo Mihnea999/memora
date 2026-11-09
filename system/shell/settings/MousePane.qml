@@ -10,8 +10,12 @@ Kit.Page {
   Kit.Group {
     header: "Pointer"
     Kit.Row {
-      label: "Tracking speed"; last: true
+      label: "Tracking speed"
       Slider { implicitWidth: 220; sym: "arrow"; value: (prefs.get("speed", 0) + 1) / 2; onMoved: v => prefs.set("speed", Math.round((v * 2 - 1) * 100) / 100) }
+    }
+    Kit.Row {
+      label: "Shake the pointer to find it"; detail: "It grows for a moment"; last: true
+      Kit.Switch { checked: prefs.get("shake_locate", true); onToggled: on => prefs.set("shake_locate", on) }
     }
   }
   Kit.Group {

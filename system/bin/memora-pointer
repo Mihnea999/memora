@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# memora-pointer find — the pointer grows for a moment and shrinks back, so it is
+# easy to find (the Memora plugin runs this when the mouse is shaken). Off with
+# "shake_locate": false in ~/.config/memora/input.json (Settings > Mouse).
+[[ ${1:-} == find ]] || { echo "usage: memora-pointer find"; exit 2; }
+jq -e '.shake_locate == false' "$HOME/.config/memora/input.json" >/dev/null 2>&1 && exit 0
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/memora-pointer.lock"; flock -n 9 || exit 0
+theme="${XCURSOR_THEME:-$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")}"; theme="${theme:-Adwaita}"
+size="${XCURSOR_SIZE:-24}"
+for s in 40 64 88; do hyprctl setcursor "$theme" "$s" >/dev/null; sleep 0.04; done
+sleep 1.0
+for s in 64 40 "$size"; do hyprctl setcursor "$theme" "$s" >/dev/null; sleep 0.05; done

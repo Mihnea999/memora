@@ -16,6 +16,8 @@
 #include <hyprland/src/devices/ITouch.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/output/Monitor.hpp>
+#include <hyprland/src/managers/input/InputManager.hpp>
+#include <hyprland/src/config/supplementary/executor/Executor.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -160,7 +162,37 @@ void memoraTouchInit(HANDLE) {
         if (std::chrono::steady_clock::now() - g_lastTouch > std::chrono::milliseconds(600))
             setMode(false);
     };
-    g_mouseMove   = Event::bus()->m_events.input.mouse.move.listen([pointerUsed](const auto&, auto&) { pointerUsed(); });
+    // Shaking the pointer (quick left-right swings) makes it big for a moment,
+    // to find it on a large screen (memora-pointer find; Settings > Mouse).
+    g_mouseMove = Event::bus()->m_events.input.mouse.move.listen([pointerUsed](const auto&, auto&) {
+        pointerUsed();
+        static double                                lastX = 0, travel = 0;
+        static int                                   dir = 0, swings = 0;
+        static std::chrono::steady_clock::time_point firstSwing, lastShake;
+        const auto                                   now = std::chrono::steady_clock::now();
+        const double                                 x   = g_pInputManager->getMouseCoordsInternal().x;
+        const double                                 dx  = x - lastX;
+        lastX                                            = x;
+        if (std::abs(dx) < 2)
+            return;
+        const int d = dx > 0 ? 1 : -1;
+        travel += std::abs(dx);
+        if (d != dir) {
+            dir = d;
+            if (swings == 0 || now - firstSwing > std::chrono::milliseconds(700)) {
+                swings     = 0;
+                travel     = 0;
+                firstSwing = now;
+            }
+            swings++;
+        }
+        if (swings >= 5 && travel > 700 && now - lastShake > std::chrono::seconds(2)) {
+            swings    = 0;
+            travel    = 0;
+            lastShake = now;
+            Config::Supplementary::executor()->spawn("memora-pointer find");
+        }
+    });
     g_mouseButton = Event::bus()->m_events.input.mouse.button.listen([pointerUsed](const auto&, auto&) { pointerUsed(); });
 }
 
