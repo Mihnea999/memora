@@ -74,6 +74,7 @@ b(S .. " + mouse:273", hl.dsp.window.resize(), "Resize window", { mouse = true }
 b("CTRL + " .. S .. " + UP", shell("toggle overview"), "Desktops and windows (Mission Control)")
 b("F3", shell("toggle overview"), "Desktops and windows (Mission Control)", { non_consuming = true })
 b(S .. " + S", shell("toggle overview"), "Desktops and windows (Mission Control)")
+b("CTRL + " .. S .. " + DOWN", shell("desktop expose"), "The windows of the app in front (App Exposé)")
 b("CTRL + " .. S .. " + RIGHT", shell("desktop next"), "Next desktop")
 b("CTRL + " .. S .. " + LEFT", shell("desktop prev"), "Previous desktop")
 b("CTRL + " .. S .. " + SHIFT + RIGHT", shell("desktop carryNext"), "Take the window to the next desktop")

@@ -386,7 +386,7 @@ PanelWindow {
       if (Apps.removable(e.id)) items.push({ text: "Uninstall…", action: () => Apps.uninstall(e.id) })
     }
     if (ws.length) {
-      items.push({ text: "Show All Windows", action: () => ws.forEach(w => Apps.isMinimized(w) ? Apps.restore(w) : null) })
+      items.push({ text: "Show All Windows", action: () => Apps.run("memora-shell desktop expose '" + e.id.replace(/'/g, "") + "'") })
       items.push({ separator: true })
       items.push({ text: "Quit", action: () => Apps.quit(e.id) })
     }

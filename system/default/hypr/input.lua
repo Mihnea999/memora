@@ -28,7 +28,8 @@ hl.config({
   },
 })
 
--- Three fingers: sideways between desktops, up for Mission Control, down to leave it.
+-- Three fingers: sideways between desktops, up for Mission Control, down for the
+-- app's windows (App Exposé) or to leave what is open.
 hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 hl.gesture({ fingers = 3, direction = "up", action = function() hl.exec_cmd("memora-shell show overview") end })
-hl.gesture({ fingers = 3, direction = "down", action = function() hl.exec_cmd("memora-shell close") end })
+hl.gesture({ fingers = 3, direction = "down", action = function() hl.exec_cmd("memora-shell swipeDown") end })

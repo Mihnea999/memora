@@ -40,6 +40,14 @@ Scope {
     go(n)
   }
   function add() { Prefs.set("desktops", count + 1) }
+  function nameOf(n) { const v = (Prefs.desktopNames || [])[n - 1]; return v ? v : "Desktop " + n }
+  function rename(n, name) {
+    const a = (Prefs.desktopNames || []).slice()
+    while (a.length < n) a.push("")
+    a[n - 1] = name.trim()
+    Prefs.set("desktopNames", a)
+  }
+  function moveTo(w, n) { Hyprland.dispatch('hl.dsp.window.move({ workspace = "' + n + '", window = "address:0x' + String(w.address).replace(/^0x/, "") + '", follow = false })') }
   // Removing a desktop moves its windows to the one before it.
   function remove(n) {
     if (count <= 1) return
@@ -60,6 +68,13 @@ Scope {
     function carry(n: string): void { dk.carry(parseInt(n)) }
     function carryNext(x: string): void { dk.carry(dk.current + 1) }
     function carryPrev(x: string): void { dk.carry(dk.current - 1) }
+    // App Exposé: every window of one app (the one in front when none is named).
+    function expose(cls: string): void {
+      let c = cls && cls !== "0" ? cls : ""   // memora-shell passes "0" for none
+      if (!c) { const a = Hyprland.activeToplevel; c = a ? Apps.classOf(Apps.windows.find(x => x.address === a.address) || a) : "" }
+      if (!c) return
+      dk.app = c; Shell.show("overview")
+    }
   }
 
   // ---- the little indicator when switching -----------------------------------
@@ -86,7 +101,7 @@ Scope {
       Glass {
         id: pill
         anchors.centerIn: parent
-        width: dots.implicitWidth + 32; height: 34
+        width: dots.implicitWidth + 32 + (pillName.visible ? pillName.implicitWidth + 12 : 0); height: 34
         radius: 17
         fill: Theme.glassStrong
         shadowSize: 18
@@ -94,9 +109,16 @@ Scope {
         scale: dk.showPill ? 1 : 0.9
         Behavior on opacity { NumberAnimation { id: pillFade; duration: Theme.normal } }
         Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutBack } }
+        Txt {
+          id: pillName
+          visible: ((Prefs.desktopNames || [])[dk.current - 1] || "") !== ""
+          anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+          text: dk.nameOf(dk.current); font.pixelSize: Theme.small; font.weight: Font.Bold
+        }
         Row {
           id: dots
-          anchors.centerIn: parent
+          x: 16
+          anchors.verticalCenter: parent.verticalCenter
           spacing: 7
           Repeater {
             model: dk.count
@@ -116,8 +138,33 @@ Scope {
 
   // ---- the overview -------------------------------------------------------------
   readonly property bool open: Shell.open === "overview"
-  onOpenChanged: if (open) { Hyprland.refreshToplevels(); Hyprland.refreshWorkspaces(); dk.shownDesk = dk.current }
+  onOpenChanged: {
+    if (open) { Hyprland.refreshToplevels(); Hyprland.refreshWorkspaces(); dk.shownDesk = dk.current; dk.query = ""; dk.sel = -1 }
+    else Qt.callLater(() => { if (!dk.open) dk.app = "" })
+  }
   property int shownDesk: 1
+  property string app: ""            // App Exposé: only this app's windows
+  property string query: ""          // typed to find a window on any desktop
+  property int sel: -1               // the window chosen with the arrow keys
+  // The windows shown, laid out the way they sit on the screen: in bands from
+  // top to bottom, each band from left to right.
+  function spatial(list, cols) {
+    const c = w => [w.lastIpcObject.at[0] + w.lastIpcObject.size[0] / 2, w.lastIpcObject.at[1] + w.lastIpcObject.size[1] / 2]
+    const byY = list.slice().sort((a, b) => c(a)[1] - c(b)[1])
+    const out = []
+    for (let i = 0; i < byY.length; i += cols) out.push(...byY.slice(i, i + cols).sort((a, b) => c(a)[0] - c(b)[0]))
+    return out
+  }
+  readonly property var shownWindows: {
+    if (!open) return []
+    const q = query.toLowerCase()
+    let ws
+    if (app) ws = Apps.windowsOf(app).filter(w => !Apps.isMinimized(w))
+    else if (q) ws = Apps.windows.filter(w => !Apps.isMinimized(w) && ((w.title || "").toLowerCase().indexOf(q) >= 0 || Apps.nameFor(Apps.classOf(w)).toLowerCase().indexOf(q) >= 0))
+    else ws = windowsOn(shownDesk).filter(w => !Apps.isMinimized(w))
+    return ws.filter(w => w.lastIpcObject && w.lastIpcObject.at)
+  }
+  readonly property var minimizedShown: open && app ? Apps.windowsOf(app).filter(w => Apps.isMinimized(w)) : []
 
   Variants {
     model: Quickshell.screens
@@ -147,10 +194,25 @@ Scope {
       Item {
         anchors.fill: parent
         focus: dk.open
-        Keys.onEscapePressed: Shell.close()
-        Keys.onLeftPressed: dk.shownDesk = Math.max(1, dk.shownDesk - 1)
-        Keys.onRightPressed: dk.shownDesk = Math.min(dk.count, dk.shownDesk + 1)
-        Keys.onReturnPressed: { dk.go(dk.shownDesk); Shell.close() }
+        Keys.onPressed: ev => {
+          const n = field.list.length
+          if (ev.key === Qt.Key_Escape) { if (dk.query) dk.query = ""; else Shell.close() }
+          else if ((ev.modifiers & Qt.ControlModifier) && ev.key === Qt.Key_Left) dk.shownDesk = Math.max(1, dk.shownDesk - 1)
+          else if ((ev.modifiers & Qt.ControlModifier) && ev.key === Qt.Key_Right) dk.shownDesk = Math.min(dk.count, dk.shownDesk + 1)
+          else if (ev.key === Qt.Key_Right || ev.key === Qt.Key_Tab) dk.sel = n ? (dk.sel + 1) % n : -1
+          else if (ev.key === Qt.Key_Left || ev.key === Qt.Key_Backtab) dk.sel = n ? (dk.sel - 1 + n) % n : -1
+          else if (ev.key === Qt.Key_Down) dk.sel = n ? Math.min(n - 1, dk.sel + field.cols) : -1
+          else if (ev.key === Qt.Key_Up) dk.sel = n ? Math.max(0, dk.sel - field.cols) : -1
+          else if (ev.key === Qt.Key_Return || ev.key === Qt.Key_Enter) {
+            const w = field.list[dk.sel >= 0 ? dk.sel : 0]
+            if (w) Apps.focus(w); else if (!dk.query) dk.go(dk.shownDesk)
+            Shell.close()
+          }
+          else if (ev.key === Qt.Key_Backspace) dk.query = dk.query.slice(0, -1)
+          else if (ev.text && ev.text.length === 1 && ev.text >= " " && !(ev.modifiers & (Qt.ControlModifier | Qt.MetaModifier))) { dk.query += ev.text; dk.sel = 0 }
+          else return
+          ev.accepted = true
+        }
         TapHandler { onTapped: { if (dk.shownDesk !== dk.current) dk.go(dk.shownDesk); Shell.close() } }
       }
 
@@ -208,19 +270,39 @@ Scope {
                 Tip { text: "Remove this desktop (its windows move over)" }
               }
             }
+            // Its name; double-click to rename it.
             Txt {
+              id: deskName
+              visible: !nameEdit.visible
               anchors { top: thumb.bottom; topMargin: 6; horizontalCenter: thumb.horizontalCenter }
-              text: "Desktop " + desk.num; color: "#ffffff"; font.pixelSize: Theme.small
+              width: Math.min(implicitWidth, thumb.width)
+              text: dk.nameOf(desk.num); color: "#ffffff"; font.pixelSize: Theme.small
               font.weight: desk.active ? Font.Bold : Font.Normal
+              TapHandler { onDoubleTapped: { nameEdit.text = (Prefs.desktopNames || [])[desk.num - 1] || ""; nameEdit.visible = true; nameEdit.forceActiveFocus() } }
+            }
+            TextInput {
+              id: nameEdit
+              visible: false
+              anchors { top: thumb.bottom; topMargin: 6; horizontalCenter: thumb.horizontalCenter }
+              width: thumb.width; clip: true
+              horizontalAlignment: TextInput.AlignHCenter
+              color: "#ffffff"; font.family: Theme.font; font.pixelSize: Theme.small
+              selectionColor: Theme.accent
+              Rectangle { anchors.fill: parent; anchors.margins: -3; z: -1; radius: 5; color: Qt.rgba(1, 1, 1, 0.15) }
+              Keys.onReturnPressed: { dk.rename(desk.num, text); visible = false }
+              Keys.onEscapePressed: visible = false
+              onActiveFocusChanged: if (!activeFocus && visible) { dk.rename(desk.num, text); visible = false }
             }
           }
         }
-        // Add a desktop
+        // Add a desktop (drop a window here: a new desktop with it).
         Rectangle {
+          id: plus
           width: Math.min(strip.tw, 90); height: strip.th
           radius: 10
-          color: ah.hovered ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.08)
-          border.color: Qt.rgba(1, 1, 1, 0.22)
+          color: ah.hovered || ov.dropOn === dk.count + 1 ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.08)
+          border.color: ov.dropOn === dk.count + 1 ? Theme.green : Qt.rgba(1, 1, 1, 0.22)
+          border.width: ov.dropOn === dk.count + 1 ? 3 : 1
           Sym { anchors.centerIn: parent; name: "plus"; width: 22; height: 22; color: "#ffffff" }
           HoverHandler { id: ah; cursorShape: Qt.PointingHandCursor }
           TapHandler { onTapped: dk.add() }
@@ -232,20 +314,22 @@ Scope {
       Item {
         id: field
         anchors { left: parent.left; right: parent.right; top: strip.bottom; bottom: parent.bottom; margins: 60; topMargin: 50; bottomMargin: 120 }
-        readonly property var wins: dk.open ? dk.windowsOn(dk.shownDesk).filter(w => !Apps.isMinimized(w)) : []
+        readonly property var wins: dk.shownWindows
         readonly property int n: wins.length
+        readonly property var list: dk.spatial(wins, cols)
         readonly property int cols: Math.max(1, Math.ceil(Math.sqrt(n * width / Math.max(1, height) * 0.6)))
         readonly property int rows: Math.max(1, Math.ceil(n / cols))
         Txt {
           anchors.centerIn: parent; visible: field.n === 0 && dk.open
-          text: "No windows on this desktop"; color: Qt.rgba(1, 1, 1, 0.7)
+          text: dk.query ? "No window matches “" + dk.query + "”" : (dk.app ? "No open windows" : "No windows on this desktop"); color: Qt.rgba(1, 1, 1, 0.7)
         }
         Repeater {
-          model: field.wins
+          model: field.list
           delegate: Item {
             id: card
             required property var modelData
             required property int index
+            readonly property bool chosen: dk.sel === index
             readonly property var o: modelData.lastIpcObject
             // Its slot in the grid, keeping the window's shape.
             readonly property real cw: field.width / field.cols
@@ -277,7 +361,7 @@ Scope {
               color: "transparent"
               border.width: 3
               border.color: Theme.accent
-              opacity: ch2.hovered && !card.dragging ? 1 : 0
+              opacity: (ch2.hovered || card.chosen) && !card.dragging ? 1 : 0
               Behavior on opacity { NumberAnimation { duration: Theme.fast } }
             }
             ScreencopyView {
@@ -297,6 +381,24 @@ Scope {
             Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Theme.easing } }
             HoverHandler { id: ch2; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: { Apps.focus(card.modelData); Shell.close() } }
+            TapHandler { acceptedButtons: Qt.MiddleButton; onTapped: Apps.close(card.modelData) }
+            // Another desktop (searching, App Exposé): which one.
+            Rectangle {
+              readonly property int d: card.o.workspace ? card.o.workspace.id : 0
+              visible: d > 0 && d !== dk.shownDesk && ov.shown > 0.9
+              anchors { right: parent.right; top: parent.top; margins: 8 }
+              width: cdl.implicitWidth + 14; height: 20; radius: 10; color: Theme.glassSolid
+              Txt { id: cdl; anchors.centerIn: parent; text: dk.nameOf(parent.d); font.pixelSize: Theme.small - 1 }
+            }
+            // Close, on hover.
+            Rectangle {
+              visible: ch2.hovered && !card.dragging && ov.shown > 0.9
+              x: -9; y: -9; width: 24; height: 24; radius: 12
+              color: xh.hovered ? Theme.red : (Theme.dark ? "#3a3a3e" : "#e5e5ea"); border.color: Qt.rgba(0, 0, 0, 0.25)
+              Sym { anchors.centerIn: parent; name: "close"; width: 9; height: 9; color: xh.hovered ? "#ffffff" : Theme.text }
+              HoverHandler { id: xh }
+              TapHandler { onTapped: Apps.close(card.modelData) }
+            }
             DragHandler {
               id: dragger
               target: null
@@ -309,8 +411,8 @@ Scope {
                 card.dragging = active
                 if (!active) { card.dx = 0; card.dy = 0 }
                 if (!active) {
-                  if (ov.dropOn > 0 && ov.dropOn !== dk.shownDesk)
-                    Hyprland.dispatch('hl.dsp.window.move({ workspace = "' + ov.dropOn + '", window = "address:0x' + String(card.modelData.address).replace(/^0x/, "") + '", follow = false })')
+                  if (ov.dropOn === dk.count + 1) { const nn = dk.count + 1; dk.add(); dk.moveTo(card.modelData, nn) }
+                  else if (ov.dropOn > 0 && ov.dropOn !== dk.shownDesk) dk.moveTo(card.modelData, ov.dropOn)
                   ov.dropOn = 0
                   Qt.callLater(() => Hyprland.refreshToplevels())
                 }
@@ -318,7 +420,7 @@ Scope {
               onCentroidChanged: if (active) {
                 const p = card.mapToItem(strip, centroid.position.x, centroid.position.y)
                 let hit = 0
-                for (let i = 0; i < dk.count; i++) {
+                for (let i = 0; i <= dk.count; i++) {   // the last one is "+"
                   const x0 = i * (strip.tw + strip.spacing)
                   if (p.x >= x0 - 8 && p.x <= x0 + strip.tw + 8 && p.y >= -60 && p.y <= strip.th + 40) hit = i + 1
                 }
@@ -328,10 +430,39 @@ Scope {
           }
         }
       }
+      // App Exposé: the app's minimized windows, along the bottom.
+      Row {
+        anchors { bottom: parent.bottom; bottomMargin: 66; horizontalCenter: parent.horizontalCenter }
+        spacing: 14
+        opacity: ov.shown
+        Repeater {
+          model: dk.minimizedShown
+          delegate: Rectangle {
+            required property var modelData
+            width: 150; height: 96; radius: 10
+            color: mh.hovered ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.09)
+            border.color: Qt.rgba(1, 1, 1, 0.22)
+            AppIcon { anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 12 } width: 44; height: 44; appId: Apps.classOf(parent.modelData) }
+            Txt { anchors { bottom: parent.bottom; bottomMargin: 8; horizontalCenter: parent.horizontalCenter } width: parent.width - 16; horizontalAlignment: Text.AlignHCenter; text: parent.modelData.title || ""; color: "#ffffff"; font.pixelSize: Theme.small - 1 }
+            HoverHandler { id: mh; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: { Apps.restore(parent.modelData); Shell.close() } }
+          }
+        }
+      }
+      // What was typed.
+      Rectangle {
+        visible: dk.query !== ""
+        anchors { horizontalCenter: parent.horizontalCenter; top: strip.bottom; topMargin: 12 }
+        width: qt.implicitWidth + 40; height: 32; radius: 16
+        color: Qt.rgba(1, 1, 1, 0.16); border.color: Qt.rgba(1, 1, 1, 0.25)
+        Sym { name: "search"; width: 12; height: 12; color: "#ffffff"; anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } }
+        Txt { id: qt; anchors.centerIn: parent; anchors.horizontalCenterOffset: 8; text: dk.query; color: "#ffffff" }
+      }
       Txt {
         anchors { bottom: parent.bottom; bottomMargin: 40; horizontalCenter: parent.horizontalCenter }
         opacity: ov.shown * 0.75
-        text: "Click a window to go to it · drag it onto a desktop to move it · Esc to close"
+        text: dk.app ? Apps.nameFor(dk.app) + " · click a window to go to it · Esc to close"
+          : "Type to find a window · click one to go to it · drag it onto a desktop, or onto + for a new one · Esc to close"
         color: "#ffffff"; font.pixelSize: Theme.small
       }
     }

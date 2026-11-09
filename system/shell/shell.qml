@@ -105,6 +105,8 @@ ShellRoot {
     function semiFullscreen(): void { Apps.semiFullscreen() }
     // Nearby Share for these files (one path per line).
     function share(paths: string): void { Shell.close(); Shell.shareFiles = paths.split("\n").filter(p => p !== "") }
+    // Three fingers down: leave what is open, or show the app's windows.
+    function swipeDown(): void { if (Shell.open !== "") Shell.close(); else Quickshell.execDetached(["memora-shell", "desktop", "expose", ""]) }
     function pin(): void { Apps.dispatch('hl.dsp.window.pin({ action = "toggle" })') }
     // After screens changed (plugged in or out, scale, the Dock moved): windows follow.
     function refit(): void { Quickshell.execDetached(["memora-window", "refit"]) }
