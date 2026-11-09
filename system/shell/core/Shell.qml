@@ -63,6 +63,9 @@ Singleton {
   // Dock (Apps, volume, the desktop indicator): less when the Dock is at a side.
   readonly property real bottomInset: Prefs.dockPosition === "left" || Prefs.dockPosition === "right" ? 30 : Prefs.dockSize + 46
 
+  // A swipe up from the bottom edge of a touch screen: the Dock shows itself.
+  signal dockPeek()
+
   // Show Desktop: the windows are aside (desktops/ShowDesktop.qml); requestBack
   // asks for them to come back (a click on an app in the Dock).
   property bool desktopShown: false

@@ -46,6 +46,9 @@
 #include <hyprland/src/desktop/view/window/WindowPresentation.hpp>
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/devices/IPointer.hpp>
+#include <hyprland/src/devices/ITouch.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
+#include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/managers/SeatManager.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/config/supplementary/executor/Executor.hpp>
@@ -236,6 +239,25 @@ class CMemoraBar : public IHyprWindowDecoration {
         }
         g_pHyprOpenGL->scissor(ctx, nullptr);
     }
+
+    // Touch: is this point on the bar, and on which button (-1 none)?
+    bool touchHits(const Vector2D& p) {
+        if (!validMapped(m_window))
+            return false;
+        const auto B = globalBox();
+        return p.x >= B.x && p.y >= B.y && p.x < B.x + B.w && p.y < B.y + BAR_H;
+    }
+    int  touchButton(const Vector2D& p) {
+        // A finger needs more room than a pointer.
+        const auto R = p - globalBox().pos();
+        for (int i = 0; i < 3; i++) {
+            const double cx = PAD + i * (BTN + BTN_GAP) + BTN / 2.0, cy = BAR_H / 2.0;
+            if (std::hypot(R.x - cx, R.y - cy) <= BTN / 2.0 + 9)
+                return i;
+        }
+        return -1;
+    }
+    void touchAct(int which) { act(which); }
 
   private:
     // Which button is under the pointer (0 close, 1 minimize, 2 zoom), -1 none.
@@ -462,7 +484,90 @@ static std::string sizesJSON(eHyprCtlOutputFormat, std::string) {
 static SP<SHyprCtlCommand> g_sizesCmd;
 
 static HANDLE              g_handle = nullptr;
-static CHyprSignalListener g_open, g_title, g_active;
+static CHyprSignalListener g_open, g_title, g_active, g_tdown, g_tmotion, g_tup;
+
+// Touch on a title bar Memora draws: tap a button, double-tap to fill the
+// screen, or drag the window with the finger (the pointer follows the finger,
+// so docking at the edges works as with the mouse).
+namespace {
+    WP<CMemoraBar>                        g_touchBar;
+    int32_t                               g_touchID = -1, g_touchBtn = -1;
+    bool                                  g_touchDragging = false;
+    Vector2D                              g_touchAt;
+    std::chrono::steady_clock::time_point g_lastTap;
+    Vector2D touchPoint(const Vector2D& norm) {
+        auto mon = Desktop::focusState()->monitor();
+        return mon ? mon->m_position + norm * mon->m_size : norm;
+    }
+}
+static void touchInit() {
+    g_tdown = Event::bus()->m_events.input.touch.down.listen([](const ITouch::SDownEvent& e, Event::SCallbackInfo& info) {
+        const auto p = touchPoint(e.pos);
+        for (auto& b : g_bars) {
+            auto bar = b.lock();
+            if (!bar || !bar->touchHits(p))
+                continue;
+            info.cancelled = true;
+            g_touchBar     = bar;
+            g_touchID      = e.touchID;
+            g_touchAt      = p;
+            g_touchBtn     = bar->touchButton(p);
+            g_touchDragging = false;
+            if (auto w = bar->owner()) {
+                Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_CLICK);
+                if (w->isFloating())
+                    Desktop::windowState()->raise(w);
+            }
+            return;
+        }
+    });
+    g_tmotion = Event::bus()->m_events.input.touch.motion.listen([](const ITouch::SMotionEvent& e, Event::SCallbackInfo& info) {
+        if (e.touchID != g_touchID)
+            return;
+        info.cancelled = true;
+        const auto p   = touchPoint(e.pos);
+        auto       bar = g_touchBar.lock();
+        if (!bar)
+            return;
+        if (!g_touchDragging && g_touchBtn < 0 && std::abs(p.x - g_touchAt.x) + std::abs(p.y - g_touchAt.y) > 8) {
+            g_touchDragging = true;
+            Pointer::mgr()->warpTo(g_touchAt);
+            g_pInputManager->simulateMouseMovement();
+            if (auto w = bar->owner())
+                g_layoutManager->beginDragTarget(w->layoutTarget(), MBIND_MOVE);
+            Config::Supplementary::executor()->spawn("memora-shell snap begin");
+        }
+        if (g_touchDragging) {
+            Pointer::mgr()->warpTo(p);
+            g_pInputManager->simulateMouseMovement();
+        }
+    });
+    g_tup = Event::bus()->m_events.input.touch.up.listen([](const ITouch::SUpEvent& e, Event::SCallbackInfo& info) {
+        if (e.touchID != g_touchID)
+            return;
+        info.cancelled = true;
+        auto bar       = g_touchBar.lock();
+        g_touchID      = -1;
+        if (g_touchDragging) {
+            g_layoutManager->endDragTarget();
+            g_touchDragging = false;
+            Config::Supplementary::executor()->spawn("memora-shell snap end");
+            return;
+        }
+        if (!bar)
+            return;
+        if (g_touchBtn >= 0) {
+            bar->touchAct(g_touchBtn);
+            return;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now - g_lastTap < std::chrono::milliseconds(400)) {
+            g_lastTap = {};
+            bar->touchAct(2);   // double tap: fill the screen
+        } else
+            g_lastTap = now;
+    });
+}
 
 static void maybeAddBar(PHLWINDOW w) {
     if (!w || !wantsSystemBar(w))
@@ -485,6 +590,7 @@ static void forBar(PHLWINDOW w, auto&& fn) {
 
 void memoraTitlebarInit(HANDLE handle) {
     g_handle = handle;
+    touchInit();
     g_sizesCmd = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "memora-sizes", .exact = true, .fn = sizesJSON});
     g_open   = Event::bus()->m_events.window.open.listen([](PHLWINDOW w) { maybeAddBar(w); });
     g_title  = Event::bus()->m_events.window.title.listen([](PHLWINDOW w) { forBar(w, [](auto& bar) { bar->titleChanged(); }); });
@@ -506,6 +612,9 @@ void memoraTitlebarExit() {
     g_open.reset();
     g_title.reset();
     g_active.reset();
+    g_tdown.reset();
+    g_tmotion.reset();
+    g_tup.reset();
     g_pHyprRenderer->context().m_pass.removeAllOfType("CMemoraBarPass");
     g_bars.clear();
     publishBars();

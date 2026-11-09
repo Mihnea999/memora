@@ -74,7 +74,8 @@ PanelWindow {
   onInUseChanged: if (!inUse && revealed) leave.restart()
   onConcealableChanged: revealed = false
   Timer { id: arrive; interval: dock.hideMode === "always" && !dock.fullscreen ? 60 : 180; onTriggered: { dock.revealed = true; leave.restart() } }
-  Timer { id: leave; interval: 450; onTriggered: if (!dock.inUse && !edgeHover.hovered) dock.revealed = false; else if (!dock.inUse) restart() }
+  Connections { target: Shell; function onDockPeek() { if (dock.hidden && Hyprland.focusedMonitor && Hyprland.focusedMonitor.name === dock.modelData.name) { dock.revealed = true; leave.interval = 2500; leave.restart() } } }
+  Timer { id: leave; interval: 450; onTriggered: { interval = 450; if (!dock.inUse && !edgeHover.hovered) dock.revealed = false; else if (!dock.inUse) restart() } }
 
   anchors { bottom: true; top: vertical; left: pos !== "right"; right: pos !== "left" }
   implicitHeight: 170

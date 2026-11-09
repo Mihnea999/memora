@@ -17,6 +17,9 @@
 // titlebar.cpp: Mac-like title bars for apps that leave their frame to the system.
 void memoraTitlebarInit(HANDLE handle);
 void memoraTitlebarExit();
+// touch.cpp: input mode (touch or pointer) and touch-screen gestures.
+void memoraTouchInit(HANDLE handle);
+void memoraTouchExit();
 
 static HANDLE                                         PHANDLE = nullptr;
 static CHyprSignalListener                            g_open, g_close, g_key;
@@ -47,11 +50,13 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             IPC::Socket2::sock()->postEvent({"memorakeyup", "alt"});
     });
     memoraTitlebarInit(handle);
+    memoraTouchInit(handle);
     return {"memora-minimize", "Minimize buttons send windows to the Memora Dock; title bars for apps without their own", "Memora", "1.1"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
     memoraTitlebarExit();
+    memoraTouchExit();
     g_state.clear();
     g_open.reset();
     g_close.reset();

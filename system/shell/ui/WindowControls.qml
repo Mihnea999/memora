@@ -11,8 +11,10 @@ Item {
   id: wc
   property var window                       // the FloatingWindow
   signal closeRequested()
-  // 16px circles 28px apart: the same in every app (the Browser draws its own so).
-  width: row.width; height: 16
+  // 16px circles 28px apart: the same in every app (the Browser draws its own so);
+  // with a finger, 20px circles 36px apart.
+  readonly property real d: Input.touch ? 20 : 16
+  width: row.width; height: d
   readonly property bool over: hov.hovered || layouts.hovered
   // Zones and layouts (default/zones.json) for the shape of this window's screen.
   property var zoneData: ({ zones: {}, layouts: {} })
@@ -35,12 +37,12 @@ Item {
 
   Row {
     id: row
-    spacing: 12
+    spacing: Input.touch ? 16 : 12
     Repeater {
       model: [["close", Theme.red, "close"], ["min", Theme.yellow, "minus"], ["zoom", Theme.green, "plus"]]
       delegate: Rectangle {
         required property var modelData
-        width: 16; height: 16; radius: 8
+        width: wc.d; height: wc.d; radius: wc.d / 2
         color: modelData[1]
         border.color: Qt.rgba(0, 0, 0, 0.15)
         scale: press.pressed ? 0.88 : 1

@@ -27,6 +27,8 @@ Singleton {
   property bool hasWifi: true
   property bool hasLid: false
   property bool hasBattery: false
+  property bool hasTouchscreen: false
+  property bool hasAccelerometer: false
   readonly property bool isLaptop: hasBattery || hasLid || ["laptop", "notebook", "convertible", "tablet", "handset"].indexOf(chassis) >= 0
   property int batteryHealth: 0        // % of the design capacity it still holds (0: unknown)
   property int batteryCycles: -1
@@ -54,7 +56,9 @@ Singleton {
         cat $b/cycle_count 2>/dev/null || echo -1
         cat $b/charge_control_end_threshold 2>/dev/null || echo -1
       else echo 0; echo 0; echo -1; echo -1; fi
-      cat /sys/bus/platform/drivers/ideapad_acpi/*/conservation_mode 2>/dev/null | head -1 || echo -1`]
+      cm=$(cat /sys/bus/platform/drivers/ideapad_acpi/*/conservation_mode 2>/dev/null | head -1); echo "\${cm:--1}"
+      udevadm info --export-db 2>/dev/null | grep -q 'ID_INPUT_TOUCHSCREEN=1' && echo 1 || echo 0
+      ls /sys/bus/iio/devices/iio:device*/in_accel_x_raw >/dev/null 2>&1 && echo 1 || echo 0`]
     stdout: StdioCollector {
       onStreamFinished: {
         const f = text.split("\n").map(s => s.trim())
@@ -64,6 +68,7 @@ Singleton {
         if (isNaN(h.batteryCycles)) h.batteryCycles = -1
         if (isNaN(h.chargeLimit)) h.chargeLimit = -1
         h.conservation = f[9] === "1" ? 1 : f[9] === "0" ? 0 : -1
+        h.hasTouchscreen = f[10] === "1"; h.hasAccelerometer = f[11] === "1"
       }
     }
   }

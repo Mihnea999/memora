@@ -55,6 +55,25 @@ ShellRoot {
     target: Hyprland
     function onRawEvent(ev) { if (["monitoraddedv2", "monitorremovedv2", "monitorremoved"].indexOf(ev.name) >= 0) refitLater.restart() }
   }
+  // Touch-screen gestures, recognised by the Memora plugin (plugin/touch.cpp).
+  readonly property var gestures: ({
+    "edge-bottom-short": () => Shell.dockPeek(),
+    "edge-bottom-long": () => Shell.toggle("overview"),
+    "edge-top-left": () => { Shell.menuScreen = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : ""; Shell.toggle("calendar") },
+    "edge-top-right": () => { Shell.menuScreen = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : ""; Shell.toggle("control") },
+    "edge-left": () => Quickshell.execDetached(["memora-shell", "desktop", "prev"]),
+    "edge-right": () => Quickshell.execDetached(["memora-shell", "desktop", "next"]),
+    "three-up": () => Shell.show("overview"),
+    "three-down": () => { if (Shell.open !== "") Shell.close(); else Quickshell.execDetached(["memora-shell", "desktop", "expose", ""]) },
+    "three-left": () => Quickshell.execDetached(["memora-shell", "desktop", "next"]),
+    "three-right": () => Quickshell.execDetached(["memora-shell", "desktop", "prev"]),
+    "pinch-in": () => Shell.toggle("launchpad"),
+    "pinch-out": () => Quickshell.execDetached(["memora-shell", "show-desktop"])
+  })
+  Connections {
+    target: Hyprland
+    function onRawEvent(ev) { if (ev.name === "memoragesture" && root.gestures[ev.data]) root.gestures[ev.data]() }
+  }
   Connections {
     target: Prefs
     function onDockPositionChanged() { refitLater.restart() }

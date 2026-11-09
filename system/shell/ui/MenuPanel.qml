@@ -24,7 +24,7 @@ Glass {
         readonly property bool sep: !!modelData.separator
         readonly property bool on: modelData.enabled !== false
         Layout.fillWidth: true
-        implicitHeight: sep ? 11 : 26
+        implicitHeight: sep ? 11 : (Input.touch ? 36 : 26)   // finger-sized when touching
         implicitWidth: row.implicitWidth + 24
 
         Rectangle {
