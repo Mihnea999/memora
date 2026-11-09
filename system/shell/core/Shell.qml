@@ -59,6 +59,11 @@ Singleton {
   // Dock (Apps, volume, the desktop indicator): less when the Dock is at a side.
   readonly property real bottomInset: Prefs.dockPosition === "left" || Prefs.dockPosition === "right" ? 30 : Prefs.dockSize + 46
 
+  // Show Desktop: the windows are aside (desktops/ShowDesktop.qml); requestBack
+  // asks for them to come back (a click on an app in the Dock).
+  property bool desktopShown: false
+  property bool requestBack: false
+
   // The app chosen in the app switcher (Super+Tab), and Q/H pressed meanwhile.
   property string switcherApp: ""
   property string switcherAction: ""

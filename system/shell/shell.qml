@@ -78,6 +78,7 @@ ShellRoot {
   Notch {}
   Project {}
   Desktops {}
+  ShowDesktop { id: deskAside }
 
   IpcHandler {
     target: "osd"
@@ -111,10 +112,7 @@ ShellRoot {
     // After screens changed (plugged in or out, scale, the Dock moved): windows follow.
     function refit(): void { Quickshell.execDetached(["memora-window", "refit"]) }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
-    function showDesktop(): void {
-      const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)
-      if (shown.length) shown.forEach(w => Apps.minimize(w.address))
-      else Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w))
-    }
+    // The windows glide aside to the edges, and back (desktops/ShowDesktop.qml).
+    function showDesktop(): void { deskAside.toggle() }
   }
 }

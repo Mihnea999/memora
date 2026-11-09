@@ -1,2 +1,3 @@
 module qs.desktops
 Desktops 1.0 Desktops.qml
+ShowDesktop 1.0 ShowDesktop.qml

@@ -224,6 +224,7 @@ Singleton {
   // back. Clicking the app already in front leaves it as it is.
   function activate(appId) {
     if (appId === "memora-launchpad") return Shell.toggle("launchpad")
+    if (Shell.desktopShown) Shell.requestBack = true
     const ws = windowsOf(appId)
     if (ws.length === 0) return launch(appId)
     const shown = ws.filter(w => !isMinimized(w))
