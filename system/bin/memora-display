@@ -4,7 +4,9 @@
 #   memora-display set KEY VALUE                    main NAME | arrange right|left|above|below
 #                                                   | scale.NAME 1.25 | res.NAME 2560x1440@144
 #   memora-display apply                            apply ~/.config/memora/displays.json now
-#   memora-display state                            print the settings and the screens (JSON)
+#                                                   | scale.NAME default (back to the screen's own)
+#   memora-display state                            print the settings and the screens (JSON),
+#                                                   each with its default scale and the scales it can use
 # Writes ~/.config/hypr/monitors.lua (loaded at login) and applies it live.
 set -euo pipefail
 cfg="$HOME/.config/memora/displays.json"
@@ -14,15 +16,32 @@ mkdir -p "$(dirname "$cfg")" "$(dirname "$out")"
 
 monitors() { hyprctl monitors all -j; }
 
+# Scales: the ones Hyprland accepts for a screen (its size in logical pixels is
+# whole, in 1/120 steps), and the default, like a Mac's "Default for display":
+# from the pixel density (about 115 pixels per logical inch), keeping at least
+# 800 logical pixels of height. A screen without a known size (a VM) gets 1.
+SCALES='
+  def steps: [120, 150, 160, 180, 192, 200, 210, 240, 270, 300, 320, 360];
+  def valid($m): steps | map(select((($m.width * 120) % .) == 0 and (($m.height * 120) % .) == 0) | . / 120);
+  def ppi($m): if (($m.physicalWidth // 0) > 0 and ($m.physicalHeight // 0) > 0)
+    then (($m.width * $m.width + $m.height * $m.height) | sqrt) / ((($m.physicalWidth * $m.physicalWidth + $m.physicalHeight * $m.physicalHeight) | sqrt) / 25.4)
+    else 0 end;
+  def cap($m): ([1, (([$m.width, $m.height] | min) / 800)] | max);
+  def defscale($m): (if ppi($m) > 0 then ppi($m) / 115 else 1 end) as $t
+    | ([[1, $t] | max, cap($m)] | min) as $t
+    | ((valid($m) | map(select(. <= cap($m) + 0.001))) as $v | if ($v | length) > 0 then ($v | min_by((. - $t) | fabs)) else 1 end);
+  def short: (. * 1000000 | round) / 1000000;
+'
+
 apply() {
   local mons conf
   mons="$(monitors)"; conf="$(cat "$cfg")"
   # One Lua line per screen, with explicit positions (logical pixels).
-  jq -r --argjson c "$conf" '
-    def lw(m): ((m.width / (($c.scale[m.name] // m.scale) // 1)) | floor);
-    def lh(m): ((m.height / (($c.scale[m.name] // m.scale) // 1)) | floor);
+  jq -r --argjson c "$conf" "$SCALES"'
+    def scaleOf(m): ($c.scale[m.name] // defscale(m)) | short;
+    def lw(m): ((m.width / scaleOf(m)) | floor);
+    def lh(m): ((m.height / scaleOf(m)) | floor);
     def modeOf(m): ($c.res[m.name] // "preferred");
-    def scaleOf(m): ($c.scale[m.name] // 1);
     (map(select(.name | test("^FALLBACK") | not))) as $all
     | (if ($c.main != "" and ($all | map(.name) | index($c.main))) then $c.main else ($all[0].name) end) as $mainName
     | ($all | map(select(.name == $mainName))[0]) as $main
@@ -60,7 +79,8 @@ set_key() { # KEY VALUE
   local k=$1 v=$2 tmp
   tmp="$(mktemp)"
   case "$k" in
-    scale.*) jq --arg n "${k#scale.}" --argjson v "$v" '.scale[$n] = $v' "$cfg" > "$tmp" ;;
+    scale.*) if [[ $v == default ]]; then jq --arg n "${k#scale.}" 'del(.scale[$n])' "$cfg" > "$tmp"
+             else jq --arg n "${k#scale.}" --argjson v "$v" '.scale[$n] = $v' "$cfg" > "$tmp"; fi ;;
     res.*) jq --arg n "${k#res.}" --arg v "$v" '.res[$n] = $v' "$cfg" > "$tmp" ;;
     main|arrange|mode) jq --arg k "$k" --arg v "$v" '.[$k] = $v' "$cfg" > "$tmp" ;;
     *) rm -f "$tmp"; echo "unknown setting $k"; exit 2 ;;
@@ -72,6 +92,8 @@ case "${1:-}" in
   mode) [[ ${2:-} =~ ^(extend|mirror|main|second)$ ]] || { echo "mode: extend|mirror|main|second"; exit 2; }; set_key mode "$2"; apply ;;
   set) set_key "$2" "$3"; apply ;;
   apply) apply ;;
-  state) jq -n --argjson c "$(cat "$cfg")" --argjson m "$(monitors)" '{config: $c, monitors: $m}' ;;
+  state) jq -n --argjson c "$(cat "$cfg")" --argjson m "$(monitors)" "$SCALES"'
+    {config: $c, monitors: ($m | map(. as $s | . + {defaultScale: (defscale($s) | short),
+      scales: (valid($s) | map({scale: short, w: ($s.width / . | round), h: ($s.height / . | round)}))}))}' ;;
   *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

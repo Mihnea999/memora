@@ -103,12 +103,59 @@ Kit.Page {
           onPicked: v => p.set("res." + g.modelData.name, g.curRes + "@" + v)
         }
       }
-      Kit.Row {
-        label: "Scale"; last: true
-        Kit.Choice {
-          value: Math.round((p.cfg.scale[g.modelData.name] || g.modelData.scale || 1) * 100) / 100
-          options: [{ text: "100%", value: 1 }, { text: "125%", value: 1.25 }, { text: "150%", value: 1.5 }, { text: "175%", value: 1.75 }, { text: "200%", value: 2 }]
-          onPicked: v => p.set("scale." + g.modelData.name, v)
+      // Text size, like a Mac: from Larger Text to More Space, each showing the
+      // size the screen then looks like (memora-display state lists the scales
+      // Hyprland accepts and the screen's own default).
+      Item {
+        id: ts
+        Layout.fillWidth: true
+        implicitHeight: 150
+        readonly property real cur: Math.round((p.cfg.scale[g.modelData.name] || g.modelData.scale || 1) * 1000) / 1000
+        readonly property real def: g.modelData.defaultScale || 1
+        // Up to five, centred on the default: two bigger, two smaller (never below
+        // 1, never so big the screen looks smaller than 960 wide).
+        readonly property var opts: {
+          const all = (g.modelData.scales || []).filter(x => x.w >= 960 || x.scale === 1)
+          if (!all.length) return []
+          let i = all.findIndex(x => Math.abs(x.scale - ts.def) < 0.01)
+          if (i < 0) i = 0
+          let lo = Math.max(0, i - 2), hi = Math.min(all.length, lo + 5)
+          lo = Math.max(0, hi - 5)
+          return all.slice(lo, hi).reverse()
+        }
+        Txt { x: 12; y: 10; text: "Text size"; }
+        Txt { anchors { right: parent.right; rightMargin: 12 } y: 10; text: "Larger Text  ←→  More Space"; color: Theme.textDim; font.pixelSize: Theme.small }
+        Row {
+          x: 12; y: 36
+          spacing: 10
+          Repeater {
+            model: ts.opts
+            delegate: Item {
+              id: card
+              required property var modelData
+              readonly property bool on: Math.abs(modelData.scale - ts.cur) < 0.01
+              readonly property bool isDefault: Math.abs(modelData.scale - ts.def) < 0.01
+              width: Math.min(110, (ts.width - 24 - 40) / 5); height: 104
+              // A small screen: the bigger the text, the bigger the window and bar in it.
+              Rectangle {
+                id: scr
+                width: parent.width; height: width * 0.62; radius: 6
+                color: Theme.field; clip: true
+                border.width: card.on ? 2 : 1; border.color: card.on ? Theme.accent : Theme.separator
+                readonly property real k: Math.min(1.6, card.modelData.scale / Math.max(1, ts.opts.length ? ts.opts[ts.opts.length - 1].scale : 1))
+                Rectangle { width: parent.width; height: 3 * scr.k; color: Theme.textFaint; opacity: 0.6 }
+                Rectangle {
+                  x: 6; y: 3 * scr.k + 4; width: Math.min(parent.width - 10, 26 * scr.k); height: Math.min(parent.height - 14, 18 * scr.k)
+                  radius: 2; color: Theme.dark ? "#3a3a40" : "#ffffff"; border.color: Theme.separator
+                }
+              }
+              Txt { anchors { top: scr.bottom; topMargin: 5; horizontalCenter: scr.horizontalCenter } text: card.modelData.w + " × " + card.modelData.h; font.pixelSize: Theme.small - 0.5; font.weight: card.on ? Font.Bold : Font.Normal }
+              Txt { anchors { top: scr.bottom; topMargin: 21; horizontalCenter: scr.horizontalCenter } visible: card.isDefault; text: "Default"; color: Theme.textDim; font.pixelSize: Theme.small - 1 }
+              HoverHandler { cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: p.set("scale." + g.modelData.name, card.isDefault ? "default" : card.modelData.scale) }
+              Tip { text: "Looks like " + card.modelData.w + " × " + card.modelData.h }
+            }
+          }
         }
       }
     }
