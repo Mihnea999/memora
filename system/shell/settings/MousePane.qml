@@ -24,4 +24,12 @@ Kit.Page {
     header: "Mouse"
     Kit.Row { label: "Natural scrolling"; last: true; Kit.Switch { checked: prefs.get("mouse_natural", false); onToggled: on => prefs.set("mouse_natural", on) } }
   }
+  Kit.Group {
+    header: "Windows"
+    Kit.Row {
+      label: "Focus follows the pointer"; last: true
+      detail: "Off: a window takes the keyboard when you click it, as on a Mac"
+      Kit.Switch { checked: prefs.get("focus_follows", false); onToggled: on => prefs.set("focus_follows", on) }
+    }
+  }
 }

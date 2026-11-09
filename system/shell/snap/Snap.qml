@@ -78,17 +78,23 @@ Scope {
   // One look at the pointer, the focused window and its monitor.
   Process {
     id: probe
-    command: ["bash", "-c", "hyprctl -j cursorpos; echo '\x1e'; hyprctl -j activewindow; echo '\x1e'; hyprctl -j monitors"]
+    command: ["bash", "-c", "hyprctl -j cursorpos; echo '\x1e'; hyprctl -j clients; echo '\x1e'; hyprctl -j monitors"]
     stdout: StdioCollector {
       onStreamFinished: {
         const parts = text.split("\x1e\n")
-        let c, w, ms
-        try { c = JSON.parse(parts[0]); w = JSON.parse(parts[1]); ms = JSON.parse(parts[2]) } catch (e) { return }
+        let c, cl, ms
+        try { c = JSON.parse(parts[0]); cl = JSON.parse(parts[1]); ms = JSON.parse(parts[2]) } catch (e) { return }
         if (!snap.held) return
         snap.cx = c.x; snap.cy = c.y
-        if (!w || !w.address || !w.floating || w.fullscreen) { snap.zone = ""; return }
-        if (snap.startAt === null || snap.addr !== w.address) { snap.addr = w.address; snap.startAt = w.at; return }
-        if (!snap.moving && (Math.abs(w.at[0] - snap.startAt[0]) > 4 || Math.abs(w.at[1] - snap.startAt[1]) > 4)) {
+        // The window being dragged: the one that moved since the button went
+        // down (with click to focus it need not be the focused one).
+        if (snap.startAt === null) { const m0 = {}; cl.forEach(x => m0[x.address] = x.at); snap.startAt = m0; return }
+        let w = snap.addr ? cl.find(x => x.address === snap.addr) : null
+        if (!w) w = cl.find(x => snap.startAt[x.address] && (Math.abs(x.at[0] - snap.startAt[x.address][0]) > 4 || Math.abs(x.at[1] - snap.startAt[x.address][1]) > 4)) || null
+        if (!w || !w.floating || w.fullscreen) { snap.zone = ""; return }
+        if (snap.addr !== w.address) { snap.addr = w.address }
+        const st = snap.startAt[w.address] || w.at
+        if (!snap.moving && (Math.abs(w.at[0] - st[0]) > 4 || Math.abs(w.at[1] - st[1]) > 4)) {
           snap.moving = true
           // A docked window being dragged away takes back its own size.
           if (!snap.unsnapped) { snap.unsnapped = true; Quickshell.execDetached(["memora-window", "unsnap", w.address, String(c.x), String(c.y)]) }

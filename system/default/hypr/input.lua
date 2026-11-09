@@ -13,7 +13,11 @@ hl.config({
     kb_options = "compose:caps",
     repeat_rate = pick(pref.repeat_rate, 40),
     repeat_delay = pick(pref.repeat_delay, 250),
-    follow_mouse = 1,
+    -- Click to focus, as on a Mac: the window under the pointer still scrolls,
+    -- but the keyboard goes where you click. Settings > Mouse can make focus
+    -- follow the pointer instead.
+    follow_mouse = pref.focus_follows and 1 or 2,
+    float_switch_override_focus = pref.focus_follows and 1 or 0,
     sensitivity = pick(pref.speed, 0),
     natural_scroll = pick(pref.mouse_natural, false),
     touchpad = {
