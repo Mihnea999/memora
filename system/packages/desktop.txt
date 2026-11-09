@@ -33,6 +33,7 @@ pavucontrol
 nm-connection-editor
 chromium
 mpv
+mpv-mpris
 imv
 papers
 ttf-jetbrains-mono-nerd

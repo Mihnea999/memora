@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# memora-player [FILE] — Player, for films and music. With Player open, plays FILE in it.
+# memora-player [FILE] — Music: your songs, albums and playlists. With Music open, plays FILE in it.
 dir="${MEMORA_PATH:-/usr/share/memora}"
 source "$dir/lib/single.sh"
 qml="$dir/shell/player.qml"

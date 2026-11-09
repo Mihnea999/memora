@@ -242,6 +242,48 @@ Canvas {
       ctx.beginPath(); ctx.moveTo(8, 3.5); ctx.lineTo(14.5, 8); ctx.lineTo(8, 12.5); ctx.closePath(); ctx.fill()
       break
     }
+    case "prev": {
+      ctx.beginPath(); ctx.moveTo(14.5, 3.5); ctx.lineTo(8, 8); ctx.lineTo(14.5, 12.5); ctx.closePath(); ctx.fill()
+      ctx.beginPath(); ctx.moveTo(8, 3.5); ctx.lineTo(1.5, 8); ctx.lineTo(8, 12.5); ctx.closePath(); ctx.fill()
+      break
+    }
+    case "shuffle": {   // two crossing arrows
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(1.5, 4.5); ctx.lineTo(4.5, 4.5); ctx.bezierCurveTo(8, 4.5, 8, 11.5, 11.5, 11.5); ctx.lineTo(14, 11.5); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(1.5, 11.5); ctx.lineTo(4.5, 11.5); ctx.bezierCurveTo(8, 11.5, 8, 4.5, 11.5, 4.5); ctx.lineTo(14, 4.5); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(12, 2.5); ctx.lineTo(14.2, 4.5); ctx.lineTo(12, 6.5); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(12, 9.5); ctx.lineTo(14.2, 11.5); ctx.lineTo(12, 13.5); ctx.stroke()
+      break
+    }
+    case "repeat": case "repeat-one": {   // a loop of two arrows
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(2.5, 7.5); ctx.lineTo(2.5, 6.5); ctx.quadraticCurveTo(2.5, 4.5, 4.5, 4.5); ctx.lineTo(13, 4.5); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(11, 2.5); ctx.lineTo(13.2, 4.5); ctx.lineTo(11, 6.5); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(13.5, 8.5); ctx.lineTo(13.5, 9.5); ctx.quadraticCurveTo(13.5, 11.5, 11.5, 11.5); ctx.lineTo(3, 11.5); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(5, 9.5); ctx.lineTo(2.8, 11.5); ctx.lineTo(5, 13.5); ctx.stroke()
+      if (c.name === "repeat-one") { ctx.font = "bold 6px sans-serif"; ctx.textAlign = "center"; ctx.fillText("1", 8, 10.2) }
+      break
+    }
+    case "queue": {   // lines with a play mark: up next
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(2, 4); ctx.lineTo(14, 4); ctx.moveTo(2, 8); ctx.lineTo(9, 8); ctx.moveTo(2, 12); ctx.lineTo(9, 12); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(11.5, 8.5); ctx.lineTo(14.5, 10.5); ctx.lineTo(11.5, 12.5); ctx.closePath(); ctx.fill()
+      break
+    }
+    case "lyrics": {   // a speech bubble with a quote
+      ctx.lineWidth = 1.5
+      rr(ctx, 1.8, 2.5, 12.4, 9, 2.5); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(5, 11.5); ctx.lineTo(4.5, 14); ctx.lineTo(7.5, 11.5); ctx.stroke()
+      ctx.beginPath(); ctx.arc(6, 7, 1.1, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(10, 7, 1.1, 0, Math.PI * 2); ctx.fill()
+      break
+    }
+    case "music": {   // a note
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(6, 12); ctx.lineTo(6, 3); ctx.lineTo(13, 1.8); ctx.lineTo(13, 10.5); ctx.stroke()
+      ctx.beginPath(); ctx.ellipse(1.8, 10.2, 4.6, 3.8); ctx.fill()     // (Qt's ellipse takes its bounding box)
+      ctx.beginPath(); ctx.ellipse(8.8, 8.7, 4.6, 3.8); ctx.fill()
+      break
+    }
     case "display": {
       ctx.lineWidth = 1.5
       rr(ctx, 1.5, 2.5, 13, 9, 1.8); ctx.stroke()

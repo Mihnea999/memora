@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Player
-Comment=Listen to music
+Name=Music
+Comment=Your songs, albums and playlists
 Exec=memora-player %f
 Icon=memora-player
 Terminal=false

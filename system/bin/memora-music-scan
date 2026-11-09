@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""memora-music-scan — the Music app's library: every song in ~/Music (and
+audio in Downloads), with its tags and album cover, in
+~/.cache/memora/music/library.json. Only new or changed files are read again,
+so after the first time it takes a moment. Prints "PROGRESS n/total" while
+reading, then "DONE".
+"""
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+HOME = Path.home()
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", HOME / ".cache")) / "memora/music"
+LIB = CACHE / "library.json"
+COVERS = CACHE / "covers"
+EXTS = {".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".wma", ".alac", ".aiff", ".aif", ".ape", ".wv"}
+FOLDER_ART = ("cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png", "album.jpg", "album.png")
+
+
+def say(*a):
+    print(*a, flush=True)
+
+
+def files():
+    roots = [HOME / "Music"]
+    out = []
+    for r in roots:
+        for dp, dn, fn in os.walk(r):
+            dn[:] = [d for d in dn if not d.startswith(".")]
+            out += [os.path.join(dp, f) for f in fn if os.path.splitext(f)[1].lower() in EXTS]
+    dl = HOME / "Downloads"
+    if dl.is_dir():
+        out += [str(p) for p in dl.iterdir() if p.is_file() and p.suffix.lower() in EXTS]
+    return out
+
+
+def num(s):
+    try:
+        return int(str(s).split("/")[0].strip() or 0)
+    except ValueError:
+        return 0
+
+
+def probe(path):
+    try:
+        r = subprocess.run(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path],
+                           capture_output=True, text=True, timeout=20)
+        j = json.loads(r.stdout or "{}")
+    except (subprocess.SubprocessError, ValueError, OSError):
+        j = {}
+    fmt = j.get("format", {})
+    tags = {k.lower(): v for k, v in (fmt.get("tags") or {}).items()}
+    for s in j.get("streams", []):          # Ogg/Opus keep tags on the stream
+        for k, v in (s.get("tags") or {}).items():
+            tags.setdefault(k.lower(), v)
+    has_art = any(s.get("codec_type") == "video" for s in j.get("streams", []))
+    name = os.path.splitext(os.path.basename(path))[0]
+    artist = tags.get("artist") or tags.get("album_artist") or ""
+    title = tags.get("title") or ""
+    if not title:
+        # "Artist - Title" file names are common.
+        if " - " in name and not artist:
+            artist, title = [x.strip() for x in name.split(" - ", 1)]
+        else:
+            title = name.lstrip("0123456789 .-_") or name
+    folder = os.path.basename(os.path.dirname(path))
+    return {
+        "path": path,
+        "title": title,
+        "artist": artist or "Unknown Artist",
+        "albumArtist": tags.get("album_artist") or tags.get("albumartist") or artist or "Unknown Artist",
+        "album": tags.get("album") or (folder if folder not in ("Music", "Downloads") else "") or "Unknown Album",
+        "track": num(tags.get("track") or tags.get("tracknumber")),
+        "disc": num(tags.get("disc") or tags.get("discnumber")) or 1,
+        "year": num(tags.get("date") or tags.get("year")),
+        "genre": (tags.get("genre") or "").split(";")[0].strip(),
+        "dur": float(fmt.get("duration") or 0),
+        "lyrics": bool(tags.get("lyrics") or tags.get("unsyncedlyrics") or Path(os.path.splitext(path)[0] + ".lrc").exists()),
+        "_art": has_art,
+    }
+
+
+def cover_for(album_key, tracks):
+    """One picture per album: the folder's cover file, else the first track's own art."""
+    out = COVERS / (hashlib.md5(album_key.encode()).hexdigest()[:16] + ".jpg")
+    if out.exists():
+        return str(out)
+    for t in tracks:
+        d = os.path.dirname(t["path"])
+        for name in FOLDER_ART:
+            for cand in (name, name.capitalize(), name.upper()):
+                f = os.path.join(d, cand)
+                if os.path.exists(f):
+                    subprocess.run(["magick", f + "[0]", "-resize", "600x600>", "-quality", "88", str(out)], capture_output=True, timeout=30)
+                    if out.exists():
+                        return str(out)
+    for t in tracks:
+        if t.get("_art"):
+            subprocess.run(["ffmpeg", "-v", "quiet", "-y", "-i", t["path"], "-an", "-frames:v", "1", "-vf", "scale='min(600,iw)':-2", str(out)],
+                           capture_output=True, timeout=30)
+            if out.exists() and out.stat().st_size > 0:
+                return str(out)
+    return ""
+
+
+def main():
+    CACHE.mkdir(parents=True, exist_ok=True)
+    COVERS.mkdir(parents=True, exist_ok=True)
+    try:
+        old = {t["path"]: t for t in json.loads(LIB.read_text()).get("tracks", [])}
+    except (OSError, ValueError):
+        old = {}
+    paths = files()
+    todo, tracks = [], []
+    for p in paths:
+        try:
+            m = os.path.getmtime(p)
+        except OSError:
+            continue
+        o = old.get(p)
+        if o and o.get("mtime") == m:
+            tracks.append(o)
+        else:
+            todo.append((p, m))
+    done = 0
+    if todo:
+        say(f"PROGRESS 0/{len(todo)}")
+        with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 4)) as ex:
+            for (p, m), t in zip(todo, ex.map(lambda x: probe(x[0]), todo)):
+                t["mtime"] = m
+                t["added"] = (old.get(p) or {}).get("added") or m
+                tracks.append(t)
+                done += 1
+                if done % 25 == 0:
+                    say(f"PROGRESS {done}/{len(todo)}")
+    # Covers, per album.
+    albums = {}
+    for t in tracks:
+        albums.setdefault(t["albumArtist"] + "\x1f" + t["album"], []).append(t)
+    for key, ts in albums.items():
+        if all(t.get("cover") and os.path.exists(t["cover"]) for t in ts):
+            continue
+        c = cover_for(key, ts)
+        for t in ts:
+            t["cover"] = c
+    for t in tracks:
+        t.pop("_art", None)
+    tracks.sort(key=lambda t: (t["albumArtist"].lower(), t["album"].lower(), t["disc"], t["track"], t["title"].lower()))
+    tmp = LIB.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"tracks": tracks}, ensure_ascii=False))
+    tmp.replace(LIB)
+    say("DONE", len(tracks))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

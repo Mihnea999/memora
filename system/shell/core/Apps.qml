@@ -22,7 +22,7 @@ Singleton {
     "kitty": "Terminal", "memora-ai": "Memora AI", "memora-settings": "Settings",
     "org.gnome.TextEditor": "Text Editor", "org.gnome.Calculator": "Calculator",
     "org.gnome.Papers": "Documents", "org.gnome.Loupe": "Photos", "mpv": "Media Player",
-    "memora-store": "App Store", "memora-photos": "Gallery", "memora-player": "Player", "com.mitchellh.ghostty": "Terminal", "memora-float": "Memora", "memora-activity": "Activity Monitor", "memora-welcome": "Welcome", "gcr-prompter": "Passwords", "": "Files"
+    "memora-store": "App Store", "memora-photos": "Gallery", "memora-player": "Music", "com.mitchellh.ghostty": "Terminal", "memora-float": "Memora", "memora-activity": "Activity Monitor", "memora-welcome": "Welcome", "gcr-prompter": "Passwords", "": "Files"
   })
 
   function nameFor(appId) {
