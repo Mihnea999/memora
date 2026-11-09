@@ -1,0 +1,25 @@
+{
+  "_": "Where windows dock: [x, y, w, h] as parts of the free area of the screen (below the menu bar, beside the Dock). Read by memora-window and the shell (snap/Snap.qml, ui/WindowControls.qml). With gap g: x = ax + fx*(aw+g), w = fw*(aw+g) - g, the same for y and h.",
+  "zones": {
+    "fill": [0, 0, 1, 1],
+    "left": [0, 0, 0.5, 1], "right": [0.5, 0, 0.5, 1],
+    "top": [0, 0, 1, 0.5], "bottom": [0, 0.5, 1, 0.5],
+    "top-left": [0, 0, 0.5, 0.5], "top-right": [0.5, 0, 0.5, 0.5],
+    "bottom-left": [0, 0.5, 0.5, 0.5], "bottom-right": [0.5, 0.5, 0.5, 0.5],
+    "left-third": [0, 0, 0.333333, 1], "center-third": [0.333333, 0, 0.333334, 1], "right-third": [0.666667, 0, 0.333333, 1],
+    "left-two-thirds": [0, 0, 0.666667, 1], "right-two-thirds": [0.333333, 0, 0.666667, 1],
+    "top-third": [0, 0, 1, 0.333333], "middle-third": [0, 0.333333, 1, 0.333334], "bottom-third": [0, 0.666667, 1, 0.333333],
+    "top-two-thirds": [0, 0, 1, 0.666667], "bottom-two-thirds": [0, 0.333333, 1, 0.666667],
+    "first-fourth": [0, 0, 0.25, 1], "second-fourth": [0.25, 0, 0.25, 1], "third-fourth": [0.5, 0, 0.25, 1], "last-fourth": [0.75, 0, 0.25, 1],
+    "center-half": [0.25, 0, 0.5, 1]
+  },
+  "layouts": {
+    "regular": [["left", "right"], ["left-third", "center-third", "right-third"], ["left-two-thirds", "right-third"], ["left-third", "right-two-thirds"],
+                ["top-left", "top-right", "bottom-left", "bottom-right"], ["fill"]],
+    "compact": [["left", "right"], ["left-two-thirds", "right-third"], ["left-third", "right-two-thirds"], ["top-left", "top-right", "bottom-left", "bottom-right"], ["fill"]],
+    "wide": [["left", "right"], ["left-third", "center-third", "right-third"], ["first-fourth", "center-half", "last-fourth"],
+             ["first-fourth", "second-fourth", "third-fourth", "last-fourth"], ["left-two-thirds", "right-third"], ["fill"]],
+    "portrait": [["top", "bottom"], ["top-third", "middle-third", "bottom-third"], ["top-two-thirds", "bottom-third"], ["top-third", "bottom-two-thirds"], ["fill"]]
+  },
+  "_kinds": "compact: under 1400 logical pixels wide; wide: 2.1:1 or wider; portrait: taller than wide; regular: the rest."
+}

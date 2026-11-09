@@ -17,6 +17,8 @@ menu bar, above the Dock), remembering how big they were before.
                                   bar, all you can hold it by, is out of reach)
   memora-window zone [ADDRESS]    print the zone it is docked in, if any
   memora-window rect ZONE         print the zone's rectangle (x y w h)
+  memora-window layouts           the layouts that suit the focused window's screen
+Zones are in default/zones.json (shared with the shell), or frac:FX,FY,FW,FH.
 """
 import json
 import os
@@ -25,6 +27,7 @@ import sys
 from pathlib import Path
 
 GAP = int(os.environ.get("MEMORA_GAP", "10"))
+SHARE = Path(os.environ.get("MEMORA_PATH", "/usr/share/memora"))
 STATE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "memora" / "windows.json"
 
 
@@ -84,25 +87,72 @@ def title_bar(w):
     return 0
 
 
+_ZONES = None
+
+
+def zones():
+    """Zone fractions and layouts, shared with the shell (default/zones.json)."""
+    global _ZONES
+    if _ZONES is None:
+        try:
+            _ZONES = json.loads((SHARE / "default" / "zones.json").read_text())
+        except (OSError, ValueError):
+            _ZONES = {"zones": {"fill": [0, 0, 1, 1], "left": [0, 0, 0.5, 1], "right": [0.5, 0, 0.5, 1]}, "layouts": {}}
+    return _ZONES
+
+
+def fractions(zone):
+    """[fx, fy, fw, fh] for a named zone, or for "frac:fx,fy,fw,fh" (Arrange's grids)."""
+    if zone and zone.startswith("frac:"):
+        try:
+            f = [float(v) for v in zone[5:].split(",")]
+            return f if len(f) == 4 else None
+        except ValueError:
+            return None
+    return zones()["zones"].get(zone)
+
+
+def kind(a):
+    """What shape of screen the free area is: compact, wide, portrait or regular."""
+    _, _, aw, ah = a
+    if ah > aw:
+        return "portrait"
+    if aw / max(1, ah) >= 2.1:
+        return "wide"
+    if aw < 1400:
+        return "compact"
+    return "regular"
+
+
+def min_size(w):
+    """The smallest size the app accepts (from the Memora plugin), else 1x1."""
+    try:
+        out = subprocess.run(["hyprctl", "memora-sizes"], capture_output=True, text=True, timeout=2).stdout
+        for e in json.loads(out or "[]"):
+            if e.get("address") == w["address"]:
+                return tuple(e.get("min") or (1, 1))
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return (1, 1)
+
+
+def fits(zone, w, a, mn=None):
+    r = rect(zone, a, w)
+    mn = mn or min_size(w)
+    return bool(r) and r[2] + 2 >= mn[0] and r[3] + 2 >= mn[1]
+
+
 def rect(zone, a, w=None):
     ax, ay, aw, ah = a
     if w:   # leave room for a title bar drawn above the window
         bar = title_bar(w)
         ay, ah = ay + bar, ah - bar
-    hw, hh = (aw - GAP) // 2, (ah - GAP) // 2
-    tw = (aw - 2 * GAP) // 3
-    z = {
-        "left": (ax, ay, hw, ah), "right": (ax + hw + GAP, ay, hw, ah),
-        "top": (ax, ay, aw, hh), "bottom": (ax, ay + hh + GAP, aw, hh),
-        "fill": (ax, ay, aw, ah),
-        "top-left": (ax, ay, hw, hh), "top-right": (ax + hw + GAP, ay, hw, hh),
-        "bottom-left": (ax, ay + hh + GAP, hw, hh), "bottom-right": (ax + hw + GAP, ay + hh + GAP, hw, hh),
-        "left-third": (ax, ay, tw, ah), "center-third": (ax + tw + GAP, ay, tw, ah),
-        "right-third": (ax + 2 * (tw + GAP), ay, tw, ah),
-        "left-two-thirds": (ax, ay, 2 * tw + GAP, ah), "right-two-thirds": (ax + tw + GAP, ay, 2 * tw + GAP, ah),
-    }
-    if zone in z:
-        return z[zone]
+    f = fractions(zone)
+    if f:
+        fx, fy, fw, fh = f
+        x0, y0 = round(ax + fx * (aw + GAP)), round(ay + fy * (ah + GAP))
+        x1, y1 = round(ax + (fx + fw) * (aw + GAP) - GAP), round(ay + (fy + fh) * (ah + GAP) - GAP)
+        return (x0, y0, x1 - x0, y1 - y0)
     if zone == "center" and w:
         ww, wh = min(w["size"][0], aw), min(w["size"][1], ah)
         return (ax + (aw - ww) // 2, ay + (ah - wh) // 2, ww, wh)
@@ -184,6 +234,11 @@ def main():
         return 1
     cmd = args[0]
     st = load()
+    if cmd == "layouts":   # the layouts for the focused window's screen, as JSON
+        w = window()
+        a = area(w) if w else (0, 0, 1920, 1080)
+        print(json.dumps({"kind": kind(a), "layouts": zones()["layouts"].get(kind(a), [])}))
+        return 0
     if cmd == "rect":
         w = window()
         r = rect(args[1], area(w), w) if w else None
@@ -197,6 +252,14 @@ def main():
         a = area(w)
         z = current_zone(w, a, st)
         nxt = KEYS.get(args[1], {}).get(z)
+        # Skip what the window can't shrink to (a third of a small screen).
+        mn = min_size(w)
+        seen = set()
+        while nxt and not fits(nxt, w, a, mn) and nxt not in seen:
+            seen.add(nxt)
+            nxt = KEYS.get(args[1], {}).get(nxt)
+        if nxt in seen:
+            nxt = None
         if args[1] == "down" and nxt is None:
             restore(w, st)
         elif nxt:

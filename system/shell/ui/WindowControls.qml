@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import Quickshell
+import Quickshell.Io
 import Quickshell.Hyprland
 import qs.core
 
@@ -13,6 +14,23 @@ Item {
   // 16px circles 28px apart: the same in every app (the Browser draws its own so).
   width: row.width; height: 16
   readonly property bool over: hov.hovered || layouts.hovered
+  // Zones and layouts (default/zones.json) for the shape of this window's screen.
+  property var zoneData: ({ zones: {}, layouts: {} })
+  FileView {
+    path: Theme.share + "/default/zones.json"
+    printErrors: false
+    onLoaded: { try { wc.zoneData = JSON.parse(text()) } catch (e) {} }
+  }
+  // The screen's free area, roughly: below the menu bar, beside the Dock.
+  readonly property var scr: wc.window && wc.window.screen ? wc.window.screen : null
+  readonly property real areaW: scr ? scr.width - (Prefs.dockPosition === "bottom" ? 20 : Prefs.dockSize + 40) : 1900
+  readonly property real areaH: scr ? scr.height - 50 - (Prefs.dockPosition === "bottom" ? Prefs.dockSize + 28 : 0) : 1000
+  readonly property string kind: areaH > areaW ? "portrait" : (areaW / Math.max(1, areaH) >= 2.1 ? "wide" : (areaW < 1400 ? "compact" : "regular"))
+  readonly property var layouts: (zoneData.layouts || {})[kind] || []
+  function fits(f) {
+    const mn = wc.window ? wc.window.minimumSize : Qt.size(0, 0)
+    return f[2] * (areaW + 10) - 10 + 2 >= (mn ? mn.width : 0) && f[3] * (areaH + 10) - 10 + 2 >= (mn ? mn.height : 0)
+  }
   property bool onGreen: false
 
   Row {
@@ -82,7 +100,7 @@ Item {
     parent: wc.host || wc
     x: wc.panelAt.x + 42; y: wc.panelAt.y + 22
     z: 10000
-    width: grid.width + 20; height: grid.height + 40
+    width: grid.width + 20; height: grid.height + 74
     radius: 12
     // Solid: inside a window nothing blurs what is under it, so glass would let the text show through.
     fill: Theme.dark ? Qt.rgba(0.15, 0.15, 0.17, 0.98) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
@@ -100,30 +118,46 @@ Item {
       text: "Move & Resize"
       color: Theme.textDim; font.family: Theme.font; font.pixelSize: Theme.small - 1
     }
+    // The layouts that suit this window's screen (default/zones.json, shared with
+    // docking by dragging); parts the window can't shrink to are dimmed.
     Grid {
       id: grid
       x: 10; y: 28
-      columns: 4; spacing: 6
+      columns: 3; spacing: 8
       Repeater {
-        // [zone, x, y, w, h] in a 4x3 preview
-        model: [["left", 0, 0, 2, 3], ["right", 2, 0, 2, 3], ["top", 0, 0, 4, 1.5], ["bottom", 0, 1.5, 4, 1.5],
-                ["top-left", 0, 0, 2, 1.5], ["top-right", 2, 0, 2, 1.5], ["bottom-left", 0, 1.5, 2, 1.5], ["bottom-right", 2, 1.5, 2, 1.5],
-                ["left-third", 0, 0, 1.33, 3], ["center-third", 1.33, 0, 1.33, 3], ["right-third", 2.66, 0, 1.34, 3], ["fill", 0, 0, 4, 3]]
-        delegate: Rectangle {
+        model: wc.layouts
+        delegate: Item {
+          id: cell
           required property var modelData
-          width: 44; height: 32; radius: 6
-          color: zh.hovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.field
-          border.color: zh.hovered ? Theme.accent : Theme.separator
-          Rectangle {
-            x: 3 + modelData[1] / 4 * (parent.width - 6); y: 3 + modelData[2] / 3 * (parent.height - 6)
-            width: modelData[3] / 4 * (parent.width - 6) - 1; height: modelData[4] / 3 * (parent.height - 6) - 1
-            radius: 3
-            color: zh.hovered ? Theme.accent : Theme.textFaint
+          width: 64; height: 42
+          Rectangle { anchors.fill: parent; radius: 7; color: Theme.field; border.color: Theme.separator }
+          Repeater {
+            model: cell.modelData
+            delegate: Rectangle {
+              required property var modelData
+              readonly property var f: wc.zoneData.zones[modelData] || [0, 0, 1, 1]
+              readonly property bool can: wc.fits(f)
+              x: 3 + f[0] * (cell.width - 6) + 1; y: 3 + f[1] * (cell.height - 6) + 1
+              width: f[2] * (cell.width - 6) - 2; height: f[3] * (cell.height - 6) - 2
+              radius: 3
+              opacity: can ? 1 : 0.3
+              color: zh.hovered && can ? Theme.accent : Theme.textFaint
+              HoverHandler { id: zh; cursorShape: parent.can ? Qt.PointingHandCursor : Qt.ArrowCursor }
+              TapHandler { enabled: parent.can; onTapped: { layouts.open = false; Quickshell.execDetached(["memora-window", modelData]) } }
+            }
           }
-          HoverHandler { id: zh }
-          TapHandler { onTapped: { layouts.open = false; Quickshell.execDetached(["memora-window", modelData[0]]) } }
         }
       }
+    }
+    // Every window on this desktop, arranged in a grid that suits the screen.
+    Rectangle {
+      x: 10; y: grid.y + grid.height + 8
+      width: grid.width; height: 26; radius: 7
+      color: ah.hovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.field
+      border.color: ah.hovered ? Theme.accent : Theme.separator
+      Text { anchors.centerIn: parent; text: "Arrange All Windows"; color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.small - 0.5 }
+      HoverHandler { id: ah; cursorShape: Qt.PointingHandCursor }
+      TapHandler { onTapped: { layouts.open = false; Quickshell.execDetached(["memora-window", "arrange"]) } }
     }
   }
 }

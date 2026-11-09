@@ -413,6 +413,39 @@ static void publishBars() {
     std::rename((path + ".new").c_str(), path.c_str());
 }
 
+// `hyprctl memora-sizes`: each window's smallest and largest size and whether it
+// is a dialog (has a parent), as JSON. memora-window and the shell use it to
+// offer only the docking zones a window can really take.
+static std::string sizesJSON(eHyprCtlOutputFormat, std::string) {
+    std::string out = "[";
+    bool        first = true;
+    for (auto& w : Desktop::windowState()->windows()) {
+        if (!w || !validMapped(w) || w->isHidden())
+            continue;
+        Vector2D mn{1, 1}, mx{0, 0};
+        bool     parent = false;
+        if (PROTO::xdgShell && w->backend().type() == Desktop::View::eBackendType::WINDOW_BACKEND_WAYLAND) {
+            const auto surface = w->backend().surface();
+            for (auto& tl : PROTO::xdgShell->m_toplevels) {
+                if (!tl)
+                    continue;
+                auto owner = tl->m_owner.lock();
+                if (!owner || owner->m_surface.lock() != surface)
+                    continue;
+                mn     = tl->layoutMinSize();
+                mx     = tl->layoutMaxSize();
+                parent = !!tl->m_parent.lock();
+                break;
+            }
+        }
+        out += std::format("{}{{\"address\":\"0x{:x}\",\"min\":[{},{}],\"max\":[{},{}],\"parent\":{}}}", first ? "" : ",", (uintptr_t)w.get(), (int)std::max(1.0, mn.x),
+                           (int)std::max(1.0, mn.y), (int)mx.x, (int)mx.y, parent ? "true" : "false");
+        first = false;
+    }
+    return out + "]";
+}
+static SP<SHyprCtlCommand> g_sizesCmd;
+
 static HANDLE              g_handle = nullptr;
 static CHyprSignalListener g_open, g_title, g_active;
 
@@ -437,6 +470,7 @@ static void forBar(PHLWINDOW w, auto&& fn) {
 
 void memoraTitlebarInit(HANDLE handle) {
     g_handle = handle;
+    g_sizesCmd = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "memora-sizes", .exact = true, .fn = sizesJSON});
     g_open   = Event::bus()->m_events.window.open.listen([](PHLWINDOW w) { maybeAddBar(w); });
     g_title  = Event::bus()->m_events.window.title.listen([](PHLWINDOW w) { forBar(w, [](auto& bar) { bar->titleChanged(); }); });
     // Buttons and title change colour with focus: redraw every bar.
@@ -451,6 +485,9 @@ void memoraTitlebarInit(HANDLE handle) {
 }
 
 void memoraTitlebarExit() {
+    if (g_sizesCmd)
+        HyprlandAPI::unregisterHyprCtlCommand(g_handle, g_sizesCmd);
+    g_sizesCmd.reset();
     g_open.reset();
     g_title.reset();
     g_active.reset();

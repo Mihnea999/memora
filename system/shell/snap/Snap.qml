@@ -32,15 +32,46 @@ Scope {
   readonly property int edge: 6
   readonly property int corner: 120
 
-  // ---- the layouts bar (geometry shared by hit-testing and drawing)
-  readonly property var layouts: [
-    [["left", 0, 0, 0.5, 1], ["right", 0.5, 0, 0.5, 1]],
-    [["left-third", 0, 0, 1 / 3, 1], ["center-third", 1 / 3, 0, 1 / 3, 1], ["right-third", 2 / 3, 0, 1 / 3, 1]],
-    [["left-two-thirds", 0, 0, 2 / 3, 1], ["right-third", 2 / 3, 0, 1 / 3, 1]],
-    [["left-third", 0, 0, 1 / 3, 1], ["right-two-thirds", 1 / 3, 0, 2 / 3, 1]],
-    [["top-left", 0, 0, 0.5, 0.5], ["top-right", 0.5, 0, 0.5, 0.5], ["bottom-left", 0, 0.5, 0.5, 0.5], ["bottom-right", 0.5, 0.5, 0.5, 0.5]],
-    [["fill", 0, 0, 1, 1]]
-  ]
+  // ---- zones and layouts, shared with memora-window (default/zones.json)
+  property var zoneData: ({ zones: {}, layouts: {} })
+  FileView {
+    path: Theme.share + "/default/zones.json"
+    printErrors: false
+    onLoaded: { try { snap.zoneData = JSON.parse(text()) } catch (e) {} }
+  }
+  // The shape of a screen's free area: compact, wide, portrait or regular.
+  function kindOf(m) {
+    if (!m) return "regular"
+    const aw = m.w - m.l - m.r, ah = m.h - m.t - m.b
+    return ah > aw ? "portrait" : (aw / Math.max(1, ah) >= 2.1 ? "wide" : (aw < 1400 ? "compact" : "regular"))
+  }
+  // The layouts bar for the screen under the pointer: [[zone, fx, fy, fw, fh], …] per layout.
+  readonly property var layouts: ((zoneData.layouts || {})[kindOf(mon)] || []).map(l => l.map(z => [z].concat(zoneData.zones[z] || [0, 0, 1, 1])))
+  // The dragged window's smallest size (Memora plugin): zones smaller are not offered.
+  property size minSize: Qt.size(1, 1)
+  property var sizeMap: ({})          // address -> [minW, minH], every window
+  function minOf(a) { const e = sizeMap["0x" + String(a).replace(/^0x/, "")]; return e || [1, 1] }
+  Process {
+    id: sizes
+    property string want: ""
+    command: ["hyprctl", "memora-sizes"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          const all = JSON.parse(text), map = {}
+          all.forEach(x => map[x.address] = x.min)
+          snap.sizeMap = map
+          const e = all.find(x => x.address === sizes.want)
+          if (e) snap.minSize = Qt.size(e.min[0], e.min[1])
+        } catch (err) {}
+      }
+    }
+  }
+  function fits(z, m) {
+    if (!z || !m) return false
+    const r = rectFor(z, m)
+    return r.width + 2 >= minSize.width && r.height + 2 >= minSize.height
+  }
   readonly property int cellW: 104
   readonly property int cellH: 66
   readonly property int cellGap: 12
@@ -59,12 +90,12 @@ Scope {
     const fx = (lx - i * (cellW + cellGap)) / cellW, fy = Math.max(0, Math.min(0.999, ly / cellH))
     if (fx < 0 || fx > 1) return ""
     const seg = layouts[i].find(s => fx >= s[1] && fx < s[1] + s[3] + 0.001 && fy >= s[2] && fy < s[2] + s[4] + 0.001)
-    return seg ? seg[0] : ""
+    return seg && fits(seg[0], m) ? seg[0] : ""
   }
 
   IpcHandler {
     target: "snap"
-    function begin(): void { if (!Prefs.snapping) return; snap.held = true; snap.moving = false; snap.zone = ""; snap.startAt = null; snap.addr = ""; snap.layoutsOpen = false; snap.unsnapped = false; poll.running = true }
+    function begin(): void { if (!Prefs.snapping) return; snap.held = true; snap.moving = false; snap.zone = ""; snap.startAt = null; snap.addr = ""; snap.layoutsOpen = false; snap.unsnapped = false; snap.minSize = Qt.size(1, 1); poll.running = true }
     function end(): void {
       const z = snap.zone, a = snap.addr, m = snap.moving, mon = snap.mon
       snap.held = false; snap.zone = ""; snap.moving = false; snap.layoutsOpen = false
@@ -92,7 +123,7 @@ Scope {
         let w = snap.addr ? cl.find(x => x.address === snap.addr) : null
         if (!w) w = cl.find(x => snap.startAt[x.address] && (Math.abs(x.at[0] - snap.startAt[x.address][0]) > 4 || Math.abs(x.at[1] - snap.startAt[x.address][1]) > 4)) || null
         if (!w || !w.floating || w.fullscreen) { snap.zone = ""; return }
-        if (snap.addr !== w.address) { snap.addr = w.address }
+        if (snap.addr !== w.address) { snap.addr = w.address; sizes.want = w.address; sizes.running = true }
         const st = snap.startAt[w.address] || w.at
         if (!snap.moving && (Math.abs(w.at[0] - st[0]) > 4 || Math.abs(w.at[1] - st[1]) > 4)) {
           snap.moving = true
@@ -101,7 +132,8 @@ Scope {
         }
         const m = ms.find(x => c.x >= x.x && c.x < x.x + x.width / x.scale && c.y >= x.y && c.y < x.y + x.height / x.scale) || ms[0]
         snap.mon = { name: m.name, x: m.x, y: m.y, w: m.width / m.scale, h: m.height / m.scale, l: m.reserved[0], t: m.reserved[1], r: m.reserved[2], b: m.reserved[3] }
-        snap.zone = snap.moving ? snap.zoneAt(c.x - m.x, c.y - m.y, snap.mon) : ""
+        const z = snap.moving ? snap.zoneAt(c.x - m.x, c.y - m.y, snap.mon) : ""
+        snap.zone = snap.fits(z, snap.mon) ? z : ""
       }
     }
   }
@@ -135,27 +167,17 @@ Scope {
   function rectFor(z, m) {
     const g = 10
     const ax = m.l + g, ay = m.t + g, aw = m.w - m.l - m.r - 2 * g, ah = m.h - m.t - m.b - 2 * g
-    const hw = (aw - g) / 2, hh = (ah - g) / 2, tw = (aw - 2 * g) / 3
-    switch (z) {
-    case "left": return Qt.rect(ax, ay, hw, ah)
-    case "right": return Qt.rect(ax + hw + g, ay, hw, ah)
-    case "fill": return Qt.rect(ax, ay, aw, ah)
-    case "top-left": return Qt.rect(ax, ay, hw, hh)
-    case "top-right": return Qt.rect(ax + hw + g, ay, hw, hh)
-    case "bottom-left": return Qt.rect(ax, ay + hh + g, hw, hh)
-    case "bottom-right": return Qt.rect(ax + hw + g, ay + hh + g, hw, hh)
-    case "left-third": return Qt.rect(ax, ay, tw, ah)
-    case "center-third": return Qt.rect(ax + tw + g, ay, tw, ah)
-    case "right-third": return Qt.rect(ax + 2 * (tw + g), ay, tw, ah)
-    case "left-two-thirds": return Qt.rect(ax, ay, 2 * tw + g, ah)
-    case "right-two-thirds": return Qt.rect(ax + tw + g, ay, 2 * tw + g, ah)
-    }
-    return Qt.rect(snap.cx - m.x - 20, snap.cy - m.y - 20, 40, 40)
+    const f = (zoneData.zones || {})[z]
+    if (!f) return Qt.rect(snap.cx - m.x - 20, snap.cy - m.y - 20, 40, 40)
+    const x0 = ax + f[0] * (aw + g), y0 = ay + f[1] * (ah + g)
+    return Qt.rect(x0, y0, ax + (f[0] + f[2]) * (aw + g) - g - x0, ay + (f[1] + f[3]) * (ah + g) - g - y0)
   }
   // What is left of the screen after docking to a side.
   readonly property var complement: ({
     "left": "right", "right": "left", "left-third": "right-two-thirds", "right-third": "left-two-thirds",
-    "left-two-thirds": "right-third", "right-two-thirds": "left-third"
+    "left-two-thirds": "right-third", "right-two-thirds": "left-third",
+    "top": "bottom", "bottom": "top", "top-third": "bottom-two-thirds", "bottom-third": "top-two-thirds",
+    "top-two-thirds": "bottom-third", "bottom-two-thirds": "top-third"
   })
 
   Variants {
@@ -215,6 +237,8 @@ Scope {
                 delegate: Rectangle {
                   required property var modelData
                   readonly property bool on: snap.zone === modelData[0]
+                  readonly property bool can: snap.fits(modelData[0], snap.mon)
+                  opacity: can ? 1 : 0.3
                   x: modelData[1] * snap.cellW + 2; y: modelData[2] * snap.cellH + 2
                   width: modelData[3] * snap.cellW - 4; height: modelData[4] * snap.cellH - 4
                   radius: 6
@@ -243,7 +267,8 @@ Scope {
     function offer(z, a, m) {
       const others = Apps.windows.filter(w => String(w.address).replace(/^0x/, "") !== String(a).replace(/^0x/, "")
         && w.workspace && Hyprland.focusedWorkspace && w.workspace.id === Hyprland.focusedWorkspace.id && !Apps.isMinimized(w))
-      if (!others.length) return
+      const r = m ? snap.rectFor(z, m) : null
+      if (!others.some(w => !r || (snap.minOf(w.address)[0] <= r.width + 2 && snap.minOf(w.address)[1] <= r.height + 2))) return
       Hyprland.refreshToplevels()
       mon = m; placed = a; zone = z
     }
@@ -294,8 +319,10 @@ Scope {
           id: flow
           anchors { fill: parent; margins: 20; topMargin: 44 }
           spacing: 16
+          // Only windows that can shrink to the free part.
           readonly property var wins: assist.zone ? Apps.windows.filter(w => String(w.address).replace(/^0x/, "") !== String(assist.placed).replace(/^0x/, "")
-            && w.workspace && Hyprland.focusedWorkspace && w.workspace.id === Hyprland.focusedWorkspace.id && !Apps.isMinimized(w)) : []
+            && w.workspace && Hyprland.focusedWorkspace && w.workspace.id === Hyprland.focusedWorkspace.id && !Apps.isMinimized(w)
+            && snap.minOf(w.address)[0] <= aw.area.width + 2 && snap.minOf(w.address)[1] <= aw.area.height + 2) : []
           readonly property real cw: Math.min(300, (width - 16) / Math.max(1, Math.min(2, wins.length)) - 16)
           Repeater {
             model: flow.wins
