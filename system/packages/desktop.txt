@@ -57,3 +57,5 @@ exfatprogs
 ntfs-3g
 dosfstools
 libsecret
+squeekboard
+iio-sensor-proxy

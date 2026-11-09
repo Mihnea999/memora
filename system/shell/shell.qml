@@ -55,6 +55,12 @@ ShellRoot {
     target: Hyprland
     function onRawEvent(ev) { if (["monitoraddedv2", "monitorremovedv2", "monitorremoved"].indexOf(ev.name) >= 0) refitLater.restart() }
   }
+  // The on-screen keyboard pops up for a tapped text field only while a finger
+  // is used, never while typing with the mouse at hand.
+  Connections {
+    target: Input
+    function onTouchChanged() { if (Host.hasTouchscreen) Quickshell.execDetached(["memora-touch", "keyboard", "auto", Input.touch ? "on" : "off"]) }
+  }
   // Touch-screen gestures, recognised by the Memora plugin (plugin/touch.cpp).
   readonly property var gestures: ({
     "edge-bottom-short": () => Shell.dockPeek(),

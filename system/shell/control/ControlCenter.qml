@@ -14,6 +14,14 @@ PanelWindow {
   required property var modelData
   screen: modelData
   readonly property bool open: Shell.open === "control" && (Shell.menuScreen === modelData.name || !Shell.menuScreen)
+  // Rotation Lock (2-in-1s): memora-touch keeps a file while it is on.
+  property bool rotationLocked: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/memora/rotation-lock"
+    printErrors: false
+    onLoaded: cc.rotationLocked = true
+    onLoadFailed: cc.rotationLocked = false
+  }
 
   visible: open || anim.running
   anchors { top: true; right: true }
@@ -138,6 +146,21 @@ PanelWindow {
             Module {
               Layout.preferredWidth: 71; Layout.preferredHeight: 71
               Square { anchors.fill: parent; sym: "ai"; label: "Ask AI"; onClicked: { Shell.close(); Apps.run("memora-ai window") } }
+            }
+          }
+          // A touch screen: the on-screen keyboard, and keeping the screen from turning.
+          RowLayout {
+            visible: Host.hasTouchscreen
+            spacing: 10
+            Module {
+              Layout.preferredWidth: 71; Layout.preferredHeight: 71
+              Square { anchors.fill: parent; sym: "keyboard"; label: "Keyboard"; onClicked: { Shell.close(); Apps.run("memora-touch keyboard show") } }
+            }
+            Module {
+              visible: Host.hasAccelerometer
+              Layout.preferredWidth: 71; Layout.preferredHeight: 71
+              Square { anchors.fill: parent; sym: "lock"; label: cc.rotationLocked ? "Rotation Off" : "Rotation"; opacity: cc.rotationLocked ? 1 : 0.7
+                onClicked: { cc.rotationLocked = !cc.rotationLocked; Apps.run("memora-touch rotation " + (cc.rotationLocked ? "lock" : "unlock")) } }
             }
           }
         }

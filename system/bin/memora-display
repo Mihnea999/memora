@@ -5,6 +5,7 @@
 #                                                   | scale.NAME 1.25 | res.NAME 2560x1440@144
 #   memora-display apply                            apply ~/.config/memora/displays.json now
 #                                                   | scale.NAME default (back to the screen's own)
+#                                                   | transform.NAME 0-3 (rotation, from memora-touch)
 #   memora-display state                            print the settings and the screens (JSON),
 #                                                   each with its default scale and the scales it can use
 # Writes ~/.config/hypr/monitors.lua (loaded at login) and applies it live.
@@ -39,14 +40,15 @@ apply() {
   # One Lua line per screen, with explicit positions (logical pixels).
   jq -r --argjson c "$conf" "$SCALES"'
     def scaleOf(m): ($c.scale[m.name] // defscale(m)) | short;
-    def lw(m): ((m.width / scaleOf(m)) | floor);
-    def lh(m): ((m.height / scaleOf(m)) | floor);
+    def rot(m): ((($c.transform // {})[m.name] // 0) % 2) == 1;
+    def lw(m): (((if rot(m) then m.height else m.width end) / scaleOf(m)) | floor);
+    def lh(m): (((if rot(m) then m.width else m.height end) / scaleOf(m)) | floor);
     def modeOf(m): ($c.res[m.name] // "preferred");
     (map(select(.name | test("^FALLBACK") | not))) as $all
     | (if ($c.main != "" and ($all | map(.name) | index($c.main))) then $c.main else ($all[0].name) end) as $mainName
     | ($all | map(select(.name == $mainName))[0]) as $main
     | ($all | map(select(.name != $mainName))) as $rest
-    | def line(m; pos; extra): "hl.monitor({ output = \"\(m.name)\", mode = \"\(modeOf(m))\", position = \"\(pos)\", scale = \(scaleOf(m)), disabled = false\(if extra == "" then ", mirror = \"\"" else extra end) })";
+    | def line(m; pos; extra): "hl.monitor({ output = \"\(m.name)\", mode = \"\(modeOf(m))\", position = \"\(pos)\", scale = \(scaleOf(m)), transform = \((($c.transform // {})[m.name] // 0)), disabled = false\(if extra == "" then ", mirror = \"\"" else extra end) })";
       if $c.mode == "mirror" then
         [line($main; "0x0"; "")] + ($rest | map(line(.; "0x0"; ", mirror = \"\($mainName)\"")))
       elif $c.mode == "main" then
@@ -84,6 +86,7 @@ set_key() { # KEY VALUE
     scale.*) if [[ $v == default ]]; then jq --arg n "${k#scale.}" 'del(.scale[$n])' "$cfg" > "$tmp"
              else jq --arg n "${k#scale.}" --argjson v "$v" '.scale[$n] = $v' "$cfg" > "$tmp"; fi ;;
     res.*) jq --arg n "${k#res.}" --arg v "$v" '.res[$n] = $v' "$cfg" > "$tmp" ;;
+    transform.*) jq --arg n "${k#transform.}" --argjson v "$v" '.transform[$n] = $v' "$cfg" > "$tmp" ;;
     main|arrange|mode) jq --arg k "$k" --arg v "$v" '.[$k] = $v' "$cfg" > "$tmp" ;;
     *) rm -f "$tmp"; echo "unknown setting $k"; exit 2 ;;
   esac

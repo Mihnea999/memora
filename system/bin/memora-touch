@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# memora-touch — what a touch screen needs, started with the desktop.
+#   memora-touch serve              with a touch screen: the on-screen keyboard
+#                                   (squeekboard) and, on a 2-in-1 with an
+#                                   accelerometer, turning the screen with it
+#   memora-touch keyboard show|hide the on-screen keyboard, now
+#   memora-touch keyboard auto on|off  show it when a text field is tapped
+#   memora-touch rotation lock|unlock|toggle   keep the screen as it is
+# The shell turns "auto" on while a finger is used and off with the mouse.
+lockfile="$HOME/.config/memora/rotation-lock"
+
+has_touch() { udevadm info --export-db 2>/dev/null | grep -q 'ID_INPUT_TOUCHSCREEN=1'; }
+internal() { hyprctl monitors -j | jq -r '[.[] | select(.name | test("^(eDP|LVDS|DSI)"))][0].name // empty'; }
+
+rotate_loop() {
+  command -v monitor-sensor >/dev/null || return
+  ls /sys/bus/iio/devices/iio:device*/in_accel_x_raw >/dev/null 2>&1 || return
+  local out; out="$(internal)"; [[ -n $out ]] || return
+  monitor-sensor --accel 2>/dev/null | while read -r line; do
+    case "$line" in
+      *orientation*normal*) t=0 ;; *orientation*left-up*) t=1 ;;
+      *orientation*bottom-up*) t=2 ;; *orientation*right-up*) t=3 ;; *) continue ;;
+    esac
+    [[ -e $lockfile ]] && continue
+    memora-display set "transform.$out" "$t" >/dev/null 2>&1
+  done
+}
+
+osk() { busctl --user call sm.puri.OSK0 /sm/puri/OSK0 sm.puri.OSK0 SetVisible b "$1" >/dev/null 2>&1; }
+
+case "${1:-}" in
+  serve)
+    has_touch || exit 0
+    command -v squeekboard >/dev/null && { squeekboard >/dev/null 2>&1 & }
+    case "$(hostnamectl chassis 2>/dev/null)" in convertible|tablet) rotate_loop ;; esac
+    wait ;;
+  keyboard)
+    case "${2:-}" in
+      show) osk true ;; hide) osk false ;;
+      auto) gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled "$([[ ${3:-on} == on ]] && echo true || echo false)" ;;
+      *) echo "usage: memora-touch keyboard show|hide|auto on|off"; exit 2 ;;
+    esac ;;
+  rotation)
+    mkdir -p "$(dirname "$lockfile")"
+    case "${2:-toggle}" in
+      lock) touch "$lockfile" ;; unlock) rm -f "$lockfile" ;;
+      toggle) if [[ -e $lockfile ]]; then rm -f "$lockfile"; else touch "$lockfile"; fi ;;
+    esac ;;
+  *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
