@@ -121,7 +121,7 @@ Singleton {
       sep(),
       { text: "Hide " + appName, action: () => Apps.windowsOf(cls).forEach(w => Apps.minimize(w.address)) },
       { text: "Hide Others", action: () => Apps.windows.filter(w => Apps.classOf(w) !== cls && !Apps.isMinimized(w)).forEach(w => Apps.minimize(w.address)) },
-      { text: "Show All", action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) },
+      { text: "Show All", enabled: Apps.windows.some(w => Apps.isMinimized(w)), action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) },
       sep(),
       { text: "Quit " + appName, keys: "Ctrl Q", action: () => Apps.quit(cls) }
     ] : [
@@ -129,7 +129,7 @@ Singleton {
       sep(),
       { text: "Settings…", action: () => Apps.run("memora-settings") },
       sep(),
-      { text: "Show All", action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) }
+      { text: "Show All", enabled: Apps.windows.some(w => Apps.isMinimized(w)), action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) }
     ]
     case "file": return hasWin ? [
       k("New Window", "ctrl+n"), k("New Tab", "ctrl+t"), k("Open…", "ctrl+o"),
@@ -187,7 +187,7 @@ Singleton {
       { text: "Move to Right Half", keys: "Super Right", enabled: hasWin, action: () => Apps.run("memora-window right") },
       { text: "Tile Window", keys: "Super T", enabled: hasWin, action: () => Apps.dispatch('hl.dsp.window.float({ action = "toggle" })') },
       sep(),
-      { text: "Show All Windows", action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) },
+      { text: "Show All Windows", enabled: Apps.windows.some(w => Apps.isMinimized(w)), action: () => Apps.windows.filter(w => Apps.isMinimized(w)).forEach(w => Apps.restore(w)) },
       sep(),
       { text: "Close Window", keys: "Alt F4", enabled: hasWin, action: () => Apps.close(win) }
     ]

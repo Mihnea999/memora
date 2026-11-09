@@ -17,8 +17,10 @@ Scope {
     function onRestoring(addr, win, rect) { genie.play(addr, win, rect, true) }
   }
 
-  property var queue: []
   function play(addr, win, rect, back) {
+    // One genie at a time: one still running (Show All restores many at once)
+    // finishes now, so no window is left behind hidden.
+    if (view.addr !== "" && view.addr !== addr) { const prev = view.addr, pb = view.backwards; view.addr = ""; done(prev, pb) }
     if (!Prefs.animations || !win || !win.wayland) { done(addr, back); return }
     view.source = null
     view.appId = Apps.classOf(win)
