@@ -93,8 +93,9 @@ ShellRoot {
     function close(): void { Shell.close() }
     function power(what: string): void { Shell.power(what) }
     function restore(addr: string): void { const a = addr.replace(/^0x/, ""); const w = Hyprland.toplevels.values.find(t => String(t.address).replace(/^0x/, "") === a); if (w) Apps.restore(w) }
-    function quitApp(): void { const w = Hyprland.activeToplevel; if (w) Apps.quit(Apps.classOf(Apps.windows.find(x => x.address === w.address) || w)) }
+    function quitApp(): void { if (Shell.switcherApp) { Shell.switcherAction = "quit"; return } const w = Hyprland.activeToplevel; if (w) Apps.quit(Apps.classOf(Apps.windows.find(x => x.address === w.address) || w)) }
     function hideApp(): void {
+      if (Shell.switcherApp) { Shell.switcherAction = "hide"; return }
       const w = Hyprland.activeToplevel; if (!w) return
       const c = Apps.classOf(Apps.windows.find(x => x.address === w.address) || w)
       Apps.windowsOf(c).filter(x => !Apps.isMinimized(x)).forEach(x => Apps.minimize(x.address))

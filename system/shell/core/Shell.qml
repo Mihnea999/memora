@@ -59,6 +59,10 @@ Singleton {
   // Dock (Apps, volume, the desktop indicator): less when the Dock is at a side.
   readonly property real bottomInset: Prefs.dockPosition === "left" || Prefs.dockPosition === "right" ? 30 : Prefs.dockSize + 46
 
+  // The app chosen in the app switcher (Super+Tab), and Q/H pressed meanwhile.
+  property string switcherApp: ""
+  property string switcherAction: ""
+
   // Width of the Memora AI notch in the middle of the menu bar (on the focused
   // screen), so the bar keeps its menus clear of it.
   property real notchWidth: 132

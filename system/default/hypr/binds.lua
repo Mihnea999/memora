@@ -30,8 +30,9 @@ b(S .. " + P", run("memora-shell project"), "Screens: extend, mirror, one only")
 b(S .. " + ALT + ESCAPE", run("memora-app activity"), "Force Quit (Activity Monitor)")
 
 -- Switching
-b(S .. " + TAB", shell("switch next"), "Switch apps (hold Super)")
-b(S .. " + SHIFT + TAB", shell("switch prev"), "Switch apps backwards")
+b(S .. " + TAB", shell("switch nextApp"), "Switch apps (hold Super: Q quits, H hides, ` shows its windows)")
+b(S .. " + SHIFT + TAB", shell("switch prevApp"), "Switch apps backwards")
+b(S .. " + grave", shell("switch appWindows"), "Switch between the windows of the app in front")
 b("ALT + TAB", shell("switch next"), "Switch windows")
 b("ALT + SHIFT + TAB", shell("switch prev"), "Switch windows backwards")
 b("ALT + ALT_L", shell("switch commit"), "Finish switching", { release = true })
