@@ -58,19 +58,18 @@ Kit.Page {
       Kit.Switch { checked: Prefs.snapLayouts; onToggled: on => Prefs.set("snapLayouts", on) }
     }
     Kit.Row {
-      label: "Snap Assist"; detail: "After docking one window, pick another for the rest of the screen"
+      label: "Snap Assist"
       enabled: Prefs.snapping; opacity: enabled ? 1 : 0.4
       Kit.Switch { checked: Prefs.snapAssist; onToggled: on => Prefs.set("snapAssist", on) }
     }
     Kit.Row {
-      label: "Resize side by side"; detail: "Drag the line between two docked windows to resize both"; last: true
+      label: "Resize side by side"; last: true
       Kit.Value { text: Prefs.snapping ? "On" : "Off" }
     }
   }
 
   Kit.Group {
     header: "Desktops"
-    footer: "Swipe sideways with three fingers to move between desktops, up for Mission Control."
     Kit.Row {
       label: "Desktops"; detail: "Add more in Mission Control (Ctrl+Super+↑, F3 or Super+S)"
       RowLayout {
@@ -87,7 +86,7 @@ Kit.Page {
 
   Kit.Group {
     header: "Shortcuts"
-    footer: "Super works like the Command key on a Mac. Every shortcut is listed in Help > Keyboard Shortcuts."
+    footer: "All shortcuts: Help > Keyboard Shortcuts."
     Repeater {
       model: [["Search", "Super+Space"], ["Apps", "Tap Super"], ["Switch apps", "Super+Tab"], ["Close window", "Super+W"],
               ["Quit app", "Super+Q"], ["Hide app", "Super+H"], ["Minimize", "Super+M"], ["Screenshot", "Super+Shift+3 · 4 · 5"],

@@ -507,7 +507,7 @@ ShellRoot {
           spacing: 4
           Tool { sym: "share"; tip: "Share with a device nearby"; onClicked: Quickshell.execDetached(["memora-shell", "share", app.current.path]) }
           Tool { sym: "heart"; on: !!app.current && !!app.favs[app.current.path]; tip: "Favourite"; onClicked: app.toggleFav(app.current.path) }
-          Tool { sym: "photo"; visible: !!app.current && !app.current.video; tip: "Use as wallpaper"; onClicked: Prefs.set("wallpaper", app.current.path) }
+          Tool { sym: "photo"; visible: !!app.current && !app.current.video; tip: "Use as Wallpaper"; onClicked: { Prefs.set("wallpaper", app.current.path); Quickshell.execDetached(["notify-send", "-a", "Gallery", "-h", "boolean:suppress-sound:true", "-i", app.current.path, "Wallpaper changed", app.current.path.split("/").pop()]) } }
           Tool { sym: "info"; on: app.info; tip: "Info (I)"; onClicked: app.info = !app.info }
           Tool { sym: "trash"; tip: "Move to Trash (Delete)"; onClicked: app.trash() }
         }

@@ -52,14 +52,12 @@ Kit.Page {
     }
     Kit.Row {
       label: "Administrator"; badge: "user"; badgeColor: "#8a8d96"; last: true
-      detail: "Changes to the system always ask for your password"
       Kit.Value { text: "Protected" }
     }
   }
 
   Kit.Group {
     header: "Lock Screen"
-    footer: "The screen also locks when the computer goes to sleep or the lid closes, and your password is needed to get back in. To keep the screen on, use Keep Awake (Control Center, or Battery & Energy)."
     Kit.Row {
       label: "Lock after inactivity"; last: true
       Kit.Choice {
@@ -72,7 +70,6 @@ Kit.Page {
 
   Kit.Group {
     header: "Privacy"
-    footer: "Memora sends nothing about you anywhere. Memora AI talks only to the provider you chose in its settings, and only when you ask it something."
     Kit.Row {
       label: "Memora AI can see and use the screen"; badge: "ai"; badgeColor: "#8a5cff"
       detail: "Screenshots, clicks and typing in apps, to do what you ask"
@@ -80,7 +77,6 @@ Kit.Page {
     }
     Kit.Row {
       label: "Clipboard history"; badge: "info"; badgeColor: "#8a8d96"; last: true
-      detail: "Kept on this computer only"
       Kit.Button { text: "Clear"; onClicked: Quickshell.execDetached(["bash", "-c", "cliphist wipe && notify-send -a Memora 'Clipboard history cleared'"]) }
     }
   }
@@ -89,7 +85,6 @@ Kit.Page {
     header: "Updates"
     Kit.Row {
       label: "Check for updates automatically"; badge: "download"; badgeColor: "#2f7bff"; last: true
-      detail: "Security fixes arrive with system updates"
       Kit.Switch { checked: Prefs.updateCheck; onToggled: on => Prefs.set("updateCheck", on) }
     }
   }

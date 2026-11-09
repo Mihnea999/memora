@@ -47,7 +47,7 @@ Kit.Page {
   Kit.Group {
     visible: p.mons.length > 1
     header: "Arrangement"
-    footer: "Super+P chooses quickly, and the choice appears by itself when you plug in a screen."
+    footer: "Super+P"
     Kit.Row {
       label: "Use screens"
       Kit.Choice {
@@ -57,7 +57,7 @@ Kit.Page {
       }
     }
     Kit.Row {
-      label: "Main screen"; detail: "Where the menu bar and the Dock start"
+      label: "Main screen"
       Kit.Choice {
         value: p.mainName
         options: p.mons.map(m => ({ text: m.model || m.name, value: m.name }))
@@ -104,7 +104,7 @@ Kit.Page {
         }
       }
       Kit.Row {
-        label: "Scale"; detail: "Larger text and controls, or more space"; last: true
+        label: "Scale"; last: true
         Kit.Choice {
           value: Math.round((p.cfg.scale[g.modelData.name] || g.modelData.scale || 1) * 100) / 100
           options: [{ text: "100%", value: 1 }, { text: "125%", value: 1.25 }, { text: "150%", value: 1.5 }, { text: "175%", value: 1.75 }, { text: "200%", value: 2 }]
@@ -141,7 +141,6 @@ Kit.Page {
   }
 
   Kit.Group {
-    footer: "Warmer colours after dark are easier on the eyes."
     Kit.Row {
       label: "Night Shift"; badge: "moon"; badgeColor: "#ff9f2e"; last: true
       Kit.Switch {

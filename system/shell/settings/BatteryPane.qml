@@ -36,7 +36,6 @@ Kit.Page {
   Kit.Group {
     header: "Energy mode"
     visible: p.profile !== ""
-    footer: "Low Power uses less energy; High Performance lets the computer run faster and warmer."
     Kit.Row {
       label: "Mode"; last: true
       Kit.Choice {
@@ -49,8 +48,7 @@ Kit.Page {
 
   Kit.Group {
     header: "Keep Awake"
-    footer: Prefs.awakeUntil > p.now ? "On until " + Qt.formatTime(new Date(Prefs.awakeUntil), Prefs.clock24 ? "HH:mm" : "h:mm AP") + ". The screen stays on, doesn't lock and the computer doesn't sleep. Also in Control Center (the cup)."
-      : "The screen stays on, doesn't lock and the computer doesn't sleep. Also in Control Center; a cup in the menu bar shows it's on."
+    footer: Prefs.awakeUntil > p.now ? "On until " + Qt.formatTime(new Date(Prefs.awakeUntil), Prefs.clock24 ? "HH:mm" : "h:mm AP") + "." : ""
     Kit.Row {
       label: "Keep Awake"; badge: "cup"; badgeColor: "#c47a35"
       Kit.Choice {
@@ -61,7 +59,6 @@ Kit.Page {
     }
     Kit.Row {
       label: "While an app is full screen"
-      detail: "Films, games and presentations keep the screen on"
       last: !p.has
       Kit.Switch { checked: Prefs.awakeFullscreen; onToggled: on => Prefs.set("awakeFullscreen", on) }
     }
@@ -76,7 +73,6 @@ Kit.Page {
 
   Kit.Group {
     header: "When you're away"
-    footer: "Times count from the last time you used the keyboard or mouse. The screen locks after the time set in Privacy & Security (now " + (Prefs.lockAfter ? Prefs.lockAfter + " min" : "never") + ")."
     Kit.Row {
       label: "Turn the screen off after"
       Kit.Choice {

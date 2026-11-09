@@ -34,9 +34,7 @@ Kit.Page {
   function run(args) { Quickshell.execDetached(["memora-share"].concat(args)) }
 
   Kit.Group {
-    footer: p.mode === "trusted" ? "Only your trusted devices can send you files. Others can still see you, but what they send is turned away without bothering you."
-          : p.mode === "everyone" ? "Anyone nearby can ask to send you files; you accept or decline each time."
-          : "Nobody can send you files. You can still send to others."
+    footer: p.mode === "trusted" ? "Others are turned away without asking you." : ""
     Kit.Row {
       label: "Receive from"; badge: "share"; badgeColor: "#2f7bff"
       Kit.Choice {
@@ -46,7 +44,7 @@ Kit.Page {
       }
     }
     Kit.Row {
-      label: "Name"; detail: "What phones and computers nearby see"; last: true
+      label: "Name"; last: true
       Kit.Field {
         id: nameField
         width: 200
@@ -60,9 +58,9 @@ Kit.Page {
 
   Kit.Group {
     header: "Trusted Devices"
-    footer: "To add one, choose Always Accept when it sends you something. Android phones are recognised by their name, LocalSend devices by their LocalSend ID; someone on the same Wi-Fi could copy either, so on public networks keep \"Accept without asking\" off or receiving off when you don't need it. Received files go to Downloads and never open by themselves."
+    footer: "Add one with Always Accept when it sends you something. On public Wi-Fi, keep \"Accept without asking\" off: a device can be imitated."
     Kit.Row {
-      label: "Accept without asking"; detail: "Files from trusted devices come straight in"
+      label: "Accept without asking"
       last: p.trusted.length === 0
       Kit.Switch { checked: p.autoAccept; onToggled: on => p.run(["autoaccept", on ? "on" : "off"]) }
     }

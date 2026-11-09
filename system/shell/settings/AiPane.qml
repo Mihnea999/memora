@@ -37,7 +37,6 @@ Kit.Page {
   }
 
   Kit.Group {
-    footer: "Memora AI can open apps, change settings, read and write your files and run commands to do what you ask. Anything risky, like deleting files or changing the system, waits for your OK."
     Kit.Row {
       label: "Runs on"; badge: "ai"; badgeColor: "#8a5cff"; last: true
       Kit.Choice {
@@ -51,9 +50,9 @@ Kit.Page {
   Kit.Group {
     header: "Claude Code"
     visible: p.cfg.provider === "claude-code"
-    footer: "Uses your Claude subscription. Not installed yet? Get Claude Code from the App Store (AI)."
+    footer: "Get Claude Code from the App Store (AI)."
     Kit.Row {
-      label: "Account"; detail: "Sign in once with your Claude account"; last: true
+      label: "Account"; last: true
       Kit.Button { text: "Sign In…"; primary: true; onClicked: Quickshell.execDetached(["memora-float", "bash", "-lc", "claude /login; echo; read -rsn1 -p 'Done. Press a key to close.'"]) }
     }
   }
@@ -86,7 +85,6 @@ Kit.Page {
   Kit.Group {
     header: "Model"
     visible: p.claude
-    footer: "Higher effort gives better answers to hard questions, but is slower and uses more of your plan or credits."
     Kit.Row {
       label: "Model"
       Kit.Choice {

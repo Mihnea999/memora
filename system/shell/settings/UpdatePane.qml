@@ -182,14 +182,13 @@ Kit.Page {
 
   // ---- settings -------------------------------------------------------------
   Kit.Group {
-    footer: "Before every system update Memora takes a snapshot of the system. If an update ever breaks something, pick the snapshot from the boot menu to go back."
+    footer: "A snapshot is taken before each update; pick it in the boot menu to go back."
     Kit.Row {
       label: "Check for updates automatically"
-      detail: "A notification tells you when there are some"
       Kit.Switch { checked: Prefs.updateCheck; onToggled: on => Prefs.set("updateCheck", on) }
     }
     Kit.Row {
-      label: "Firmware"; detail: "Updates for the computer's own hardware, when the maker offers them"; last: true
+      label: "Firmware"; last: true
       Kit.Button { text: "Check…"; onClicked: Quickshell.execDetached(["ghostty", "-e", "bash", "-c", "fwupdmgr refresh >/dev/null 2>&1; fwupdmgr get-updates && fwupdmgr update; read -rsn1 -p 'Press a key to close'"]) }
     }
   }

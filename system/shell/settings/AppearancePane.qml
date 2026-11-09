@@ -38,7 +38,6 @@ Kit.Page {
   }
   Kit.Group {
     header: "Liquid Glass"
-    footer: "Menus, the Dock, Control Center, notifications and app windows are made of glass. Clear shows more of your desktop; Tinted is calmer and easier to read."
     // A live sample of the glass over your desktop picture.
     Item {
       Layout.fillWidth: true
@@ -95,32 +94,31 @@ Kit.Page {
       Kit.Choice { value: Prefs.glassStyle; options: [{ text: "Clear", value: "clear" }, { text: "Tinted", value: "tinted" }]; onPicked: v => Prefs.set("glassStyle", v) }
     }
     Kit.Row {
-      label: "Transparency"; detail: "How much of the desktop shows through"
+      label: "Transparency"
       enabled: !Prefs.reduceTransparency; opacity: enabled ? 1 : 0.4
       Slider { implicitWidth: 200; sym: "sun"; value: Prefs.transparency; onMoved: v => Prefs.set("transparency", Math.round(v * 20) / 20) }
     }
     Kit.Row {
-      label: "Frost"; detail: "How much the glass blurs what is behind it"
+      label: "Frost"
       enabled: !Prefs.reduceTransparency; opacity: enabled ? 1 : 0.4
       Slider { implicitWidth: 200; sym: "drop"; value: Prefs.blur; onMoved: v => Prefs.set("blur", Math.round(v * 20) / 20) }
     }
     Kit.Row {
-      label: "Colour through glass"; detail: "Lets the colours of the desktop glow through"
+      label: "Colour through glass"
       enabled: !Prefs.reduceTransparency; opacity: enabled ? 1 : 0.4
       Slider { implicitWidth: 200; sym: "palette"; value: Prefs.vibrancy; onMoved: v => Prefs.set("vibrancy", Math.round(v * 20) / 20) }
     }
     Kit.Row {
-      label: "Edge light"; detail: "The bright rim where light catches the glass"
+      label: "Edge light"
       Slider { implicitWidth: 200; sym: "sparkle"; value: Prefs.shine; onMoved: v => Prefs.set("shine", Math.round(v * 20) / 20) }
     }
     Kit.Row { label: "Transparent menu bar"; Kit.Switch { checked: Prefs.menuBarTransparent; onToggled: on => Prefs.set("menuBarTransparent", on) } }
     Kit.Row {
-      label: "Reduce transparency"; detail: "Solid surfaces, easier to read"; last: true
+      label: "Reduce transparency"; last: true
       Kit.Switch { checked: Prefs.reduceTransparency; onToggled: on => Prefs.set("reduceTransparency", on) }
     }
   }
   Kit.Group {
-    footer: "Buttons, selections, switches and links use the accent colour. The font is JetBrains Mono everywhere."
     Kit.Row {
       label: "Accent colour"; last: true
       Row {

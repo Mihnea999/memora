@@ -14,6 +14,7 @@ Singleton {
   property bool showDate: true
   property string wallpaper: ""        // a picture of yours; empty: the set below
   property string wallpaperSet: "ember"   // ember | tide | horizon | dunes | silk, follows light/dark
+  property var wallpaperRecent: []     // your pictures used lately, newest first
   // Motion
   property bool animations: true
   property real animationSpeed: 1.0    // 0.5 slow … 2 fast
@@ -53,7 +54,7 @@ Singleton {
   property bool snapAssist: true       // after docking a window, offer others for the rest of the screen
   property bool snapLayouts: true      // drag a window to the top middle for a choice of layouts
 
-  readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet",
+  readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet", "wallpaperRecent",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockDots", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
     "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "alertSound", "alertVolume", "startupSound", "uiSounds", "volumeFeedback", "updateCheck", "desktops", "snapAssist", "snapLayouts"]
@@ -76,6 +77,7 @@ Singleton {
 
   function set(key, value) {
     p[key] = value
+    if (key === "wallpaper" && value) p.wallpaperRecent = [value].concat((p.wallpaperRecent || []).filter(f => f !== value)).slice(0, 6)
     if (["animations", "animationSpeed", "windowStyle"].indexOf(key) >= 0) writeMotion()
     if (["blur", "vibrancy", "reduceTransparency"].indexOf(key) >= 0) writeGlass()
     if (["lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower"].indexOf(key) >= 0) writeIdle()

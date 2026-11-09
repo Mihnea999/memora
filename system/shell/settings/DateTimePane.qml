@@ -24,7 +24,6 @@ Kit.Page {
   }
   Kit.Group {
     header: "Time zone"
-    footer: "Changing the time zone asks for your password."
     Kit.Row { label: "Current"; Kit.Value { text: Host.timezone } }
     Kit.Row { label: "Find a city or region"; Kit.Field { placeholder: "e.g. Bucharest"; onTextChanged: p.filter = text } }
     Repeater {

@@ -8,7 +8,6 @@ import qs.settings
 Kit.Page {
   title: "Animations"
   Kit.Group {
-    footer: "Windows, menus, the Dock and every Memora app move with these settings."
     Kit.Row {
       label: "Animations"; badge: "play"; badgeColor: "#ff6b8a"
       Kit.Switch { checked: Prefs.animations; onToggled: on => Prefs.set("animations", on) }

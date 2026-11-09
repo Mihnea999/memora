@@ -33,7 +33,6 @@ Kit.Page {
   }
   Kit.Group {
     header: "Sound Effects"
-    footer: "The alert sound plays with notifications and reminders."
     Kit.Row {
       label: "Alert volume"; badge: "sound"; badgeColor: "#ff9f0a"
       Slider { implicitWidth: 220; sym: Prefs.alertVolume > 0 ? "sound" : "sound-off"; value: Prefs.alertVolume; onMoved: v => { Prefs.set("alertVolume", Math.round(v * 100) / 100); volPreview.restart() } }
