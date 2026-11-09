@@ -7,6 +7,16 @@ source /root/memora.env
 MEMORA_PATH=/usr/share/memora
 
 step() { printf '\n\e[38;5;179m==>\e[0m %s\n' "$*"; }
+# pacman, again after a pause if the network drops for a moment (Wi-Fi
+# re-authenticating, a mirror timing out).
+pac() {
+  local i
+  for i in 1 2 3; do
+    pacman "$@" && return 0
+    [[ $i == 3 ]] || { echo "pacman: network trouble, trying again in 15 s"; sleep 15; }
+  done
+  return 1
+}
 
 step "Time, locale, hostname"
 ln -sf "/usr/share/zoneinfo/$MEMORA_TIMEZONE" /etc/localtime
@@ -75,7 +85,7 @@ step "Graphics"
 if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
   printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
 fi
-pacman -Sy --noconfirm >/dev/null
+pac -Sy --noconfirm >/dev/null
 gpu="$(lspci -nn | grep -iE 'vga|3d|display' || true)"
 # steam-devices: permissions for game controllers (Steam from the App Store asks for it).
 gfx=(mesa lib32-mesa vulkan-icd-loader lib32-vulkan-icd-loader vulkan-mesa-layers steam-devices)
@@ -100,7 +110,7 @@ if grep -qi nvidia <<<"$gpu"; then
     touch /etc/memora/nvidia-legacy
   fi
 fi
-pacman -S --needed --noconfirm "${gfx[@]}"
+pac -S --needed --noconfirm "${gfx[@]}"
 if [[ -f /etc/memora/nvidia ]]; then
   systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
 fi
@@ -110,22 +120,22 @@ user_kits=""
 for t in $MEMORA_TOOLKITS; do
   case "$t" in
     docker)
-      pacman -S --needed --noconfirm docker docker-compose docker-buildx
+      pac -S --needed --noconfirm docker docker-compose docker-buildx
       systemctl enable docker.service
       usermod -aG docker "$MEMORA_USER" ;;
     ollama)
       if grep -qi nvidia <<<"$gpu"; then o=ollama-cuda
       elif grep -qE 'AMD|ATI|Radeon' <<<"$gpu"; then o=ollama-rocm
       else o=ollama; fi
-      pacman -S --needed --noconfirm "$o"
+      pac -S --needed --noconfirm "$o"
       systemctl enable ollama.service ;;
-    android) pacman -S --needed --noconfirm android-tools jdk17-openjdk ;;
-    flutter) pacman -S --needed --noconfirm jdk17-openjdk clang cmake ninja pkgconf gtk3; user_kits+=" flutter" ;;
-    rust) pacman -S --needed --noconfirm rustup; user_kits+=" rust" ;;
+    android) pac -S --needed --noconfirm android-tools jdk17-openjdk ;;
+    flutter) pac -S --needed --noconfirm jdk17-openjdk clang cmake ninja pkgconf gtk3; user_kits+=" flutter" ;;
+    rust) pac -S --needed --noconfirm rustup; user_kits+=" rust" ;;
     gaming)
       # Steam (with Proton for Windows games), GameMode and the MangoHud overlay;
       # ProtonPlus (newer Proton builds) comes from the App Store in user.sh.
-      pacman -S --needed --noconfirm steam gamemode lib32-gamemode mangohud lib32-mangohud
+      pac -S --needed --noconfirm steam gamemode lib32-gamemode mangohud lib32-mangohud
       usermod -aG gamemode "$MEMORA_USER" 2>/dev/null || true
       user_kits+=" gaming" ;;
     *) user_kits+=" $t" ;;
