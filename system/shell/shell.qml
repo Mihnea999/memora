@@ -87,7 +87,7 @@ ShellRoot {
       Apps.windowsOf(c).filter(x => !Apps.isMinimized(x)).forEach(x => Apps.minimize(x.address))
     }
     function setFocusMode(on: string): void { Shell.focusMode = on === "on" || on === "true" }
-    function toggleDockHiding(): void { Prefs.set("dockAutohide", !Prefs.dockAutohide) }
+    function toggleDockHiding(): void { Prefs.set("dockHiding", (Prefs.dockHiding || (Prefs.dockAutohide ? "always" : "auto")) === "always" ? "auto" : "always") }
     function semiFullscreen(): void { Apps.semiFullscreen() }
     // Nearby Share for these files (one path per line).
     function share(paths: string): void { Shell.close(); Shell.shareFiles = paths.split("\n").filter(p => p !== "") }

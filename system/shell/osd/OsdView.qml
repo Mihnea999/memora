@@ -11,7 +11,7 @@ PanelWindow {
   screen: modelData
   visible: shown > 0
   anchors { bottom: true }
-  margins { bottom: 110 }
+  margins { bottom: Shell.bottomInset + 6 }
   implicitWidth: 260
   implicitHeight: 70
   exclusiveZone: 0

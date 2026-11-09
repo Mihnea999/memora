@@ -76,7 +76,7 @@ Scope {
       readonly property bool here: Hyprland.focusedMonitor ? modelData.name === Hyprland.focusedMonitor.name : modelData === Quickshell.screens[0]
       visible: here && (dk.showPill || pillFade.running) && dk.count > 1
       anchors { bottom: true }
-      margins.bottom: 118
+      margins.bottom: Shell.bottomInset + 14
       implicitWidth: pill.width + 20; implicitHeight: pill.height + 20
       exclusionMode: ExclusionMode.Ignore
       color: "transparent"

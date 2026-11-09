@@ -128,7 +128,7 @@ PanelWindow {
     height: Math.min(lp.height - 170, 640)
     anchors.horizontalCenter: parent.horizontalCenter
     // Rises from just above the Dock.
-    y: lp.height - height - 104 + (1 - lp.shown) * 60
+    y: lp.height - height - Shell.bottomInset + (1 - lp.shown) * 60
     opacity: lp.shown
     scale: 0.94 + 0.06 * lp.shown
     transformOrigin: Item.Bottom

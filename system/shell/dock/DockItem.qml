@@ -15,7 +15,7 @@ Item {
   readonly property bool running: wins.length > 0 || (appId === "memora-launchpad" && Shell.open === "launchpad")
 
   // Centre in the dock plate's coordinates (where the pointer is tracked).
-  readonly property real centerX: (parent && parent.parent ? parent.parent.x : 0) + dockRoot.rowX + width / 2
+  readonly property real centerX: (parent && parent.parent ? (dockRoot.vertical ? parent.parent.y : parent.parent.x) : 0) + dockRoot.rowX + width / 2
   readonly property real dist: Math.abs(dockRoot.mouseX - centerX)
   readonly property real grow: dockRoot.magnifying && dist < dockRoot.reach ? (Math.cos(dist / dockRoot.reach * Math.PI) + 1) / 2 : 0
   readonly property real size: dockRoot.base + (dockRoot.peak - dockRoot.base) * grow
@@ -32,7 +32,7 @@ Item {
   readonly property bool draggable: kind === "app" && appId !== ""
   property point drag: Qt.point(0, 0)
   readonly property bool dragging: dragger.active
-  readonly property bool leaving: dragging && drag.y < -it.height * 1.3 && Apps.pinned.indexOf(appId) >= 0
+  readonly property bool leaving: dragging && dockRoot.outward(drag) > it.height * 1.3 && Apps.pinned.indexOf(appId) >= 0
   z: dragging ? 10 : 0
   DragHandler {
     id: dragger
@@ -92,15 +92,14 @@ Item {
     }
   }
 
-  // Running dot.
+  // Running dot, on the screen-edge side of the icon.
   Rectangle {
     visible: it.running && it.kind === "app" && Prefs.dockDots
     width: 4; height: 4; radius: 2
     color: Theme.text
     opacity: 0.75
-    anchors.horizontalCenter: parent.horizontalCenter
-    anchors.top: parent.bottom
-    anchors.topMargin: 2
+    x: it.dockRoot.pos === "bottom" ? (parent.width - width) / 2 : (it.dockRoot.pos === "left" ? -6 : parent.width + 2)
+    y: it.dockRoot.pos === "bottom" ? parent.height + 2 : (parent.height - height) / 2
   }
 
   // Name above the icon.
@@ -114,9 +113,9 @@ Item {
     shadowSize: 12
     width: tipText.implicitWidth + 22
     height: 26
-    anchors.horizontalCenter: parent.horizontalCenter
-    anchors.bottom: parent.top
-    anchors.bottomMargin: 12
+    // Above the icon, or beside it on a Dock at the side.
+    x: it.dockRoot.pos === "bottom" ? (parent.width - width) / 2 : (it.dockRoot.pos === "left" ? parent.width + 12 : -width - 12)
+    y: it.dockRoot.pos === "bottom" ? -height - 12 : (parent.height - height) / 2
     Txt { id: tipText; anchors.centerIn: parent; text: it.label; font.pixelSize: Theme.small + 0.5 }
   }
 
@@ -128,8 +127,11 @@ Item {
   }
   TapHandler {
     acceptedButtons: Qt.RightButton
-    onTapped: { it.dockRoot.menuX = it.dockRoot.hitX + it.centerX; it.dockRoot.menuFor = it.entry }
+    onTapped: it.openMenu()
   }
+  // Touch: a long press is the right click.
+  TapHandler { acceptedDevices: PointerDevice.TouchScreen; onLongPressed: it.openMenu() }
+  function openMenu() { it.dockRoot.menuX = it.dockRoot.hitX + it.centerX; it.dockRoot.menuFor = it.entry }
 
   function activate() {
     if (kind === "trash") return Apps.run("nautilus --new-window trash:///")
@@ -143,8 +145,8 @@ Item {
   SequentialAnimation {
     id: bounce
     loops: 2
-    NumberAnimation { target: bouncer; property: "y"; to: -it.height * 0.32; duration: Prefs.motion(260); easing.type: Easing.OutQuad }
-    NumberAnimation { target: bouncer; property: "y"; to: 0; duration: Prefs.motion(260); easing.type: Easing.InQuad }
+    NumberAnimation { target: bouncer; property: it.dockRoot.vertical ? "x" : "y"; to: (it.dockRoot.pos === "left" ? 1 : -1) * it.height * 0.32; duration: Prefs.motion(260); easing.type: Easing.OutQuad }
+    NumberAnimation { target: bouncer; property: it.dockRoot.vertical ? "x" : "y"; to: 0; duration: Prefs.motion(260); easing.type: Easing.InQuad }
   }
-  onRunningChanged: if (running && bounce.running) { bounce.stop(); bouncer.y = 0 }
+  onRunningChanged: if (running && bounce.running) { bounce.stop(); bouncer.y = 0; bouncer.x = 0 }
 }

@@ -241,7 +241,7 @@ TOOLS = [
     tool("open", "Open an app (by name, e.g. 'Files', 'Browser', 'Terminal', 'Text Editor', or a desktop id), a file or folder (path), or a web address (URL).",
          {"target": S}, ["target"]),
     tool("system_setting", "Change a setting. volume/brightness: 0-100 or +N/-N. wifi/bluetooth/do_not_disturb/night_shift/dock_autohide: on|off. keep_awake (screen stays on, no lock or sleep): off, on, or minutes. appearance: light|dark. wallpaper: image path, or 'default'. dock_size: 36-72. settings_pane: open System Settings at a pane (wifi, bluetooth, sound, displays, battery, dock, ...).",
-         {"setting": {"type": "string", "enum": ["volume", "brightness", "wifi", "bluetooth", "appearance", "wallpaper", "do_not_disturb", "focus", "night_shift", "keep_awake", "dock_autohide", "dock_size", "settings_pane"]}, "value": S},
+         {"setting": {"type": "string", "enum": ["volume", "brightness", "wifi", "bluetooth", "appearance", "wallpaper", "do_not_disturb", "focus", "night_shift", "keep_awake", "dock_autohide", "dock_position", "dock_size", "settings_pane"]}, "value": S},
          ["setting", "value"]),
     tool("windows", "List open windows, or focus, close, minimize, maximize or restore one. `window` is an address from the list or an app class.",
          {"action": {"type": "string", "enum": ["list", "focus", "close", "minimize", "maximize", "restore"]}, "window": S}, ["action"]),
@@ -607,8 +607,12 @@ class Tools:
             shell_prefs(awakeUntil=until)
             return ("Keep Awake is off." if until == 0 else "Keep Awake is on: the screen stays on and won't lock or sleep" + (f" for {v} minutes." if v.isdigit() else " until it is turned off.")), False
         elif setting == "dock_autohide":
-            shell_prefs(dockAutohide=on)
-            return f"The Dock {'hides until the pointer reaches the bottom' if on else 'stays on screen'}.", False
+            shell_prefs(dockAutohide=on, dockHiding="always" if on else "never")
+            return f"The Dock {'hides until the pointer reaches the edge of the screen' if on else 'stays on screen'}.", False
+        elif setting == "dock_position":
+            pos = v if v in ("left", "bottom", "right") else "bottom"
+            shell_prefs(dockPosition=pos)
+            return f"The Dock is now at the {pos} of the screen.", False
         elif setting == "dock_size":
             shell_prefs(dockSize=max(36, min(72, int(re.sub(r"\D", "", v) or 58))))
             return "Dock size changed.", False

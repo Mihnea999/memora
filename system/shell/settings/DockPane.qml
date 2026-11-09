@@ -23,9 +23,22 @@ Kit.Page {
       Slider { implicitWidth: 220; sym: "plus"; value: (Prefs.magnifySize - 56) / 56; onMoved: v => Prefs.set("magnifySize", Math.round(56 + v * 56)) }
     }
     Kit.Row {
-      label: "Automatically hide and show the Dock"
-      detail: "Point at the bottom edge to show it · Super+Alt+D"
-      Kit.Switch { checked: Prefs.dockAutohide; onToggled: on => Prefs.set("dockAutohide", on) }
+      label: "Position on screen"
+      Kit.Choice {
+        value: Prefs.dockPosition
+        options: [{ text: "Left", value: "left" }, { text: "Bottom", value: "bottom" }, { text: "Right", value: "right" }]
+        onPicked: v => Prefs.set("dockPosition", v)
+      }
+    }
+    Kit.Row {
+      label: "Hide the Dock"
+      detail: (Prefs.dockHiding || (Prefs.dockAutohide ? "always" : "auto")) === "auto" ? "Automatic: when a window needs the room on small screens · Super+Alt+D"
+        : "Point at the edge of the screen to show it · Super+Alt+D"
+      Kit.Choice {
+        value: Prefs.dockHiding || (Prefs.dockAutohide ? "always" : "auto")
+        options: [{ text: "Auto", value: "auto" }, { text: "Never", value: "never" }, { text: "When Needed", value: "smart" }, { text: "Always", value: "always" }]
+        onPicked: v => Prefs.set("dockHiding", v)
+      }
     }
     Kit.Row {
       label: "Show indicators for open apps"
