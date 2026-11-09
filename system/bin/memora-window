@@ -436,6 +436,14 @@ def main():
             restore(w, st)
         elif nxt:
             place(w, nxt, st, a)
+    elif cmd == "corner":   # Picture in Picture let go: to the nearest corner
+        w = window(args[1] if len(args) > 1 else None)
+        if w:
+            ax, ay, aw, ah = area(w)
+            x = ax if w["at"][0] + w["size"][0] / 2 < ax + aw / 2 else ax + aw - w["size"][0]
+            y = ay if w["at"][1] + w["size"][1] / 2 < ay + ah / 2 else ay + ah - w["size"][1]
+            dispatch(f'hl.dsp.window.move({{ x = {x}, y = {y}, window = "address:{w["address"]}" }})')
+        return 0
     elif cmd == "arrange":
         arrange(st, pair=len(args) > 1 and args[1] == "pair")
     elif cmd == "refit":

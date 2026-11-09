@@ -20,6 +20,7 @@ import qs.ui
 Scope {
   id: snap
   property bool held: false
+  property bool pip: false           // the window dragged is Picture in Picture: it goes to a corner
   onHeldChanged: Shell.dragging = held
   property bool moving: false
   property string zone: ""
@@ -100,6 +101,7 @@ Scope {
     function end(): void {
       const z = snap.zone, a = snap.addr, m = snap.moving, mon = snap.mon
       snap.held = false; snap.zone = ""; snap.moving = false; snap.layoutsOpen = false
+      if (snap.pip && m && a) { Quickshell.execDetached(["memora-window", "corner", a]); return }
       if (z && m && a) {
         Quickshell.execDetached(["memora-window", z, a])
         if (Prefs.snapAssist && snap.complement[z]) assist.offer(snap.complement[z], a, mon)
@@ -124,6 +126,8 @@ Scope {
         let w = snap.addr ? cl.find(x => x.address === snap.addr) : null
         if (!w) w = cl.find(x => snap.startAt[x.address] && (Math.abs(x.at[0] - snap.startAt[x.address][0]) > 4 || Math.abs(x.at[1] - snap.startAt[x.address][1]) > 4)) || null
         if (!w || !w.floating || w.fullscreen) { snap.zone = ""; return }
+        if (/^Picture[ -]in[ -]picture/i.test(w.title || "")) { snap.pip = true; snap.addr = w.address; snap.moving = true; snap.zone = ""; return }
+        snap.pip = /^Picture[ -]in[ -]picture/i.test(w.title || "")
         if (snap.addr !== w.address) { snap.addr = w.address; sizes.want = w.address; sizes.running = true }
         const st = snap.startAt[w.address] || w.at
         if (!snap.moving && (Math.abs(w.at[0] - st[0]) > 4 || Math.abs(w.at[1] - st[1]) > 4)) {
