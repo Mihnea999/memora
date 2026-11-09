@@ -58,12 +58,13 @@ Singleton {
   property bool snapAssist: true       // after docking a window, offer others for the rest of the screen
   property bool snapLayouts: true      // drag a window to the top middle for a choice of layouts
   property var desktopNames: []
-  property var hotCorners: ({})        // { tl, tr, bl, br }: overview | expose | desktop | launchpad | notifications | control | ai | lock | display        // names given in Mission Control ("" = Desktop N)
+  property var hotCorners: ({})
+  property bool reopenWindows: true    // reopen the apps that were open, after shutting down or logging out        // { tl, tr, bl, br }: overview | expose | desktop | launchpad | notifications | control | ai | lock | display        // names given in Mission Control ("" = Desktop N)
 
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet", "wallpaperRecent", "batteryPercent", "lowPowerOnBattery",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockHiding", "dockPosition", "dockDots", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
-    "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "alertSound", "alertVolume", "startupSound", "uiSounds", "volumeFeedback", "updateCheck", "desktops", "snapAssist", "snapLayouts", "desktopNames", "hotCorners"]
+    "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "alertSound", "alertVolume", "startupSound", "uiSounds", "volumeFeedback", "updateCheck", "desktops", "snapAssist", "snapLayouts", "desktopNames", "hotCorners", "reopenWindows"]
 
   // A duration, scaled by the speed setting; 0 when animations are off.
   function motion(ms) { return animations ? Math.round(ms / Math.max(0.25, animationSpeed)) : 0 }

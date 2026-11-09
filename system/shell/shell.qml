@@ -30,6 +30,8 @@ import qs.corners
 ShellRoot {
   id: root
   Component.onCompleted: Shell.main = true   // this process holds Keep Awake's inhibitor
+  // Window memory (frames, home screens, reopening after login) runs here.
+  readonly property bool remembering: Frames.on
 
   // A chime when a charger is plugged in (laptops), like a Mac.
   Connections {

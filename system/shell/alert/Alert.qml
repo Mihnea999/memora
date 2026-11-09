@@ -89,6 +89,20 @@ Scope {
             text: !win.shownAlert ? "" : (win.shownAlert.countdown ? (win.shownAlert.message || "") .replace("%s", root.left) : (win.shownAlert.message || ""))
             color: Theme.textDim; font.pixelSize: Theme.small + 0.5
           }
+          // "Reopen windows when logging back in", as on a Mac.
+          Row {
+            visible: !!win.shownAlert && win.shownAlert.reopen === true
+            Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 4
+            spacing: 8
+            Rectangle {
+              width: 16; height: 16; radius: 4
+              color: Prefs.reopenWindows ? Theme.accent : Theme.field
+              border.color: Prefs.reopenWindows ? Theme.accent : Theme.separator
+              Sym { visible: Prefs.reopenWindows; anchors.centerIn: parent; name: "check"; width: 10; height: 10; color: "#ffffff" }
+            }
+            Txt { text: "Reopen windows when logging back in"; font.pixelSize: Theme.small + 0.5; anchors.verticalCenter: parent.verticalCenter }
+            TapHandler { onTapped: Prefs.set("reopenWindows", !Prefs.reopenWindows) }
+          }
           RowLayout {
             Layout.fillWidth: true; Layout.topMargin: 8
             spacing: 10
