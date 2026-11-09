@@ -97,7 +97,7 @@ Scope {
 
   IpcHandler {
     target: "snap"
-    function begin(): void { if (!Prefs.snapping) return; snap.held = true; snap.moving = false; snap.zone = ""; snap.startAt = null; snap.addr = ""; snap.layoutsOpen = false; snap.unsnapped = false; snap.minSize = Qt.size(1, 1); poll.running = true }
+    function begin(): void { if (!Prefs.snapping) return; snap.held = true; snap.moving = false; snap.zone = ""; snap.startAt = null; snap.addr = ""; snap.layoutsOpen = false; snap.unsnapped = false; snap.minSize = Qt.size(1, 1); snap.pip = false; poll.running = true }
     function end(): void {
       const z = snap.zone, a = snap.addr, m = snap.moving, mon = snap.mon
       snap.held = false; snap.zone = ""; snap.moving = false; snap.layoutsOpen = false
