@@ -30,14 +30,15 @@ PanelWindow {
   Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
   onOpenChanged: if (open) Net.refresh()
 
-  // Nearby Share receiving (on unless turned off), from ~/.config/memora/share.json.
-  property bool receiving: true
+  // Nearby Share receiving: everyone, trusted devices only, or off (~/.config/memora/share.json).
+  property string shareMode: "everyone"
+  readonly property bool receiving: shareMode !== "off"
   FileView {
     path: Quickshell.env("HOME") + "/.config/memora/share.json"
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: { try { cc.receiving = JSON.parse(text()).receive !== false } catch (e) {} }
+    onLoaded: { try { const r = JSON.parse(text()).receive; cc.shareMode = r === false || r === "off" ? "off" : r === "trusted" ? "trusted" : "everyone" } catch (e) {} }
   }
 
   OutsideClick {
@@ -88,10 +89,11 @@ PanelWindow {
             // Receiving files from phones and computers nearby (bin/memora-share).
             Toggle {
               sym: "share"; title: "Nearby Share"
-              sub: cc.receiving ? "Everyone" : "Receiving off"
+              sub: cc.shareMode === "everyone" ? "Everyone" : cc.shareMode === "trusted" ? "Trusted Devices" : "Receiving off"
               on: cc.receiving
-              onToggled: { cc.receiving = !cc.receiving; Quickshell.execDetached(["memora-share", "receive", cc.receiving ? "on" : "off"]) }
-              onOpened: { cc.receiving = !cc.receiving; Quickshell.execDetached(["memora-share", "receive", cc.receiving ? "on" : "off"]) }
+              onToggled: Quickshell.execDetached(["memora-share", "receive", cc.receiving ? "off" : "on"])
+              // The arrow side: who can send you files, in Settings.
+              onOpened: { Shell.close(); Quickshell.execDetached(["memora-settings", "nearby"]) }
             }
             Toggle {
               sym: "moon"; title: "Focus"

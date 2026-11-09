@@ -20,6 +20,7 @@ ShellRoot {
     { id: "wifi", title: "Wi-Fi", sym: "wifi", color: "#2f7bff", group: 1 },
     { id: "bluetooth", title: "Bluetooth", sym: "bluetooth", color: "#2f7bff", group: 1 },
     { id: "network", title: "Network", sym: "globe", color: "#3c9bf0", group: 1 },
+    { id: "nearby", title: "Nearby Share", sym: "share", color: "#2f7bff", group: 1 },
     { id: "notifications", title: "Notifications", sym: "bell", color: "#ff4d5e", group: 2 },
     { id: "sound", title: "Sound", sym: "sound", color: "#ff4fa0", group: 2 },
     { id: "appearance", title: "Appearance", sym: "moon", color: "#1d1d20", group: 3 },
@@ -41,7 +42,7 @@ ShellRoot {
   readonly property var visiblePanes: search ? panes.filter(p => p.title.toLowerCase().indexOf(search.toLowerCase()) >= 0) : panes
 
   readonly property var paneFiles: ({
-    wifi: "Wifi", bluetooth: "BluetoothPane", network: "NetworkPane", notifications: "NotificationsPane",
+    wifi: "Wifi", bluetooth: "BluetoothPane", network: "NetworkPane", nearby: "NearbyPane", notifications: "NotificationsPane",
     sound: "SoundPane", appearance: "AppearancePane", animations: "AnimationsPane", windows: "WindowsPane", wallpaper: "WallpaperPane", dock: "DockPane",
     displays: "DisplaysPane", keyboard: "KeyboardPane", mouse: "MousePane", battery: "BatteryPane",
     datetime: "DateTimePane", users: "UsersPane", privacy: "PrivacyPane", ai: "AiPane", update: "UpdatePane", about: "AboutPane"

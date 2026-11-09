@@ -9,9 +9,16 @@ LocalSend app on iPhone, Windows, macOS, Linux and Android).
   memora-share devices            the devices seen lately (JSON)
   memora-share send ID FILE...    send files to a device (ID from devices);
                                   prints "PROGRESS 0-100", then "DONE" or "ERROR why"
-  memora-share receive on|off     let others send you files, or not
+  memora-share receive MODE       who can send you files: everyone, trusted, off
+                                  (on = the last of everyone/trusted)
+  memora-share trust              the trusted devices (JSON)
+  memora-share trust remove ID    stop trusting one
+  memora-share autoaccept on|off  take files from trusted devices without asking
+  memora-share name NAME          the name others see ("" for the default)
 
-Received files go to Downloads, after you accept them in a notification.
+Received files go to Downloads, after you accept them in a notification
+(with "Always Accept" the device becomes trusted; trusted devices send
+without asking unless autoaccept is off).
 Settings: ~/.config/memora/share.json. State for the desktop:
 $XDG_RUNTIME_DIR/memora-share/devices.json.
 """
@@ -62,7 +69,46 @@ def config():
 
 def save_config(c):
     CONF.parent.mkdir(parents=True, exist_ok=True)
-    CONF.write_text(json.dumps(c, indent=1) + "\n")
+    tmp = CONF.with_suffix(".tmp")
+    tmp.write_text(json.dumps(c, indent=1) + "\n")
+    tmp.replace(CONF)
+
+
+def mode(c=None):
+    """Who may send: "everyone", "trusted" or "off" (older configs said true/false)."""
+    r = (c or config()).get("receive", True)
+    return "everyone" if r is True or r == "everyone" else "trusted" if r == "trusted" else "off"
+
+
+# Trusted devices: a LocalSend device by its id ("ls:" + fingerprint), an
+# Android one by its name ("qs:" + name), the only things that stay the same
+# from one transfer to the next. Either can be copied by someone on the same
+# network, so this decides about asking, never about opening anything.
+def trusted(key):
+    return any(t.get("id") == key for t in config().get("trusted") or [])
+
+
+def trust(key, name, kind):
+    c = config()
+    c["trusted"] = [t for t in c.get("trusted") or [] if t.get("id") != key] + \
+        [{"id": key, "name": name, "kind": kind, "added": int(time.time())}]
+    save_config(c)
+
+
+def consent(key, name, kind, question):
+    """Whether to take what `name` sends: by the mode, the trusted list, or by asking."""
+    c = config()
+    m = mode(c)
+    if m == "off":
+        return False
+    if trusted(key) and c.get("autoAccept", True):
+        return True
+    if m == "trusted" and not trusted(key):
+        return False                       # not asked: strangers don't get to pop up anything
+    choice = notify(name, question, [("accept", "Accept"), ("always", "Always Accept"), ("decline", "Decline")], wait=60)
+    if choice == "always":
+        trust(key, name, kind)
+    return choice in ("accept", "always")
 
 
 def alias():
@@ -163,7 +209,7 @@ class Service:
         with self.lock:
             self.devices = {k: d for k, d in self.devices.items() if now - d["seen"] < SEEN_FOR}
             devs = list(self.devices.values()) + (self.qs.list() if self.qs else [])
-            out = {"me": {"alias": alias(), "id": self.fp}, "receive": bool(config().get("receive", True)),
+            out = {"me": {"alias": alias(), "id": self.fp}, "receive": mode() != "off",
                    "devices": sorted(devs, key=lambda d: d["alias"].lower())}
         tmp = DEVICES.with_suffix(".tmp")
         tmp.write_text(json.dumps(out, indent=1))
@@ -217,7 +263,7 @@ class Service:
     def tick(self):
         while True:
             if self.qs:   # visible to Android while receiving is on; follows Wi-Fi changes
-                self.qs.visible(bool(config().get("receive", True)), alias())
+                self.qs.visible(mode() != "off", alias())
             self.announce()
             self.publish()
             for _ in range(30):
@@ -243,15 +289,12 @@ class Service:
                              args=(sock, self.qs_ask, self.qs_received, unique, HOME / "Downloads")).start()
 
     def qs_ask(self, who, files, texts, pin):
-        if not config().get("receive", True):
-            return False
         if files:
             what = files[0]["name"] if len(files) == 1 else f"{len(files)} files"
             what += f" ({human(sum(f['size'] for f in files))})"
         else:
             what = "a link" if texts[0]["kind"] == 2 else "some text"
-        choice = notify(who, f"wants to send you {what}\nPIN {pin}", [("accept", "Accept"), ("decline", "Decline")], wait=60)
-        return choice == "accept"
+        return consent("qs:" + who, who, "Quick Share", f"wants to send you {what}\nPIN {pin}")
 
     def qs_received(self, who, paths, texts):
         if paths:
@@ -275,7 +318,7 @@ class Service:
     def prepare(self, body, ip):
         info, files = body.get("info") or {}, body.get("files") or {}
         self.seen(info, ip)
-        if not config().get("receive", True):
+        if mode() == "off":
             return 403, {"message": "Not receiving"}
         if not files:
             return 400, {"message": "No files"}
@@ -283,8 +326,7 @@ class Service:
         names = [f.get("fileName", "file") for f in files.values()]
         size = sum(int(f.get("size") or 0) for f in files.values())
         what = names[0] if len(names) == 1 else f"{len(names)} files"
-        choice = notify(who, f"wants to send you {what} ({human(size)})", [("accept", "Accept"), ("decline", "Decline")], wait=60)
-        if choice != "accept":
+        if not info.get("fingerprint") or not consent("ls:" + info["fingerprint"], who, "LocalSend", f"wants to send you {what} ({human(size)})"):
             return 403, {"message": "Declined"}
         sid = str(uuid.uuid4())
         tokens = {fid: secrets.token_hex(16) for fid in files}
@@ -510,11 +552,38 @@ def main():
         sys.exit(send(sys.argv[2], sys.argv[3:]))
     elif cmd == "receive" and len(sys.argv) > 2:
         c = config()
-        c["receive"] = sys.argv[2] in ("on", "true", "everyone", "1")
+        want = sys.argv[2]
+        if want in ("on", "true", "1"):
+            want = c.get("onMode") or "everyone"
+        want = want if want in ("everyone", "trusted") else "off"
+        c["receive"] = want
+        if want != "off":
+            c["onMode"] = want
         save_config(c)
         RUN.mkdir(parents=True, exist_ok=True)
         (RUN / "scan").touch()     # the service applies it now
-        print("Receiving files from nearby devices: " + ("on" if c["receive"] else "off"))
+        print("Receiving files from nearby devices: " + {"everyone": "everyone", "trusted": "trusted devices only", "off": "off"}[want])
+    elif cmd == "trust":
+        c = config()
+        if len(sys.argv) > 3 and sys.argv[2] == "remove":
+            c["trusted"] = [t for t in c.get("trusted") or [] if t.get("id") != sys.argv[3]]
+            save_config(c)
+        print(json.dumps(c.get("trusted") or [], indent=1))
+    elif cmd == "autoaccept" and len(sys.argv) > 2:
+        c = config()
+        c["autoAccept"] = sys.argv[2] in ("on", "true", "1")
+        save_config(c)
+    elif cmd == "name" and len(sys.argv) > 2:
+        c = config()
+        name = " ".join(sys.argv[2].split())[:60]
+        if name:
+            c["alias"] = name
+        else:
+            c.pop("alias", None)
+        save_config(c)
+        RUN.mkdir(parents=True, exist_ok=True)
+        (RUN / "scan").touch()
+        print(alias())
     else:
         sys.exit(__doc__)
 
