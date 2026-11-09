@@ -100,6 +100,64 @@ Singleton {
   }
   Connections {
     target: Hyprland
-    function onRawEvent(ev) { if (ev.name === "fullscreen") Hyprland.refreshToplevels() }
+    function onRawEvent(ev) {
+      if (ev.name !== "fullscreen") return
+      // What the window was before this change, for one never seen here yet.
+      const t = Hyprland.activeToplevel
+      s.fsHint = t && t.lastIpcObject ? (t.lastIpcObject.fullscreen || 0) : 0
+      Hyprland.refreshToplevels()
+      if (!s.main) return
+      if (fsProbe.running) fsProbe.again = true
+      else fsProbe.running = true
+    }
+  }
+
+  // Leaving full screen puts a window back as it was. Chromium (the Browser,
+  // YouTube's full screen) asks to be maximized right after leaving it, so a
+  // window that wasn't maximized came back filling the screen: such a request,
+  // within 2 s of leaving full screen, is undone.
+  property var fsState: ({})      // address -> 0 normal, 1 maximized, 2 full screen
+  property var fsBefore: ({})     // address -> state before going full screen
+  property var fsLeft: ({})       // address -> { at, before } when it left full screen
+  property int fsHint: 0
+  Process {
+    id: fsProbe
+    property bool again: false
+    command: ["hyprctl", "-j", "activewindow"]
+    onExited: if (again) { again = false; running = true }
+    stdout: StdioCollector {
+      onStreamFinished: {
+        let w; try { w = JSON.parse(text) } catch (e) { return }
+        if (!w || !w.address) return
+        const a = w.address, now = w.fullscreen || 0, prev = a in s.fsState ? s.fsState[a] : s.fsHint
+        if (now === 2 && prev !== 2) s.fsBefore[a] = prev
+        if (prev === 2 && now !== 2) s.fsLeft[a] = { at: Date.now(), before: s.fsBefore[a] || 0 }
+        const left = s.fsLeft[a]
+        if (now === 1 && left && Date.now() - left.at < 2000 && left.before === 0 && w.fullscreenClient === 1) {
+          delete s.fsLeft[a]
+          Hyprland.dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')   // toggles it off again
+        }
+        // And one that was maximized comes back maximized (Hyprland leaves it normal).
+        if (prev === 2 && now === 0 && left && left.before === 1) { fsRemax.addr = a; fsRemax.restart() }
+        s.fsState[a] = now
+      }
+    }
+  }
+  Timer {
+    id: fsRemax
+    property string addr: ""
+    interval: 500
+    onTriggered: fsCheck.running = true
+  }
+  Process {
+    id: fsCheck
+    command: ["hyprctl", "-j", "activewindow"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        let w; try { w = JSON.parse(text) } catch (e) { return }
+        if (w && w.address === fsRemax.addr && (w.fullscreen || 0) === 0)
+          Hyprland.dispatch('hl.dsp.window.fullscreen({ mode = "maximized" })')
+      }
+    }
   }
 }
