@@ -63,10 +63,10 @@ FloatingWindow {
     } else { for (const k in s) delete s[k]; s[p] = true }
     selected = s; lastClicked = p
   }
-  function selectAll() { const s = {}; for (let i = 0; i < folder.count; i++) s[folder.get(i, "filePath")] = true; selected = s }
+  function selectAll() { const s = {}; for (let i = 0; i < win.entries; i++) s[folder.get(i, "filePath")] = true; selected = s }
   function newFolder() {
     let n = "untitled folder", i = 2
-    const names = {}; for (let j = 0; j < folder.count; j++) names[folder.get(j, "fileName")] = true
+    const names = {}; for (let j = 0; j < win.entries; j++) names[folder.get(j, "fileName")] = true
     while (names[n]) n = "untitled folder " + i++
     sh("mkdir -p " + q(path + "/" + n), () => { selected = ({ [path + "/" + n]: true }); renaming = path + "/" + n })
   }
@@ -116,6 +116,16 @@ FloatingWindow {
     onExited: { done(); destroy() }
   } }
 
+  // How many entries the folder really has. Qt's FolderListModel keeps the
+  // previous folder's rows when the new one is empty, so rows from another
+  // folder count as none (else an empty Screenshots showed Pictures' items,
+  // "Screenshots" among them, which then wouldn't open).
+  readonly property int entries: {
+    const c = folder.count
+    if (!c) return 0
+    const fp = folder.get(0, "filePath") || ""
+    return (fp.substring(0, fp.lastIndexOf("/")) || "/") === path ? c : 0
+  }
   FolderListModel {
     id: folder
     folder: "file://" + win.path
@@ -302,7 +312,7 @@ FloatingWindow {
 
     // The current list: the folder, or search results.
     readonly property bool searching: win.query.length >= 2
-    readonly property int n: searching ? win.found.length : folder.count
+    readonly property int n: searching ? win.found.length : win.entries
     function at(i) {
       if (!searching) return { name: folder.get(i, "fileName"), path: folder.get(i, "filePath"), dir: folder.get(i, "fileIsDir"), size: folder.get(i, "fileSize"), mod: folder.get(i, "fileModified") }
       const p = win.found[i]; return { name: p.split("/").pop(), path: p, dir: false, size: 0, mod: new Date(), search: true }
