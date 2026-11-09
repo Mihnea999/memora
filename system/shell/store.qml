@@ -26,6 +26,26 @@ ShellRoot {
   property string section: "Discover"
   property string query: ""
   property string detail: ""            // app id shown in detail
+  // Screenshots of the app in detail, from Flathub: [{ src, w, h }]; bigShot: the one shown large.
+  property var shots: []
+  property int bigShot: -1
+  onDetailChanged: { shots = []; bigShot = -1; if (detail && !detail.startsWith("cli.")) { shotProc.running = false; shotProc.appId = detail; shotProc.running = true } }
+  Process {
+    id: shotProc
+    property string appId
+    command: ["curl", "-sf", "--max-time", "12", "https://flathub.org/api/v2/appstream/" + appId]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (shotProc.appId !== app.detail) return
+        let d; try { d = JSON.parse(text) } catch (e) { return }
+        app.shots = (d.screenshots || []).map(sc => {
+          const sizes = (sc.sizes || []).map(z => ({ src: z.src, w: parseInt(z.width) || 0, h: parseInt(z.height) || 0 })).filter(z => z.src && z.w)
+          const fit = sizes.filter(z => z.w <= 1300).sort((x, y) => y.w - x.w)[0] || sizes.sort((x, y) => x.w - y.w)[0]
+          return fit
+        }).filter(z => z).slice(0, 8)
+      }
+    }
+  }
   property bool ready: false            // Flathub reachable and its catalogue fetched
   property string status: "Connecting to Flathub…"
 
@@ -360,53 +380,81 @@ ShellRoot {
           Txt { text: app.query ? "Results" : app.section; color: Theme.accent }
           TapHandler { onTapped: app.detail = "" }
         }
-        ColumnLayout {
-          x: 40; y: 60; width: parent.width - 80
-          spacing: 18
-          RowLayout {
-            spacing: 22
-            StoreIcon { appId: app.detail; Layout.preferredWidth: 128; Layout.preferredHeight: 128 }
-            ColumnLayout {
-              spacing: 6
-              Txt { text: page.a.name; font.pixelSize: 28; font.weight: Font.Bold }
-              Txt { text: page.a.summary; color: Theme.textDim; font.pixelSize: Theme.large }
-              Txt { text: page.a.category; color: Theme.accent; font.pixelSize: Theme.small }
-              Row {
-                Layout.topMargin: 8
-                spacing: 10
-                GetButton { appId: app.detail; big: true }
-                Rectangle {
-                  visible: app.updates.indexOf(app.detail) >= 0 && !app.jobs[app.detail]
-                  width: upt.implicitWidth + 26; height: 32; radius: 16
-                  color: uph.hovered ? Theme.pressed : Theme.hover
-                  Txt { id: upt; anchors.centerIn: parent; text: "Update"; color: Theme.accent; font.weight: Font.Bold }
-                  HoverHandler { id: uph }
-                  TapHandler { onTapped: app.start(app.detail, "update") }
-                }
-                Rectangle {
-                  visible: !!app.installed[app.detail] && !app.jobs[app.detail]
-                  width: rt.implicitWidth + 26; height: 32; radius: 16
-                  color: rh.hovered ? Theme.pressed : Theme.hover
-                  Txt { id: rt; anchors.centerIn: parent; text: "Remove"; color: Theme.red }
-                  HoverHandler { id: rh }
-                  TapHandler { onTapped: app.start(app.detail, "remove") }
+        Flickable {
+          id: pf
+          anchors { fill: parent; topMargin: 48 }
+          contentHeight: pcol.implicitHeight + 40
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          ColumnLayout {
+            id: pcol
+            x: 40; y: 10; width: pf.width - 80
+            spacing: 18
+            RowLayout {
+              spacing: 22
+              StoreIcon { appId: app.detail; Layout.preferredWidth: 128; Layout.preferredHeight: 128 }
+              ColumnLayout {
+                spacing: 6
+                Txt { text: page.a.name; font.pixelSize: 28; font.weight: Font.Bold }
+                Txt { text: page.a.summary; color: Theme.textDim; font.pixelSize: Theme.large }
+                Txt { text: page.a.category; color: Theme.accent; font.pixelSize: Theme.small }
+                Row {
+                  Layout.topMargin: 8
+                  spacing: 10
+                  GetButton { appId: app.detail; big: true }
+                  Rectangle {
+                    visible: app.updates.indexOf(app.detail) >= 0 && !app.jobs[app.detail]
+                    width: upt.implicitWidth + 26; height: 32; radius: 16
+                    color: uph.hovered ? Theme.pressed : Theme.hover
+                    Txt { id: upt; anchors.centerIn: parent; text: "Update"; color: Theme.accent; font.weight: Font.Bold }
+                    HoverHandler { id: uph }
+                    TapHandler { onTapped: app.start(app.detail, "update") }
+                  }
+                  Rectangle {
+                    visible: !!app.installed[app.detail] && !app.jobs[app.detail]
+                    width: rt.implicitWidth + 26; height: 32; radius: 16
+                    color: rh.hovered ? Theme.pressed : Theme.hover
+                    Txt { id: rt; anchors.centerIn: parent; text: "Remove"; color: Theme.red }
+                    HoverHandler { id: rh }
+                    TapHandler { onTapped: app.start(app.detail, "remove") }
+                  }
                 }
               }
             }
-          }
-          Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
-          Txt { Layout.fillWidth: true; text: page.a.description; wrapMode: Text.Wrap; font.pixelSize: Theme.fontSize + 1; lineHeight: 1.3 }
-          Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: inf.implicitHeight + 24
-            radius: 12; color: Theme.field; border.color: Theme.separator
-            GridLayout {
-              id: inf
-              x: 16; y: 12; width: parent.width - 32
-              columns: 2; columnSpacing: 20; rowSpacing: 6
-              Txt { text: "Source"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "Its makers' official installer" : ((app.entry(app.detail) || {}).remote === "artcraft-oci" ? "ArtCraft (getartcraft.com)" : "Flathub"); font.pixelSize: Theme.small }
-              Txt { text: "Identifier"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail; font.pixelSize: Theme.small }
-              Txt { text: "Installs for"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "You; opens in Terminal" : "You (no password needed), in its own sandbox"; font.pixelSize: Theme.small }
+
+            // Screenshots from Flathub; a click shows one big.
+            ListView {
+              Layout.fillWidth: true; Layout.preferredHeight: 260
+              visible: app.shots.length > 0
+              orientation: ListView.Horizontal
+              spacing: 14; clip: true
+              boundsBehavior: Flickable.StopAtBounds
+              model: app.shots
+              delegate: Rectangle {
+                required property var modelData
+                required property int index
+                height: 260; width: Math.round(260 * (modelData.w / Math.max(1, modelData.h)))
+                radius: 12; clip: true; color: Theme.field
+                border.color: Theme.separator
+                Image { anchors.fill: parent; anchors.margins: 1; source: modelData.src; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.height: 520 }
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: app.bigShot = index }
+              }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
+            Txt { Layout.fillWidth: true; text: page.a.description; wrapMode: Text.Wrap; font.pixelSize: Theme.fontSize + 1; lineHeight: 1.3 }
+            Rectangle {
+              Layout.fillWidth: true
+              implicitHeight: inf.implicitHeight + 24
+              radius: 12; color: Theme.field; border.color: Theme.separator
+              GridLayout {
+                id: inf
+                x: 16; y: 12; width: parent.width - 32
+                columns: 2; columnSpacing: 20; rowSpacing: 6
+                Txt { text: "Source"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "Its makers' official installer" : ((app.entry(app.detail) || {}).remote === "artcraft-oci" ? "ArtCraft (getartcraft.com)" : "Flathub"); font.pixelSize: Theme.small }
+                Txt { text: "Identifier"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail; font.pixelSize: Theme.small }
+                Txt { text: "Installs for"; color: Theme.textDim; font.pixelSize: Theme.small } Txt { text: app.detail.startsWith("cli.") ? "You; opens in Terminal" : "You (no password needed), in its own sandbox"; font.pixelSize: Theme.small }
+              }
             }
           }
         }
@@ -537,6 +585,29 @@ ShellRoot {
         // The square in the middle stops the download.
         TapHandler { enabled: !!gbtn.job && gbtn.job.kind === "install"; onTapped: app.cancel(gbtn.appId) }
         HoverHandler { enabled: !!gbtn.job && gbtn.job.kind === "install"; cursorShape: Qt.PointingHandCursor }
+      }
+    }
+  
+    // A screenshot, large. Click or Escape to close; arrows for the others.
+    Rectangle {
+      anchors.fill: parent
+      visible: app.bigShot >= 0 && app.bigShot < app.shots.length
+      color: Qt.rgba(0, 0, 0, 0.82)
+      z: 100
+      focus: visible
+      Keys.onEscapePressed: app.bigShot = -1
+      Keys.onLeftPressed: app.bigShot = Math.max(0, app.bigShot - 1)
+      Keys.onRightPressed: app.bigShot = Math.min(app.shots.length - 1, app.bigShot + 1)
+      Image {
+        anchors { fill: parent; margins: 40 }
+        fillMode: Image.PreserveAspectFit; asynchronous: true
+        source: app.bigShot >= 0 && app.shots[app.bigShot] ? app.shots[app.bigShot].src : ""
+      }
+      TapHandler { onTapped: app.bigShot = -1 }
+      Txt {
+        anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
+        text: app.shots.length > 1 ? (app.bigShot + 1) + " of " + app.shots.length + "  ·  ← →" : ""
+        color: Qt.rgba(1, 1, 1, 0.7); font.pixelSize: Theme.small
       }
     }
   }
