@@ -34,6 +34,9 @@ hl.config({
   animations = { enabled = true },
   dwindle = { preserve_split = true },
   misc = {
+    -- If the shell (which draws the lock screen) restarts while locked, it locks
+    -- again by itself instead of leaving Hyprland's "lockscreen app died" screen.
+    allow_session_lock_restore = true,
     disable_hyprland_logo = true,
     disable_splash_rendering = true,
     force_default_wallpaper = 0,

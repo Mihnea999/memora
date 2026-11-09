@@ -9,6 +9,15 @@ import qs.core
 Scope {
   id: lk
   property bool locked: false
+  // Remembered while locked, so a restarted shell locks again at once
+  // (a crash must never leave the screen open, or stuck on a dead lock).
+  readonly property string flag: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/memora-locked"
+  onLockedChanged: Quickshell.execDetached(locked ? ["touch", flag] : ["rm", "-f", flag])
+  Process {
+    running: true
+    command: ["test", "-e", lk.flag]
+    onExited: code => { if (code === 0) lk.locked = true }
+  }
   property string message: ""
   property string pending: ""
   property var views: []
