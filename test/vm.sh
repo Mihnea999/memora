@@ -7,6 +7,7 @@
 #   test/vm.sh run       boot the installed disk in a fast GPU window (user memora / memora)
 #   test/vm.sh dev       same, running system/ live from this checkout
 #   test/vm.sh live      boot the ISO interactively in a window
+# RES=WxH sets the screen (default 1920x1080): 1366x768, 2560x1080, 1080x1920…
 set -euo pipefail
 cd "$(dirname "$0")"
 iso="$(ls -t ../out/memora-*.iso 2>/dev/null | head -1)"
@@ -16,6 +17,7 @@ disk="${pre}disk.qcow2"
 ovmf_code=/usr/share/edk2/x64/OVMF_CODE.4m.fd
 ovmf_vars=/usr/share/edk2/x64/OVMF_VARS.4m.fd
 mon="${pre}monitor.sock"
+res="${RES:-1920x1080}"; xres="${res%x*}"; yres="${res#*x}"
 
 common=(-machine q35,accel=kvm -cpu host -smp 6 -m 8G
   -device virtio-tablet-pci -device virtio-keyboard-pci
@@ -55,7 +57,7 @@ case "${1:-}" in
   boot)  # headless; with VM=dev it also runs system/ live from this checkout
     share=(); [[ $name == dev && ${LIVE:-1} == 1 ]] && share=("${live[@]}")
     qemu-system-x86_64 "${common[@]}" "${audio[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2" -device virtio-blk-pci,drive=hd,bootindex=0 \
-      ${GPU:--device virtio-vga-gl,xres=1920,yres=1080 -display egl-headless,rendernode=/dev/dri/renderD128} \
+      ${GPU:--device virtio-vga-gl,xres=$xres,yres=$yres -display egl-headless,rendernode=/dev/dri/renderD128} \
       -vnc ":${VNC:-5}" -serial "file:${pre}boot.log" &
     echo "VM started (VNC localhost:5905). Screenshot: test/vm.sh shot out.png"
     ;;
@@ -87,7 +89,7 @@ case "${1:-}" in
     [[ -f $disk ]] || { echo "No installed disk. Run: test/vm.sh install"; exit 1; }
     share=(); [[ $1 == dev ]] && share=("${live[@]}")
     qemu-system-x86_64 "${common[@]}" "${audio[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2,cache=unsafe,aio=io_uring" -device virtio-blk-pci,drive=hd,bootindex=0 \
-      -device virtio-vga-gl,hostmem=1G,blob=true,xres=1920,yres=1080 -object memory-backend-memfd,id=mem,size=8G,share=on -machine memory-backend=mem \
+      -device virtio-vga-gl,hostmem=1G,blob=true,xres=$xres,yres=$yres -object memory-backend-memfd,id=mem,size=8G,share=on -machine memory-backend=mem \
       -display sdl,gl=on -serial "file:${pre}boot.log" ;;
   live)
     cp -n "$ovmf_vars" "${pre}vars.fd" 2>/dev/null || true
