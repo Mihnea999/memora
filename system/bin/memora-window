@@ -275,13 +275,13 @@ def arrange(st, pair=False):
         sizes = {e["address"]: e.get("min") or (1, 1) for e in json.loads(subprocess.run(["hyprctl", "memora-sizes"], capture_output=True, text=True, timeout=2).stdout or "[]")}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         sizes = {}
-    # Fewer windows when some can't shrink to their part.
+    # Fewer windows when some can't shrink to their part: the oldest step out
+    # first (they stay where they are), so the active one is always arranged.
     while wins:
         zs = arrangement(len(wins), kind(a))
-        bad = [i for i, w in enumerate(wins) if not fits(zs[i], w, a, sizes.get(w["address"], (1, 1)))]
-        if not bad:
+        if all(fits(zs[i], w, a, sizes.get(w["address"], (1, 1))) for i, w in enumerate(wins)):
             break
-        wins.pop(bad[-1])
+        wins.pop()
     gid = str(int(time.time() * 1000)) if len(wins) > 1 else None
     for w, z in zip(wins, arrangement(len(wins), kind(a))):
         place(w, z, st, a)
