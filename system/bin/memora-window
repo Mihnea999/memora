@@ -12,6 +12,9 @@ menu bar, above the Dock), remembering how big they were before.
   memora-window restore [ADDRESS] back to the size it had before docking
   memora-window unsnap ADDRESS X Y  being dragged away: back to its own size,
                                   under the pointer at X Y
+  memora-window inside [ADDRESS]  after a drag: a window whose top went under the
+                                  menu bar comes back below it (else its title
+                                  bar, all you can hold it by, is out of reach)
   memora-window zone [ADDRESS]    print the zone it is docked in, if any
   memora-window rect ZONE         print the zone's rectangle (x y w h)
 """
@@ -206,6 +209,16 @@ def main():
         w = window(args[1])
         if w and st.get(w["address"], {}).get("orig") and current_zone(w, area(w), st):
             restore(w, st, at=(int(float(args[2])), int(float(args[3]))))
+    elif cmd == "inside":
+        w = window(args[1] if len(args) > 1 else None)
+        if w and w.get("floating") and not w.get("fullscreen"):
+            ms = hypr("monitors")
+            m = next((m for m in ms if m["id"] == w["monitor"]), None) or next(m for m in ms if m["focused"])
+            top = m["y"] + m["reserved"][1]          # just under the menu bar
+            y = w["at"][1] - title_bar(w)
+            if y < top:
+                dispatch(f'hl.dsp.window.move({{ x = {w["at"][0]}, y = {top + title_bar(w) + 4}, window = "address:{w["address"]}" }})')
+        return 0
     elif cmd == "zone":
         w = window(args[1] if len(args) > 1 else None)
         print((current_zone(w, area(w), st) or "") if w else "")

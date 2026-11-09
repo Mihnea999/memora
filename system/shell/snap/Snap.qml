@@ -71,7 +71,7 @@ Scope {
       if (z && m && a) {
         Quickshell.execDetached(["memora-window", z, a])
         if (Prefs.snapAssist && snap.complement[z]) assist.offer(snap.complement[z], a, mon)
-      }
+      } else if (m || !Prefs.snapping) Quickshell.execDetached(["memora-window", "inside"])   // dragged: not left under the menu bar
     }
   }
 
