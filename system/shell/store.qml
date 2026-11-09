@@ -174,7 +174,12 @@ ShellRoot {
     title: "App Store"
     implicitWidth: 1120
     implicitHeight: 720
-    minimumSize: Qt.size(820, 520)
+    minimumSize: Qt.size(520, 420)
+    // Narrow (docked beside another app): the sidebar tucks away and slides in when wanted.
+    readonly property bool compact: width < 760
+    property bool sideOpen: false
+    onCompactChanged: sideOpen = false
+    Connections { target: app; function onSectionChanged() { win.sideOpen = false } }
     color: "transparent"
     Rectangle { anchors.fill: parent; color: Theme.window }
 
@@ -182,9 +187,12 @@ ShellRoot {
     Rectangle {
       id: side
       width: 220
+      z: win.compact ? 10 : 0
       anchors { top: parent.top; bottom: parent.bottom; left: parent.left; margins: 8 }
+      anchors.leftMargin: win.compact && !win.sideOpen ? -width - 24 : 8
+      Behavior on anchors.leftMargin { NumberAnimation { duration: Theme.normal; easing.type: Theme.easingEmph } }
       radius: 12
-      color: Theme.sidebar
+      color: win.compact ? Theme.glassSolid : Theme.sidebar
       border.color: Theme.separator
       WindowControls { x: 14; y: 14; window: win; onCloseRequested: Qt.quit() }
       Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
@@ -240,9 +248,17 @@ ShellRoot {
     }
 
     // ---- content
+    CompactBar {
+      x: 14; y: 12; z: 5
+      visible: win.compact
+      window: win; sideOpen: win.sideOpen
+      onToggled: win.sideOpen = !win.sideOpen
+      onCloseRequested: Qt.quit()
+    }
+    MouseArea { anchors.fill: parent; z: 9; visible: win.compact && win.sideOpen; onClicked: win.sideOpen = false }
     Item {
       id: main
-      anchors { left: side.right; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 6 }
+      anchors { left: win.compact ? parent.left : side.right; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 6; topMargin: win.compact ? 30 : 0 }
       Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) } }
 

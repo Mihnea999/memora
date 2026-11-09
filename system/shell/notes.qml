@@ -242,7 +242,13 @@ ShellRoot {
     title: "Notes"
     implicitWidth: 1080
     implicitHeight: 680
-    minimumSize: Qt.size(720, 420)
+    minimumSize: Qt.size(500, 380)
+    // Narrow (docked beside another app): the folders step aside unless asked for,
+    // and the list of notes gets narrower.
+    readonly property bool narrow: width < 820
+    property bool foldersHere: false
+    onNarrowChanged: foldersHere = false
+    readonly property bool folders: narrow ? foldersHere : app.showFolders
     color: "transparent"
     Rectangle { anchors.fill: parent; color: Theme.window }
     ConfirmSheet { id: confirm }
@@ -262,7 +268,7 @@ ShellRoot {
     Shortcut { sequence: "Ctrl+Shift+X"; onActivated: app.style("strike") }
     Shortcut { sequence: "Ctrl+Shift+L"; onActivated: app.linePrefix("☐ ") }
     Shortcut { sequence: "Ctrl+Shift+8"; onActivated: app.linePrefix("• ") }
-    Shortcut { sequence: "Ctrl+Alt+S"; onActivated: app.showFolders = !app.showFolders }
+    Shortcut { sequence: "Ctrl+Alt+S"; onActivated: if (win.narrow) win.foldersHere = !win.foldersHere; else app.showFolders = !app.showFolders }
     Shortcut { sequence: "Ctrl+="; onActivated: app.textSize = Math.min(26, app.textSize + 1) }
     Shortcut { sequence: "Ctrl+-"; onActivated: app.textSize = Math.max(11, app.textSize - 1) }
     Shortcut { sequence: "Ctrl+W"; onActivated: { app.saveNow(); Qt.quit() } }
@@ -271,7 +277,7 @@ ShellRoot {
     // ---- folders
     Rectangle {
       id: side
-      width: app.showFolders ? 200 : 0
+      width: win.folders ? 200 : 0
       visible: width > 1
       clip: true
       Behavior on width { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutQuint } }
@@ -306,17 +312,17 @@ ShellRoot {
     Item {
       id: middle
       anchors { left: side.right; top: parent.top; bottom: parent.bottom; leftMargin: 6 }
-      width: 290
+      width: win.narrow ? Math.max(200, win.width * 0.38) : 290
       Item {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: 52
         DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
-        WindowControls { visible: !app.showFolders; x: 10; y: 19; window: win; onCloseRequested: { app.saveNow(); Qt.quit() } }
+        WindowControls { visible: !win.folders; x: 10; y: 19; window: win; onCloseRequested: { app.saveNow(); Qt.quit() } }
         Row {
           anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
           spacing: 2
-          Tool { sym: "dock"; tip: "Folders"; onClicked: app.showFolders = !app.showFolders }
+          Tool { sym: "sidebar"; tip: "Folders"; onClicked: if (win.narrow) win.foldersHere = !win.foldersHere; else app.showFolders = !app.showFolders }
           Tool { sym: "plus"; tip: "New Note"; onClicked: app.newNote() }
         }
       }

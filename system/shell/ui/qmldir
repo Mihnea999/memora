@@ -10,3 +10,4 @@ WindowControls 1.0 WindowControls.qml
 ConfirmSheet 1.0 ConfirmSheet.qml
 Tip 1.0 Tip.qml
 SwipeNav 1.0 SwipeNav.qml
+CompactBar 1.0 CompactBar.qml

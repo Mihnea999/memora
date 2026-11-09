@@ -16,7 +16,13 @@ FloatingWindow {
   title: "Files"
   implicitWidth: 1040
   implicitHeight: 660
-  minimumSize: Qt.size(640, 400)
+  minimumSize: Qt.size(460, 360)
+  // Narrow (docked beside another app on a small screen): the sidebar tucks
+  // away and slides in over the files when wanted.
+  readonly property bool compact: width < 700
+  property bool sideOpen: false
+  onCompactChanged: sideOpen = false
+  onPathChanged: sideOpen = false
   color: "transparent"
 
   // ---- where we are
@@ -243,9 +249,12 @@ FloatingWindow {
   Rectangle {
     id: side
     width: 210
+    z: win.compact ? 10 : 0
     anchors { top: parent.top; bottom: parent.bottom; left: parent.left; margins: 8 }
+    anchors.leftMargin: win.compact && !win.sideOpen ? -width - 24 : 8
+    Behavior on anchors.leftMargin { NumberAnimation { duration: Theme.normal; easing.type: Theme.easingEmph } }
     radius: 12
-    color: Theme.sidebar
+    color: win.compact ? Theme.glassSolid : Theme.sidebar
     border.color: Theme.separator
     WindowControls { x: 14; y: 14; window: win; onCloseRequested: win.closeMe() }
     Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
@@ -350,10 +359,19 @@ FloatingWindow {
     DropArea { id: drop; anchors.fill: parent; onDropped: win.moveInto(pl.target) }
   }
 
+  CompactBar {
+    x: 14; y: 16; z: 5
+    visible: win.compact
+    window: win; sideOpen: win.sideOpen
+    onToggled: win.sideOpen = !win.sideOpen
+    onCloseRequested: win.closeMe()
+  }
+  MouseArea { anchors.fill: parent; z: 9; visible: win.compact && win.sideOpen; onClicked: win.sideOpen = false }
+
   // ---- toolbar
   Item {
     id: tools
-    anchors { left: side.right; right: parent.right; top: parent.top }
+    anchors { left: win.compact ? parent.left : side.right; right: parent.right; top: parent.top; leftMargin: win.compact ? 128 : 0 }
     height: 52
     DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
@@ -409,7 +427,7 @@ FloatingWindow {
     id: content
     // Two fingers sideways: back and forward through the folders you visited.
     SwipeNav { onBack: win.goBack(); onForward: win.goForward() }
-    anchors { left: side.right; right: parent.right; top: tools.bottom; bottom: status.top; leftMargin: 6 }
+    anchors { left: win.compact ? parent.left : side.right; right: parent.right; top: tools.bottom; bottom: status.top; leftMargin: 6 }
     focus: true
     // Not clipped, so a dragged file stays visible over the sidebar.
     clip: false
@@ -699,7 +717,7 @@ FloatingWindow {
   // ---- path and status
   Item {
     id: status
-    anchors { left: side.right; right: parent.right; bottom: parent.bottom; leftMargin: 6 }
+    anchors { left: win.compact ? parent.left : side.right; right: parent.right; bottom: parent.bottom; leftMargin: 6 }
     height: 30
     Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Theme.separator }
     Row {

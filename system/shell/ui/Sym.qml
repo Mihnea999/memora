@@ -357,6 +357,12 @@ Canvas {
       ctx.beginPath(); ctx.arc(8, 12.8, 1.8, 0, Math.PI); ctx.fill()
       break
     }
+    case "sidebar": {
+      ctx.lineWidth = 1.4
+      rr(ctx, 1.5, 2.5, 13, 11, 2.2); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(6, 2.5); ctx.lineTo(6, 13.5); ctx.stroke()
+      break
+    }
     case "dock": {
       ctx.lineWidth = 1.4
       rr(ctx, 1.5, 2, 13, 12, 2); ctx.stroke()

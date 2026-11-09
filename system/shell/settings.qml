@@ -64,8 +64,14 @@ ShellRoot {
     title: "System Settings"
     implicitWidth: 940
     implicitHeight: 660
-    minimumSize: Qt.size(760, 480)
+    minimumSize: Qt.size(480, 400)
     color: "transparent"
+    // Narrow (docked beside another app on a small screen): the sidebar tucks
+    // away and slides in over the panes when wanted.
+    readonly property bool compact: width < 720
+    property bool sideOpen: false
+    onCompactChanged: sideOpen = false
+    Connections { target: app; function onPaneChanged() { win.sideOpen = false } }
 
     Rectangle {
       anchors.fill: parent
@@ -76,9 +82,12 @@ ShellRoot {
     Rectangle {
       id: side
       width: 250
+      z: win.compact ? 10 : 0
       anchors { top: parent.top; bottom: parent.bottom; left: parent.left; margins: 8 }
+      anchors.leftMargin: win.compact && !win.sideOpen ? -width - 24 : 8
+      Behavior on anchors.leftMargin { NumberAnimation { duration: Theme.normal; easing.type: Theme.easingEmph } }
       radius: 14
-      color: Theme.sidebar
+      color: win.compact ? Theme.glassSolid : Theme.sidebar
       border.color: Theme.separator
 
       // Window buttons
@@ -161,9 +170,20 @@ ShellRoot {
       }
     }
 
+    // Narrow: the window buttons and the sidebar button, top left; a tap beside
+    // the slid-in sidebar puts it away.
+    CompactBar {
+      x: 14; y: 12; z: 5
+      visible: win.compact
+      window: win; sideOpen: win.sideOpen
+      onToggled: win.sideOpen = !win.sideOpen
+      onCloseRequested: Qt.quit()
+    }
+    MouseArea { anchors.fill: parent; z: 9; visible: win.compact && win.sideOpen; onClicked: win.sideOpen = false }
+
     // ---- content ------------------------------------------------------------
     Item {
-      anchors { left: side.right; right: parent.right; top: parent.top; bottom: parent.bottom }
+      anchors { left: win.compact ? parent.left : side.right; right: parent.right; top: parent.top; bottom: parent.bottom }
       Item {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: 40
@@ -174,6 +194,7 @@ ShellRoot {
       Loader {
         id: loader
         anchors.fill: parent
+        anchors.topMargin: win.compact ? 30 : 0
         source: "settings/" + (app.paneFiles[app.pane] || "Wifi") + ".qml"
         transform: Translate { id: rise; y: 0 }
         onLoaded: enter.restart()
