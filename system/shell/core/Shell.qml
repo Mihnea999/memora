@@ -56,6 +56,8 @@ Singleton {
 
   // Do-not-disturb, shared by Control Center and notifications.
   property bool focusMode: false
+  // Files being shared with a nearby device: the Share sheet is open (share/ShareSheet.qml).
+  property var shareFiles: []
   // Windows in "semi full screen": filling the screen under the menu bar, with
   // the Dock out of the way (address -> true). See Apps.semiFullscreen.
   property var semi: ({})

@@ -505,6 +505,7 @@ ShellRoot {
         Row {
           anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
           spacing: 4
+          Tool { sym: "share"; tip: "Share with a device nearby"; onClicked: Quickshell.execDetached(["memora-shell", "share", app.current.path]) }
           Tool { sym: "heart"; on: !!app.current && !!app.favs[app.current.path]; tip: "Favourite"; onClicked: app.toggleFav(app.current.path) }
           Tool { sym: "photo"; visible: !!app.current && !app.current.video; tip: "Use as wallpaper"; onClicked: Prefs.set("wallpaper", app.current.path) }
           Tool { sym: "info"; on: app.info; tip: "Info (I)"; onClicked: app.info = !app.info }

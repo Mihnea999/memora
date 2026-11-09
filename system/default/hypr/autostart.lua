@@ -9,6 +9,8 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("uwsm app -- memora-shell")
   hl.exec_cmd("uwsm app -- hypridle")
   hl.exec_cmd("uwsm app -- wl-paste --watch cliphist store")
+  -- Nearby Share: send and receive files with phones and computers (LocalSend).
+  hl.exec_cmd("uwsm app -- memora-share serve")
   hl.exec_cmd("sleep 1.5 && memora-welcome --first-run")
   hl.exec_cmd("sleep 0.6 && memora-sound startup")
 end)

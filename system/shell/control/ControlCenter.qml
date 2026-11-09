@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.core
@@ -29,6 +30,16 @@ PanelWindow {
   Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
   onOpenChanged: if (open) Net.refresh()
 
+  // Nearby Share receiving (on unless turned off), from ~/.config/memora/share.json.
+  property bool receiving: true
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/memora/share.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { cc.receiving = JSON.parse(text()).receive !== false } catch (e) {} }
+  }
+
   OutsideClick {
     when: cc.open
     windows: [cc]
@@ -51,10 +62,10 @@ PanelWindow {
         spacing: 10
         Layout.fillWidth: true
 
-        // Wi-Fi, Bluetooth, Focus
+        // Wi-Fi, Bluetooth, Nearby Share, Focus
         Module {
           Layout.preferredWidth: 160
-          Layout.preferredHeight: 152
+          Layout.preferredHeight: 200
           ColumnLayout {
             anchors.fill: parent
             anchors.margins: 10
@@ -74,6 +85,14 @@ PanelWindow {
               onToggled: Sys.toggleBt()
               onOpened: Shell.openStatus("bluetooth")
             }
+            // Receiving files from phones and computers nearby (bin/memora-share).
+            Toggle {
+              sym: "share"; title: "Nearby Share"
+              sub: cc.receiving ? "Everyone" : "Receiving off"
+              on: cc.receiving
+              onToggled: { cc.receiving = !cc.receiving; Quickshell.execDetached(["memora-share", "receive", cc.receiving ? "on" : "off"]) }
+              onOpened: { cc.receiving = !cc.receiving; Quickshell.execDetached(["memora-share", "receive", cc.receiving ? "on" : "off"]) }
+            }
             Toggle {
               sym: "moon"; title: "Focus"
               sub: Shell.focusMode ? "Do Not Disturb" : "Off"
@@ -89,7 +108,7 @@ PanelWindow {
           Layout.fillWidth: true
           Module {
             Layout.fillWidth: true
-            Layout.preferredHeight: 71
+            Layout.preferredHeight: 119
             Tile {
               anchors.fill: parent
               sym: Theme.dark ? "moon" : "sun"

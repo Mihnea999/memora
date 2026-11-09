@@ -143,6 +143,10 @@ printf '[zram0]\nzram-size = min(ram / 2, 8192)\ncompression-algorithm = zstd\n'
 sed -i 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' /etc/default/ufw 2>/dev/null || true
 sed -i 's/^DEFAULT_OUTPUT_POLICY=.*/DEFAULT_OUTPUT_POLICY="ACCEPT"/' /etc/default/ufw 2>/dev/null || true
 sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true
+# Nearby Share (LocalSend, port 53317) gets through from the local network
+# only; a unit adds the rules at boot (ufw can't change rules inside the chroot).
+install -Dm644 -t /usr/lib/systemd/system $MEMORA_PATH/units/memora-nearby-firewall.service
+systemctl enable memora-nearby-firewall.service
 
 step "Security"
 # Kernel: hide kernel pointers and logs from programs, ignore spoofed and

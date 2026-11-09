@@ -1,0 +1,13 @@
+[Unit]
+Description=Memora: let Nearby Share (LocalSend, port 53317) through the firewall, from the local network only
+After=ufw.service
+Wants=ufw.service
+
+[Service]
+Type=oneshot
+# ufw skips rules it already has, so this is safe at every boot.
+ExecStart=/usr/bin/bash -c 'for n in 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12; do for p in tcp udp; do ufw allow proto $p from $n to any port 53317 comment "Nearby Share" >/dev/null; done; done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

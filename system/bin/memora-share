@@ -1,0 +1,451 @@
+#!/usr/bin/env python3
+"""memora-share — Nearby Share: send and receive files with phones and
+computers on the same network, through the LocalSend protocol (v2), so it
+works with the LocalSend app on Android, iPhone, Windows, macOS and Linux.
+
+  memora-share serve              the background service (started with the desktop)
+  memora-share scan               look for devices now
+  memora-share devices            the devices seen lately (JSON)
+  memora-share send ID FILE...    send files to a device (ID from devices);
+                                  prints "PROGRESS 0-100", then "DONE" or "ERROR why"
+  memora-share receive on|off     let others send you files, or not
+
+Received files go to Downloads, after you accept them in a notification.
+Settings: ~/.config/memora/share.json. State for the desktop:
+$XDG_RUNTIME_DIR/memora-share/devices.json.
+"""
+import hashlib
+import json
+import os
+import re
+import secrets
+import socket
+import ssl
+import struct
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+PORT = 53317
+GROUP = "224.0.0.167"
+API = "/api/localsend/v2"
+HOME = Path.home()
+CONF = HOME / ".config/memora/share.json"
+KEYS = HOME / ".local/share/memora/share"
+RUN = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "memora-share"
+DEVICES = RUN / "devices.json"
+SEEN_FOR = 120            # seconds a device stays in the list after it was last heard
+
+
+def config():
+    c = {"receive": True}
+    try:
+        c.update(json.loads(CONF.read_text()))
+    except (OSError, ValueError):
+        pass
+    return c
+
+
+def save_config(c):
+    CONF.parent.mkdir(parents=True, exist_ok=True)
+    CONF.write_text(json.dumps(c, indent=1) + "\n")
+
+
+def alias():
+    """The name others see: the person's name and the computer, like "Mihnea's Memora"."""
+    c = config()
+    if c.get("alias"):
+        return c["alias"]
+    full = ""
+    try:
+        full = subprocess.run(["getent", "passwd", os.environ.get("USER", "")], capture_output=True, text=True).stdout.split(":")[4].split(",")[0]
+    except (IndexError, OSError):
+        pass
+    first = (full or os.environ.get("USER", "")).split(" ")[0].capitalize()
+    return f"{first}'s Memora" if first else socket.gethostname()
+
+
+def tls_files():
+    """A self-signed certificate (LocalSend talks HTTPS); its hash is our id."""
+    KEYS.mkdir(parents=True, exist_ok=True)
+    os.chmod(KEYS, 0o700)
+    cert, key = KEYS / "cert.pem", KEYS / "key.pem"
+    if not (cert.exists() and key.exists()):
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650",
+                        "-subj", "/CN=Memora", "-keyout", str(key), "-out", str(cert)],
+                       check=True, capture_output=True)
+        os.chmod(key, 0o600)
+    der = ssl.PEM_cert_to_DER_cert(cert.read_text())
+    return cert, key, hashlib.sha256(der).hexdigest().upper()
+
+
+def me(fingerprint, announce=False):
+    return {"alias": alias(), "version": "2.1", "deviceModel": "Memora", "deviceType": "desktop",
+            "fingerprint": fingerprint, "port": PORT, "protocol": "https", "download": False,
+            **({"announce": True} if announce else {})}
+
+
+def unverified():
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def post(url, body, timeout=10, data=None, headers=None):
+    req = urllib.request.Request(url, data=data if data is not None else json.dumps(body).encode(), method="POST",
+                                 headers=headers or {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout, context=unverified()) as r:
+        raw = r.read()
+        return json.loads(raw) if raw else {}
+
+
+def notify(title, body, actions=(), wait=0):
+    """A notification; with actions, waits (up to `wait` s) and returns the one chosen."""
+    args = ["notify-send", "-a", "Nearby Share", "-i", "folder-download", title, body]
+    if wait:
+        args[1:1] = ["-t", str(wait * 1000)]   # gone when the question is
+    for name, label in actions:
+        args += ["-A", f"{name}={label}"]
+    if actions:
+        try:
+            return subprocess.run(["timeout", str(wait)] + args, capture_output=True, text=True).stdout.strip()
+        except OSError:
+            return ""
+    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return ""
+
+
+# ------------------------------------------------------------------ service ---
+class Service:
+    def __init__(self):
+        self.cert, self.key, self.fp = tls_files()
+        self.devices = {}          # fingerprint -> info + ip, seen
+        self.sessions = {}         # id -> {files: {id: {...}}, tokens: {id: token}, sender}
+        self.lock = threading.Lock()
+        RUN.mkdir(parents=True, exist_ok=True)
+        self.publish()
+
+    # -- devices
+    def seen(self, info, ip):
+        fp = info.get("fingerprint")
+        if not fp or fp == self.fp:
+            return
+        with self.lock:
+            self.devices[fp] = {"id": fp, "alias": info.get("alias") or "Device", "type": info.get("deviceType") or "mobile",
+                                "model": info.get("deviceModel") or "", "ip": ip, "port": int(info.get("port") or PORT),
+                                "protocol": info.get("protocol") or "https", "seen": time.time()}
+        self.publish()
+
+    def publish(self):
+        now = time.time()
+        with self.lock:
+            self.devices = {k: d for k, d in self.devices.items() if now - d["seen"] < SEEN_FOR}
+            out = {"me": {"alias": alias(), "id": self.fp}, "receive": bool(config().get("receive", True)),
+                   "devices": sorted(self.devices.values(), key=lambda d: d["alias"].lower())}
+        tmp = DEVICES.with_suffix(".tmp")
+        tmp.write_text(json.dumps(out, indent=1))
+        tmp.replace(DEVICES)
+
+    # -- discovery (multicast, as LocalSend does)
+    def announce(self):
+        msg = json.dumps(me(self.fp, announce=True)).encode()
+        for _ in range(2):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as s:
+                    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+                    s.sendto(msg, (GROUP, PORT))
+            except OSError:
+                pass
+            time.sleep(0.4)
+
+    def listen(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except (AttributeError, OSError):
+            pass
+        s.bind(("", PORT))
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, struct.pack("4sl", socket.inet_aton(GROUP), socket.INADDR_ANY))
+        while True:
+            try:
+                data, (ip, _) = s.recvfrom(65536)
+                info = json.loads(data)
+            except (OSError, ValueError):
+                continue
+            if info.get("fingerprint") == self.fp:
+                continue
+            self.seen(info, ip)
+            if info.get("announce") or info.get("announcement"):
+                # Answer so it sees us too: over HTTP, else back on the group.
+                threading.Thread(target=self.answer, args=(info, ip), daemon=True).start()
+
+    def answer(self, info, ip):
+        try:
+            post(f"{info.get('protocol', 'https')}://{ip}:{info.get('port', PORT)}{API}/register", me(self.fp), timeout=4)
+        except Exception:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+                    s.sendto(json.dumps(me(self.fp)).encode(), (GROUP, PORT))
+            except OSError:
+                pass
+
+    def tick(self):
+        while True:
+            self.announce()
+            self.publish()
+            for _ in range(30):
+                time.sleep(1)
+                if (RUN / "scan").exists():
+                    (RUN / "scan").unlink(missing_ok=True)
+                    break
+
+    # -- receiving
+    def prepare(self, body, ip):
+        info, files = body.get("info") or {}, body.get("files") or {}
+        self.seen(info, ip)
+        if not config().get("receive", True):
+            return 403, {"message": "Not receiving"}
+        if not files:
+            return 400, {"message": "No files"}
+        who = info.get("alias") or "Someone"
+        names = [f.get("fileName", "file") for f in files.values()]
+        size = sum(int(f.get("size") or 0) for f in files.values())
+        what = names[0] if len(names) == 1 else f"{len(names)} files"
+        choice = notify(who, f"wants to send you {what} ({human(size)})", [("accept", "Accept"), ("decline", "Decline")], wait=60)
+        if choice != "accept":
+            return 403, {"message": "Declined"}
+        sid = str(uuid.uuid4())
+        tokens = {fid: secrets.token_hex(16) for fid in files}
+        with self.lock:
+            self.sessions[sid] = {"files": files, "tokens": tokens, "who": who, "done": set(), "paths": []}
+        return 200, {"sessionId": sid, "files": tokens}
+
+    def upload(self, q, handler):
+        sid, fid, token = q.get("sessionId", [""])[0], q.get("fileId", [""])[0], q.get("token", [""])[0]
+        s = self.sessions.get(sid)
+        if not s or s["tokens"].get(fid) != token:
+            return 403, {"message": "Invalid token"}
+        meta = s["files"][fid]
+        name = os.path.basename(meta.get("fileName") or "file").replace("/", "_") or "file"
+        folder = HOME / "Downloads"
+        folder.mkdir(parents=True, exist_ok=True)
+        dest = unique(folder / name)
+        length = int(handler.headers.get("Content-Length") or 0)
+        part = dest.with_name(dest.name + ".part")
+        with open(part, "wb") as f:
+            left = length
+            while left > 0:
+                chunk = handler.rfile.read(min(1 << 20, left))
+                if not chunk:
+                    break
+                f.write(chunk)
+                left -= len(chunk)
+        if length and part.stat().st_size != length:
+            part.unlink(missing_ok=True)
+            return 400, {"message": "Incomplete"}
+        part.replace(dest)
+        s["done"].add(fid)
+        s["paths"].append(str(dest))
+        if s["done"] == set(s["files"]):
+            self.sessions.pop(sid, None)
+            what = os.path.basename(s["paths"][0]) if len(s["paths"]) == 1 else f"{len(s['paths'])} files"
+            threading.Thread(target=self.received, args=(s["who"], what, s["paths"]), daemon=True).start()
+        return 200, {}
+
+    def received(self, who, what, paths):
+        subprocess.Popen(["memora-sound", "done"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        choice = notify(f"Received {what}", f"From {who} · in Downloads", [("open", "Open"), ("show", "Show in Files")], wait=300)
+        if choice == "open":
+            subprocess.Popen(["xdg-open", paths[0]])
+        elif choice == "show":
+            subprocess.Popen(["memora-files", os.path.dirname(paths[0])])
+
+    def serve(self):
+        svc = self
+
+        class H(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):
+                pass
+
+            def reply(self, code, body):
+                raw = json.dumps(body).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def body(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                try:
+                    return json.loads(self.rfile.read(n) or b"{}")
+                except ValueError:
+                    return {}
+
+            def do_GET(self):
+                if self.path.startswith(f"{API}/info") or self.path.startswith("/api/localsend/v1/info"):
+                    return self.reply(200, me(svc.fp))
+                self.reply(404, {})
+
+            def do_POST(self):
+                u = urllib.parse.urlparse(self.path)
+                q = urllib.parse.parse_qs(u.query)
+                ip = self.client_address[0]
+                if u.path == f"{API}/register":
+                    svc.seen(self.body(), ip)
+                    return self.reply(200, me(svc.fp))
+                if u.path == f"{API}/prepare-upload":
+                    return self.reply(*svc.prepare(self.body(), ip))
+                if u.path == f"{API}/upload":
+                    return self.reply(*svc.upload(q, self))
+                if u.path == f"{API}/cancel":
+                    svc.sessions.pop(q.get("sessionId", [""])[0], None)
+                    return self.reply(200, {})
+                self.reply(404, {})
+
+        httpd = ThreadingHTTPServer(("", PORT), H)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(self.cert, self.key)
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        httpd.serve_forever()
+
+    def run(self):
+        threading.Thread(target=self.listen, daemon=True).start()
+        threading.Thread(target=self.tick, daemon=True).start()
+        self.serve()
+
+
+def unique(p):
+    if not p.exists() and not p.with_name(p.name + ".part").exists():
+        return p
+    stem, suf = p.stem, p.suffix
+    for i in range(2, 10000):
+        q = p.with_name(f"{stem} ({i}){suf}")
+        if not q.exists():
+            return q
+    return p
+
+
+def human(b):
+    for unit in ("B", "KB", "MB", "GB"):
+        if b < 1000 or unit == "GB":
+            return f"{b:.0f} {unit}" if unit == "B" else f"{b:.1f} {unit}"
+        b /= 1000
+
+
+def mime(path):
+    try:
+        return subprocess.run(["file", "-b", "--mime-type", path], capture_output=True, text=True).stdout.strip() or "application/octet-stream"
+    except OSError:
+        return "application/octet-stream"
+
+
+# --------------------------------------------------------------------- send ---
+def send(dev_id, files):
+    try:
+        devs = json.loads(DEVICES.read_text()).get("devices", [])
+    except (OSError, ValueError):
+        devs = []
+    d = next((x for x in devs if x["id"] == dev_id or x["alias"] == dev_id), None)
+    if not d:
+        print("ERROR That device is not nearby any more.", flush=True)
+        return 1
+    files = [os.path.abspath(f) for f in files if os.path.isfile(f)]
+    if not files:
+        print("ERROR Nothing to send.", flush=True)
+        return 1
+    _, _, fp = tls_files()
+    meta = {}
+    for f in files:
+        fid = uuid.uuid4().hex
+        meta[fid] = {"id": fid, "fileName": os.path.basename(f), "size": os.path.getsize(f), "fileType": mime(f)}
+    base = f"{d['protocol']}://{d['ip']}:{d['port']}{API}"
+    print("WAITING", flush=True)   # the other side has to accept
+    try:
+        r = post(f"{base}/prepare-upload", {"info": me(fp), "files": meta}, timeout=120)
+    except urllib.error.HTTPError as e:
+        print("ERROR " + ({403: "They declined.", 409: "They are busy receiving something else.", 429: "Too many requests."}.get(e.code, f"It refused ({e.code}).")), flush=True)
+        return 1
+    except Exception as e:
+        print(f"ERROR Couldn't reach {d['alias']} ({type(e).__name__}).", flush=True)
+        return 1
+    sid, tokens = r.get("sessionId"), r.get("files") or {}
+    total = sum(m["size"] for m in meta.values()) or 1
+    sent = 0
+    print("PROGRESS 0", flush=True)
+    for fid, f in zip(meta, files):
+        if fid not in tokens:
+            continue   # they already have it
+        q = urllib.parse.urlencode({"sessionId": sid, "fileId": fid, "token": tokens[fid]})
+        size = meta[fid]["size"]
+        conn = None
+        try:
+            import http.client
+            conn = http.client.HTTPSConnection(d["ip"], d["port"], timeout=60, context=unverified()) if d["protocol"] == "https" \
+                else http.client.HTTPConnection(d["ip"], d["port"], timeout=60)
+            conn.putrequest("POST", f"{API}/upload?{q}")
+            conn.putheader("Content-Type", "application/octet-stream")
+            conn.putheader("Content-Length", str(size))
+            conn.endheaders()
+            with open(f, "rb") as fh:
+                last = -1
+                while True:
+                    chunk = fh.read(1 << 18)
+                    if not chunk:
+                        break
+                    conn.send(chunk)
+                    sent += len(chunk)
+                    pct = int(sent * 100 / total)
+                    if pct != last:
+                        print(f"PROGRESS {pct}", flush=True)
+                        last = pct
+            res = conn.getresponse()
+            res.read()
+            if res.status != 200:
+                print(f"ERROR {os.path.basename(f)} wasn't accepted ({res.status}).", flush=True)
+                return 1
+        except Exception as e:
+            print(f"ERROR The transfer stopped ({type(e).__name__}).", flush=True)
+            return 1
+        finally:
+            if conn:
+                conn.close()
+    print("PROGRESS 100", flush=True)
+    print("DONE", flush=True)
+    return 0
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
+    if cmd == "serve":
+        Service().run()
+    elif cmd == "scan":
+        RUN.mkdir(parents=True, exist_ok=True)
+        (RUN / "scan").touch()
+    elif cmd == "devices":
+        print(DEVICES.read_text() if DEVICES.exists() else '{"devices": []}')
+    elif cmd == "send" and len(sys.argv) > 3:
+        sys.exit(send(sys.argv[2], sys.argv[3:]))
+    elif cmd == "receive" and len(sys.argv) > 2:
+        c = config()
+        c["receive"] = sys.argv[2] in ("on", "true", "everyone", "1")
+        save_config(c)
+        print("Receiving files from nearby devices: " + ("on" if c["receive"] else "off"))
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

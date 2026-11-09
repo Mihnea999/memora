@@ -21,5 +21,7 @@ case "${1:-}" in
   hide-app) exec qs -p "$dir" ipc call shell hideApp ;;
   desktop) shift; exec qs -p "$dir" ipc call desktops "${1:-next}" "${2:-0}" ;;
   show-desktop) exec qs -p "$dir" ipc call shell showDesktop ;;
+  share) shift; files=""; for f in "$@"; do files+="$(realpath -m -- "${f#file://}")"$'\n'; done
+    exec qs -p "$dir" ipc call shell share "$files" ;;
   *) exec qs -p "$dir" ipc call shell "$@" ;;
 esac

@@ -752,6 +752,7 @@ FloatingWindow {
       return [
         { text: "Open", action: () => win.selection.forEach(p => win.openItem(p, f.dir && p === f.path)) },
         f.dir ? { text: "Open in New Window", action: () => app.openWindow(f.path) } : { text: "Open With…", submenu: true },
+        { text: "Share…", enabled: !win.selection.some(p => p === f.path && f.dir), action: () => Quickshell.execDetached(["memora-shell", "share"].concat(win.selection)) },
         { separator: true },
         { text: "Get Info", keys: "Ctrl I", action: () => info.show(f.path) },
         { separator: true },

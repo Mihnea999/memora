@@ -22,6 +22,7 @@ import qs.alert
 import qs.notch
 import qs.display
 import qs.desktops
+import qs.share
 
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
@@ -60,6 +61,7 @@ ShellRoot {
   Divider {}
   Genie {}
   Alert {}
+  ShareSheet {}
   Notch {}
   Project {}
   Desktops {}
@@ -87,6 +89,8 @@ ShellRoot {
     function setFocusMode(on: string): void { Shell.focusMode = on === "on" || on === "true" }
     function toggleDockHiding(): void { Prefs.set("dockAutohide", !Prefs.dockAutohide) }
     function semiFullscreen(): void { Apps.semiFullscreen() }
+    // Nearby Share for these files (one path per line).
+    function share(paths: string): void { Shell.close(); Shell.shareFiles = paths.split("\n").filter(p => p !== "") }
     function minimize(): void { if (Hyprland.activeToplevel) Apps.minimize(Hyprland.activeToplevel.address) }
     function showDesktop(): void {
       const shown = Apps.windows.filter(w => !Apps.isMinimized(w) && w.workspace && w.workspace.id === Hyprland.focusedWorkspace.id)

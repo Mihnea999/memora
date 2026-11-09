@@ -241,6 +241,24 @@ Canvas {
       ctx.beginPath(); ctx.moveTo(5.5, 14); ctx.lineTo(10.5, 14); ctx.moveTo(8, 11.5); ctx.lineTo(8, 14); ctx.stroke()
       break
     }
+    case "phone": {   // a phone, upright
+      ctx.lineWidth = 1.5
+      rr(ctx, 4.2, 1.2, 7.6, 13.6, 1.8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(7, 3.2); ctx.lineTo(9, 3.2); ctx.stroke()
+      break
+    }
+    case "laptop": {
+      ctx.lineWidth = 1.5
+      rr(ctx, 2.8, 3, 10.4, 7.4, 1.2); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(1, 12.6); ctx.lineTo(15, 12.6); ctx.stroke()
+      break
+    }
+    case "share": {   // a box with an arrow out of it
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(5.4, 6); ctx.lineTo(3.6, 6); ctx.lineTo(3.6, 14.2); ctx.lineTo(12.4, 14.2); ctx.lineTo(12.4, 6); ctx.lineTo(10.6, 6); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(8, 10); ctx.lineTo(8, 1.6); ctx.moveTo(5.4, 4.2); ctx.lineTo(8, 1.6); ctx.lineTo(10.6, 4.2); ctx.stroke()
+      break
+    }
     case "heart": {
       ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.moveTo(8, 13.6)
