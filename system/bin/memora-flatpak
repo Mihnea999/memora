@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""memora-flatpak install REMOTE APP | update [APP] | uninstall APP
+"""memora-flatpak install REMOTE APP | update [APP] | uninstall APP | updates
 
 What the App Store runs to install, update and remove apps (the user's own
 Flatpak installation). Unlike the flatpak command, it reports how far along it
 is even without a terminal: lines "PROGRESS 0-100" for the whole job (every
 runtime and extension it needs included), then exits 0 when done.
+`updates` prints the apps an update would really change, one per line: it
+asks Flatpak to plan the update without doing it (`flatpak remote-ls
+--updates` keeps listing apps from OCI remotes such as ArtCraft's that are
+already up to date, so their Update button never went away).
 """
 import signal
 import sys
@@ -40,11 +44,46 @@ def installed_ref(inst, app):
     return None
 
 
+def pending_updates(inst):
+    """App ids an update would change: a planned transaction, stopped before
+    it downloads anything."""
+    apps = []
+    t = Flatpak.Transaction.new_for_installation(inst, None)
+    t.set_no_interaction(True)
+    t.set_no_deploy(True)
+    for r in inst.list_installed_refs_by_kind(Flatpak.RefKind.APP, None):
+        try:
+            t.add_update(r.format_ref(), None, None)
+        except GLib.Error:
+            pass
+
+    def on_ready(tr):
+        for op in tr.get_operations():
+            ref = op.get_ref()
+            if op.get_operation_type() == Flatpak.TransactionOperationType.UPDATE and ref.startswith("app/"):
+                apps.append(ref.split("/")[1])
+        return False   # only the plan
+
+    t.connect("ready", on_ready)
+    t.connect("choose-remote-for-ref", lambda tr, ref, runtime, remotes: 0)
+    t.connect("add-new-remote", lambda *a: False)
+    if not t.is_empty():
+        try:
+            t.run(None)
+        except GLib.Error:
+            pass   # "aborted" by on_ready, or no network: nothing to list
+    return sorted(set(apps))
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("install", "update", "uninstall"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("install", "update", "uninstall", "updates"):
         sys.exit(__doc__)
     kind, args = sys.argv[1], sys.argv[2:]
     inst = Flatpak.Installation.new_user(None)
+    if kind == "updates":
+        for a in pending_updates(inst):
+            say(a)
+        return
     t = Flatpak.Transaction.new_for_installation(inst, None)
     t.set_no_interaction(True)
 

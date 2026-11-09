@@ -56,11 +56,11 @@ ShellRoot {
       app.extra = x; app.installed = m
     } }
   }
-  // Updates waiting on Flathub for apps installed here.
+  // Updates waiting for apps installed here (what an update would really change).
   Process {
     id: updLister
-    command: ["bash", "-c", "flatpak remote-ls --user --updates --app --columns=application 2>/dev/null"]
-    stdout: StdioCollector { onStreamFinished: app.updates = text.split("\n").map(l => l.trim()).filter(l => l && l !== "Application ID") }
+    command: ["memora-flatpak", "updates"]
+    stdout: StdioCollector { onStreamFinished: app.updates = text.split("\n").map(l => l.trim()).filter(l => l && !l.includes(" ")) }
   }
   function refresh() { lister.running = true; if (ready) updLister.running = true }
 
