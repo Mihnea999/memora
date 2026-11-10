@@ -10,7 +10,7 @@ mkdir -p "$(dirname "$f")"
 j=""
 r=$(curl -sf --max-time 6 https://ipapi.co/json/) && j=$(jq -ce 'select(.latitude != null) | {latitude, longitude, city, country: .country_code}' <<<"$r" 2>/dev/null)
 [[ -z $j ]] && r=$(curl -sf --max-time 6 https://ipinfo.io/json) && j=$(jq -ce 'select(.loc != null) | (.loc | split(",")) as $l | {latitude: ($l[0] | tonumber), longitude: ($l[1] | tonumber), city, country}' <<<"$r" 2>/dev/null)
-[[ -z $j ]] && r=$(curl -sf --max-time 6 "http://ip-api.com/json/?fields=lat,lon,city,countryCode") && j=$(jq -ce 'select(.lat != null) | {latitude: .lat, longitude: .lon, city, country: .countryCode}' <<<"$r" 2>/dev/null)
+[[ -z $j ]] && r=$(curl -sf --max-time 6 https://get.geojs.io/v1/ip/geo.json) && j=$(jq -ce 'select(.latitude != null) | {latitude: (.latitude | tonumber), longitude: (.longitude | tonumber), city, country: .country_code}' <<<"$r" 2>/dev/null)
 if [[ -n $j ]]; then printf '%s\n' "$j" > "$f"; printf '%s\n' "$j"; exit 0; fi
 # Offline or all busy: the last one known, however old.
 [[ -s $f ]] && { cat "$f"; exit 0; }

@@ -11,3 +11,5 @@ singleton Prefs 1.0 Prefs.qml
 singleton Host 1.0 Host.qml
 singleton Frames 1.0 Frames.qml
 singleton Input 1.0 Input.qml
+singleton GlassSync 1.0 GlassSync.qml
+singleton CalData 1.0 CalData.qml

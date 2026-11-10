@@ -22,7 +22,7 @@ Singleton {
   // new level once it stops changing, so holding a key or dragging plays it once.
   function changeVolume(v) { setVolume(v); popLater.restart() }
   property Timer popLater: Timer {
-    interval: 180
+    interval: 60
     onTriggered: if (!sys.muted && sys.volume > 0) Quickshell.execDetached(["memora-sound", "volume"])
   }
 
