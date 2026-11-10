@@ -128,8 +128,18 @@ Item {
   property var weather: null      // { temp, code, hi, lo, place, days: [{ day, code, hi, lo }] }
   Process {
     id: wx
-    command: ["bash", "-c", "loc=$(curl -sf --max-time 6 https://ipapi.co/json/) || exit 1; lat=$(jq -r .latitude <<<\"$loc\"); lon=$(jq -r .longitude <<<\"$loc\"); city=$(jq -r .city <<<\"$loc\"); f=$(curl -sf --max-time 8 \"https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=5\") || exit 1; jq -c --arg c \"$city\" '{temp: .current.temperature_2m, code: .current.weather_code, hi: .daily.temperature_2m_max[0], lo: .daily.temperature_2m_min[0], place: $c, days: [range(0;5) as $i | {day: .daily.time[$i], code: .daily.weather_code[$i], hi: .daily.temperature_2m_max[$i], lo: .daily.temperature_2m_min[$i]}]}' <<<\"$f\""]
-    stdout: StdioCollector { onStreamFinished: { try { root.weather = JSON.parse(text) } catch (e) {} } }
+    command: ["bash", "-c", "loc=$(memora-location) || exit 1; lat=$(jq -r .latitude <<<\"$loc\"); lon=$(jq -r .longitude <<<\"$loc\"); city=$(jq -r .city <<<\"$loc\"); f=$(curl -sf --max-time 8 \"https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=5\") || exit 1; jq -c --arg c \"$city\" '{temp: .current.temperature_2m, code: .current.weather_code, hi: .daily.temperature_2m_max[0], lo: .daily.temperature_2m_min[0], place: $c, days: [range(0;5) as $i | {day: .daily.time[$i], code: .daily.weather_code[$i], hi: .daily.temperature_2m_max[$i], lo: .daily.temperature_2m_min[$i]}]}' <<<\"$f\""]
+    stdout: StdioCollector { onStreamFinished: { try { root.weather = JSON.parse(text); wxCache.setText(text) } catch (e) { wxRetry.start() } } }
+    onExited: code => { if (code !== 0) wxRetry.start() }
+  }
+  // No answer (offline, or a service busy): again in two minutes, not in half an hour;
+  // meanwhile the last weather known.
+  Timer { id: wxRetry; interval: 120000; onTriggered: wx.running = true }
+  FileView {
+    id: wxCache
+    path: (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/memora/weather.json"
+    printErrors: false
+    onLoaded: if (!root.weather) { try { root.weather = JSON.parse(text()) } catch (e) {} }
   }
   Timer { interval: 30 * 60 * 1000; running: root.layout.some(o => o.type === "weather"); repeat: true; triggeredOnStart: true; onTriggered: wx.running = true }
   function wxSym(code) {
@@ -501,7 +511,7 @@ Item {
         anchors { left: art.right; leftMargin: 14; right: parent.right; verticalCenter: parent.verticalCenter }
         spacing: 3
         Txt { width: parent.width; text: p ? (p.trackTitle || "Not Playing") : "Not Playing"; font.weight: Font.Bold; elide: Text.ElideRight }
-        Txt { width: parent.width; text: p ? (p.trackArtist || p.identity || "") : "Play something to see it here"; color: root.dim; font.pixelSize: Theme.small; elide: Text.ElideRight }
+        Txt { width: parent.width; text: p ? (p.trackArtist || Sys.playerName(p)) : "Play something to see it here"; color: root.dim; font.pixelSize: Theme.small; elide: Text.ElideRight }
         Item { width: 1; height: 10 }
         Row {
           spacing: 18

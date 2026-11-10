@@ -25,7 +25,8 @@ Kit.Page {
   function checkKey() { keyCheck.exec(["bash", "-c", "grep -qE '^" + p.keyName + "=.+' \"$1\" 2>/dev/null && echo yes", "_", p.dir + "/ai.secret"]) }
   onKeyNameChanged: checkKey()
   Kit.Cmd { id: saver; onDone: p.checkKey() }
-  Kit.Cmd { id: tester; onDone: out => p.test = out.trim() || "No answer." }
+  // The answer, or what went wrong (errors come on stderr); never more than a minute.
+  Kit.Cmd { id: tester; onDone: out => p.test = out.trim() ? out.trim().split("\n").slice(-4).join("\n") : "No answer. Check the key and the internet connection." }
   Component.onCompleted: saver.done("")
 
   function save(k, v) {
@@ -42,7 +43,8 @@ Kit.Page {
       Kit.Choice {
         value: p.cfg.provider
         options: [{ text: "Claude", value: "anthropic" }, { text: "DeepSeek", value: "deepseek" }, { text: "Claude Code", value: "claude-code" }, { text: "Ollama", value: "ollama" }, { text: "Other", value: "openai" }]
-        onPicked: v => p.save("provider", v)
+        // Each service has its own models: switching starts from its default.
+        onPicked: v => { if (v !== p.cfg.provider) { p.save("model", ""); p.save("provider", v) } }
       }
     }
   }
@@ -119,7 +121,7 @@ Kit.Page {
     Kit.Row {
       label: "Try it"; last: true
       RowLayout { spacing: 8
-        Kit.Button { text: "Test"; onClicked: { p.test = "Asking…"; tester.exec(["memora-ai", "ask", "Reply with one short sentence: say hello from Memora."]) } }
+        Kit.Button { text: "Test"; onClicked: { p.test = "Asking…"; tester.exec(["bash", "-c", "timeout 60 memora-ai ask 'Reply with one short sentence: say hello from Memora.' </dev/null 2>&1 || [ $? != 124 ] || echo 'No answer within a minute. Check the internet connection.'"]) } }
         Kit.Button { text: "Open Memora AI"; primary: true; onClicked: Quickshell.execDetached(["memora-ai", "window"]) }
       }
     }

@@ -18,6 +18,8 @@ Other providers (Ollama, OpenAI-compatible) answer without tools.
   agent.py tool NAME JSON   run one of them
 """
 import base64
+import contextlib
+from datetime import datetime, timedelta
 import json
 import os
 import queue
@@ -26,6 +28,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -63,7 +66,7 @@ def load_config():
         for line in (CONF / "ai.secret").read_text().splitlines():
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
+                os.environ[k.strip()] = v.strip()   # a key saved again in Settings counts at once
     except OSError:
         pass
     return cfg
@@ -135,7 +138,7 @@ How Memora works: packages come from pacman (official Arch repositories); there 
 
 Working style:
 {{STYLE}}- Do what is asked with your tools rather than telling the person how to do it, unless they asked for instructions.
-- Pick the most direct tool: a dedicated one (browse, open, system_setting, media, reminder, notes, apps, find_files, windows, arrange_window, weather, system_info…) beats a shell command, and a shell command beats clicking on the screen. Use the screen tools (screenshot, click, type_text, press_keys, scroll) only for work inside apps that has no other way.
+- Pick the most direct tool: a dedicated one (browse, open, system_setting, media, calendar, reminder, notes, apps, find_files, windows, arrange_window, weather, system_info…) beats a shell command, and a shell command beats clicking on the screen. Use the screen tools (screenshot, click, type_text, press_keys, scroll) only for work inside apps that has no other way.
 - Searching or showing something online: browse(search=…) or browse(url=…) opens the Browser right on it. Never open the Browser and type the search, and never type into this chat: you are the notch at the top of the screen, and keys you send go to the window you name with `window`.
 - Working in an app: open it, wait_for_window, screenshot, then click/type_text/press_keys with window=…, and check with a screenshot. While you do this the chat folds out of the way by itself.
 - Guides: before a task one of these covers, read it with skill(name) and follow it (once per conversation is enough):
@@ -273,10 +276,13 @@ TOOLS = [
          {"name": S, "text": S, "folder": S}),
     tool("reminder", "Reminders and timers: set one in `minutes` or `at` a time ('18:30', 'tomorrow 9:00', '2026-12-24 10:00') with `text`; list them; cancel one by id.",
          {"action": {"type": "string", "enum": ["set", "list", "cancel"]}, "text": S, "minutes": I, "at": S, "id": S}, ["action"]),
+    tool("calendar", "The Calendar app: list events (and public holidays are not included) from today for `days` days (default 7); add an event (title, start 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD' for all day, optional end, calendar name, location, notes, repeat none/daily/weekly/monthly/yearly, alert minutes before, -1 for none); remove one by id; list the calendars. The person gets a notification at the alert time.",
+         {"action": {"type": "string", "enum": ["list", "add", "remove", "calendars"]}, "days": I, "title": S, "start": S, "end": S, "calendar": S,
+          "location": S, "notes": S, "repeat": {"type": "string", "enum": ["none", "daily", "weekly", "monthly", "yearly"]}, "alert": I, "id": S}, ["action"]),
     tool("notes", "The Notes app: create a note (title and text; lines starting with '☐ ' are checklist items), list recent notes, search them, or read one by id.",
          {"action": {"type": "string", "enum": ["create", "list", "search", "read"]}, "title": S, "text": S, "query": S, "id": S}, ["action"]),
-    tool("widget", "Desktop widgets of your own: small glass cards on the desktop picture. create (or update) one from QML you write (read the widgets guide first: skill('widgets')), remove one, list them, or show one's QML. After create it says whether it loaded or the error to fix.",
-         {"action": {"type": "string", "enum": ["create", "remove", "list", "show"]}, "name": S,
+    tool("widget", "Desktop widgets of your own: small glass cards on the desktop picture. create (or update) one from QML you write (read the widgets guide first: skill('widgets')), remove one, list them, show one's QML, or check one. After create it says whether it loaded, then describes how it looks once its data is in (each text and where it is, overlaps, things cut off, QML errors while running): keep fixing and creating again until it reports no problems.",
+         {"action": {"type": "string", "enum": ["create", "remove", "list", "show", "check"]}, "name": S,
           "size": {"type": "string", "enum": ["small", "medium"]}, "qml": S}, ["action"]),
     tool("power", "Lock the screen, sleep, restart, shut down or log out. Restart, shut down and log out show their own question on screen.",
          {"action": {"type": "string", "enum": ["lock", "sleep", "restart", "shutdown", "logout"]}}, ["action"]),
@@ -486,6 +492,8 @@ NOTES = HOME / ".local/share/memora/notes.json"
 
 
 class Tools:
+    vision = True    # the model can look at pictures (screenshots); DeepSeek and the others can't
+
     def __init__(self, ui):
         self.ui = ui
         self.hands_on = False
@@ -518,12 +526,24 @@ class Tools:
         if re.search(r"(^|[;&|(]\s*)sudo\s", command):
             # Administrator commands go through polkit, which shows Memora's password dialog.
             run = "pkexec bash -c " + shlex.quote(re.sub(r"(^|(?<=[;&|(]))\s*sudo\s+(-\S+\s+)*", r"\1 ", command))
-        try:
-            r = subprocess.run(["bash", "-lc", run], capture_output=True, text=True, timeout=timeout, cwd=HOME)
-            out = (r.stdout or "") + (("\n[stderr]\n" + r.stderr) if r.stderr else "")
-            return clip(f"exit code {r.returncode}\n{out}".strip()), r.returncode != 0
-        except subprocess.TimeoutExpired as e:
-            return clip(f"timed out after {timeout}s\n{e.stdout or ''}"), True
+        # Stop (in the window) ends the command too, not only the answer.
+        p = subprocess.Popen(["bash", "-lc", run], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=HOME, start_new_session=True)
+        end = time.time() + timeout
+        while True:
+            try:
+                so, se = p.communicate(timeout=0.3)
+                break
+            except subprocess.TimeoutExpired:
+                if self.ui.stopped() or time.time() > end:
+                    try:
+                        os.killpg(p.pid, 15)
+                    except OSError:
+                        pass
+                    so, se = p.communicate()
+                    why = "stopped by the person" if self.ui.stopped() else f"timed out after {timeout}s"
+                    return clip(f"{why}\n{so or ''}"), True
+        out = (so or "") + (("\n[stderr]\n" + se) if se else "")
+        return clip(f"exit code {p.returncode}\n{out}".strip()), p.returncode != 0
 
     def t_read_file(self, path, offset=0, max_bytes=60000):
         p = Path(path).expanduser()
@@ -647,6 +667,9 @@ class Tools:
         return (r.stdout.strip() or "ok"), "ok" not in r.stdout
 
     def t_screenshot(self):
+        if not self.vision:
+            return ("This model can't look at pictures. To see what is on the screen use windows(list); "
+                    "for a desktop widget use widget(action=\"check\"), which describes it in words."), True
         data = SCREEN.grab()
         return [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}], False
 
@@ -797,6 +820,81 @@ class Tools:
             body = r.read(3_000_000).decode(r.headers.get_content_charset() or "utf-8", errors="replace")
         return clip(html_text(body) if "<" in body[:2000] else body), False
 
+    # ---- the Calendar app (shell/calendar.qml): ~/.local/share/memora/calendar.json
+    def t_calendar(self, action, days=7, title="", start="", end="", calendar="", location="", notes="", repeat="none", alert=10, id=""):
+        f = HOME / ".local/share/memora/calendar.json"
+        try:
+            j = json.loads(f.read_text())
+        except (OSError, ValueError):
+            j = {"version": 1, "calendars": [{"id": "personal", "name": "Personal", "color": "#3d8bff", "on": True},
+                                             {"id": "work", "name": "Work", "color": "#ff9f0a", "on": True},
+                                             {"id": "family", "name": "Family", "color": "#30d158", "on": True}], "events": []}
+        cals, evs = j.setdefault("calendars", []), j.setdefault("events", [])
+        name_of = {c["id"]: c["name"] for c in cals}
+        fmt = lambda ms, all_day: datetime.fromtimestamp(ms / 1000).strftime("%a %d %b %Y" if all_day else "%a %d %b %Y %H:%M")
+        if action == "calendars":
+            return "\n".join(f"{c['name']}" + ("" if c.get("on", True) else " (hidden)") for c in cals), False
+        if action == "list":
+            t0 = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            a, b = t0.timestamp() * 1000, (t0 + timedelta(days=max(1, int(days or 7)))).timestamp() * 1000
+            occ = []
+            for e in evs:
+                s0, ln, rule = e["start"], e["end"] - e["start"], e.get("repeat", "none")
+                for n in range(0, 800 if rule != "none" else 1):
+                    d = datetime.fromtimestamp(s0 / 1000)
+                    if rule == "daily": d += timedelta(days=n)
+                    elif rule == "weekly": d += timedelta(weeks=n)
+                    elif rule in ("monthly", "yearly"):
+                        m = d.month - 1 + n * (1 if rule == "monthly" else 12)
+                        y, m = d.year + m // 12, m % 12 + 1
+                        try:
+                            d = d.replace(year=y, month=m)
+                        except ValueError:
+                            continue
+                    t = d.timestamp() * 1000
+                    if t >= b:
+                        break
+                    if t + ln + (86400000 if e.get("allDay") else 0) > a and t not in (e.get("skip") or []):
+                        occ.append((t, e))
+            occ.sort(key=lambda x: x[0])
+            if not occ:
+                return f"Nothing in the calendar for the next {days} days.", False
+            return "\n".join(f"{fmt(t, e.get('allDay'))} · {e['title']} ({name_of.get(e.get('cal'), '?')}" + (f", {e['location']}" if e.get("location") else "")
+                             + (f", every {e['repeat'][:-2] if e['repeat'] != 'daily' else 'day'}" if e.get("repeat", "none") != "none" else "") + f") id {e['id']}" for t, e in occ[:60]), False
+        if action == "remove":
+            keep = [e for e in evs if e["id"] != id]
+            if len(keep) == len(evs):
+                return f"No event with id {id}.", True
+            j["events"] = keep
+        elif action == "add":
+            if not title or not start:
+                return "Give the event a title and a start ('YYYY-MM-DD HH:MM', or 'YYYY-MM-DD' for all day).", True
+            def parse(v):
+                for fm in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+                    try:
+                        return datetime.strptime(v.strip(), fm), fm == "%Y-%m-%d"
+                    except ValueError:
+                        pass
+                raise ValueError(f"Can't read the date '{v}'. Use 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD'.")
+            try:
+                s_dt, all_day = parse(start)
+                e_dt = parse(end)[0] if end else (s_dt if all_day else s_dt + timedelta(hours=1))
+            except ValueError as err:
+                return str(err), True
+            cal = next((c for c in cals if c["name"].lower() == (calendar or "").lower()), None) or next((c for c in cals if c.get("on", True)), cals[0])
+            ev = {"id": f"e{time.time_ns() // 1_000_000}", "title": title, "cal": cal["id"], "start": int(s_dt.timestamp() * 1000), "end": int(e_dt.timestamp() * 1000),
+                  "allDay": all_day, "location": location, "notes": notes, "repeat": repeat or "none", "until": 0, "alert": -1 if all_day and alert == 10 else alert, "skip": []}
+            evs.append(ev)
+        else:
+            return "Unknown action.", True
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(j, indent=1))
+        tmp.replace(f)
+        if action == "remove":
+            return f"Removed the event {id}.", False
+        return f"Added “{title}” on {fmt(ev['start'], ev['allDay'])} to {cal['name']}" + (f", alert {alert} min before" if ev["alert"] >= 0 else "") + ". It shows in Calendar.", False
+
     # ---- organiser
     def t_reminder(self, action, text="", minutes=0, at="", id=""):
         if action == "list":
@@ -884,6 +982,11 @@ class Tools:
         f = wdir / f"{name}.qml"
         if action == "show":
             return (f.read_text() if f.exists() else f"No widget called {name}."), not f.exists()
+        if action == "check":
+            if not f.exists():
+                return f"No widget called {name}.", True
+            entry = next((o for o in (layout or []) if o.get("type") == "custom" and o.get("file") == name), {})
+            return self.widget_check(f, entry.get("size", size))
         if action == "remove":
             if layout is not None:
                 layout_file.write_text(json.dumps([o for o in layout if not (o.get("type") == "custom" and o.get("file") == name)], indent=1) + "\n")
@@ -916,7 +1019,69 @@ class Tools:
         result = st.read_text().strip()
         if result.startswith("error"):
             return f"The widget did not load. Fix the QML and create it again:\n{result.partition(chr(10))[2].strip()}", True
-        return f"The {name} widget is on the desktop ({size}). Take a screenshot to check how it looks.", False
+        # Loaded: now how it actually looks once its data is in.
+        report, bad = self.widget_check(f, size)
+        if isinstance(report, list):
+            report[0]["text"] = f"The {name} widget is on the desktop ({size}).\n" + report[0]["text"]
+            return report, bad
+        return f"The {name} widget is on the desktop ({size}).\n{report}", bad
+
+    # A widget drawn off screen (ai/widget-check.qml), given a few seconds for its
+    # data, then described: every text and where it is, overlaps, things cut off
+    # or outside the card, pictures that didn't load, and the QML warnings
+    # (TypeError on line 12…). Works for models that can't see pictures; the
+    # picture goes along for those that can.
+    def widget_check(self, f, size="small"):
+        check = Path(__file__).with_name("widget-check.qml")
+        if not check.exists() or not shutil.which("qs"):
+            return "Couldn't check it here; look at it with a screenshot.", False
+        tmp = Path(tempfile.mkdtemp(prefix="memora-widget-"))
+        try:
+            w = tmp / "widget.qml"
+            w.write_text(f.read_text())
+            out = CONF.parent.parent / ".cache/memora/widgets" / f"{f.stem}-check.png"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            dark = "1"
+            try:
+                dark = "0" if (CONF / "theme").read_text().strip() == "light" else "1"
+            except OSError:
+                pass
+            accent = {"blue": "#3d8bff", "purple": "#a565f5", "pink": "#f2609e", "red": "#ff5f57", "orange": "#ff9f0a", "green": "#30d158", "graphite": "#8e8e93"}
+            try:
+                accent = accent.get(json.loads((CONF / "shell.json").read_text()).get("accent", "blue"), "#3d8bff")
+            except (OSError, ValueError, AttributeError):
+                accent = "#3d8bff"
+            env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "W": str(w), "SIZE": size if size in ("small", "medium") else "small",
+                   "DARK": dark, "ACCENT": accent, "OUT": str(out), "WAIT": "7000"}
+            try:
+                r = subprocess.run(["qs", "-p", str(check)], capture_output=True, text=True, timeout=30, env=env, cwd=str(tmp))
+                log = (r.stdout or "") + (r.stderr or "")
+            except subprocess.TimeoutExpired as e:
+                log = (e.stdout or "") + (e.stderr or "") if isinstance(e.stdout, str) else ""
+        finally:
+            pass
+        log = re.sub(r"\x1b\[[0-9;]*m", "", log)
+        lines, warns = [], []
+        for l in log.splitlines():
+            if "@" in l and "qml:" in l:
+                lines.append(l.split("qml:", 1)[1].strip().lstrip("@"))
+            elif str(w) in l:
+                m = re.search(re.escape(str(w)) + r"\[(\d+):?(-?\d+)?\]:?\s*(.*)", l)
+                warns.append(f"line {m.group(1)}: {m.group(3)}" if m else l.split(str(w))[-1].strip(": "))
+        shutil.rmtree(tmp, ignore_errors=True)
+        problems = [l for l in lines if re.search(r"CUT OFF|OUTSIDE|BROKEN|STILL WAITING|DID NOT LOAD|overlap |^empty|^error|no size|invisible", l)]
+        text = "How it looks after 7 seconds (positions inside the card's content area):\n" + "\n".join("- " + l for l in lines if l != "done")
+        if warns:
+            text += "\n\nQML warnings (errors while it runs; fix these first):\n" + "\n".join("- " + w_ for w_ in dict.fromkeys(warns))
+        if problems or warns:
+            text += "\n\nNot right yet: fix the problems above and create it again."
+        else:
+            text += "\n\nNo problems found."
+        bad = bool(problems or warns)
+        if self.vision and out.exists():
+            import base64 as b64
+            return [{"type": "text", "text": text}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64.b64encode(out.read_bytes()).decode()}}], bad
+        return text, bad
 
     # ---- the computer
     def t_power(self, action):
@@ -957,7 +1122,8 @@ class Tools:
                 return f"Don't know a place called {place}.", True
             lat, lon, name = g[0]["latitude"], g[0]["longitude"], f"{g[0]['name']}, {g[0].get('country', '')}"
         else:
-            loc = get("https://ipapi.co/json/")
+            r = sh(["memora-location"], timeout=25)
+            loc = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else get("https://ipapi.co/json/")
             lat, lon, name = loc["latitude"], loc["longitude"], loc.get("city", "here")
         f = get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation"
                 "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto&forecast_days=4")
@@ -1028,8 +1194,9 @@ def describe(name, data):
         "apps": lambda d: f"Apps: {d.get('action', '')} {d.get('query') or d.get('id') or ''}".strip(),
         "find_files": lambda d: "Looking for " + (d.get("name") or d.get("text") or "files"),
         "reminder": lambda d: "Reminder: " + (d.get("text") or d.get("action", "")),
+        "calendar": lambda d: {"add": "Adding to Calendar: ", "remove": "Removing from Calendar", "list": "Looking at the calendar", "calendars": "Looking at the calendars"}.get(d.get("action"), "Calendar") + (d.get("title") or ""),
         "notes": lambda d: "Notes: " + (d.get("title") or d.get("query") or d.get("action", "")),
-        "widget": lambda d: {"create": "Making the widget ", "remove": "Removing the widget ", "list": "Looking at widgets", "show": "Reading the widget "}.get(d.get("action"), "Widget ") + (d.get("name") or ""),
+        "widget": lambda d: {"create": "Making the widget ", "remove": "Removing the widget ", "list": "Looking at widgets", "show": "Reading the widget ", "check": "Checking the widget "}.get(d.get("action"), "Widget ") + (d.get("name") or ""),
         "power": lambda d: d.get("action", "").capitalize(),
         "system_info": lambda d: "Checking " + d.get("what", "the computer"),
         "download": lambda d: "Downloading " + d.get("url", ""),
@@ -1199,6 +1366,7 @@ class Agent:
         self.cfg = load_config()
         self.tools.hands_on = False
         provider = self.cfg.get("provider") or "anthropic"
+        self.tools.vision = provider in ("anthropic", "claude-code")
         files = [f for f in files if isinstance(f, str) and os.path.isfile(f)]
         # Attached files: Claude sees pictures and PDFs; the others get the text
         # of text files and the paths of the rest (they can open them with tools).
@@ -1232,16 +1400,22 @@ class Agent:
             key = os.environ.get("DEEPSEEK_API_KEY")
             if not key:
                 raise RuntimeError("No DeepSeek API key yet. Add one in System Settings > Memora AI.")
-            client = anthropic.Anthropic(api_key=key, base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/anthropic"))
+            client = anthropic.Anthropic(api_key=key, base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/anthropic"),
+                                         timeout=180, max_retries=2)
+            # A Claude model left over from before the switch isn't DeepSeek's.
             model = self.cfg.get("model") or "deepseek-chat"
+            if not model.startswith("deepseek"):
+                model = "deepseek-chat"
             tools = [{k: v for k, v in t.items() if k != "eager_input_streaming"} for t in self.tool_specs() + [FETCH_TOOL]]
             extra = {"max_tokens": 8000}
         else:
             key = os.environ.get("ANTHROPIC_API_KEY")
             if not key:
                 raise RuntimeError("No Anthropic API key yet. Add one in System Settings > Memora AI.")
-            client = anthropic.Anthropic(api_key=key)
+            client = anthropic.Anthropic(api_key=key, timeout=600, max_retries=2)
             model = self.cfg.get("model") or DEFAULT_MODEL
+            if not model.startswith("claude"):
+                model = DEFAULT_MODEL
             tools = self.tool_specs() + SERVER_TOOLS
             extra = {"max_tokens": 32000, "thinking": {"type": "adaptive"},
                      "output_config": {"effort": effort_of(self.cfg)}}
@@ -1254,7 +1428,7 @@ class Agent:
                     tools=tools,
                     messages=self.messages,
                     **extra,
-                ) as stream:
+                ) as stream, self.closing_on_stop(stream):
                     for event in stream:
                         if self.ui.stopped():
                             break
@@ -1275,6 +1449,11 @@ class Agent:
                 if retries > 2:
                     raise
                 continue
+            except Exception:
+                # The connection closed by Stop: not an error.
+                if self.ui.stopped():
+                    return
+                raise
 
             self.messages.append({"role": "assistant", "content": msg.content})
             if msg.stop_reason == "pause_turn":
@@ -1305,6 +1484,26 @@ class Agent:
                 self.ui.tool_end(tid, not err)
                 results.append({"type": "tool_result", "tool_use_id": b.id, "content": content, "is_error": bool(err)})
             self.messages.append({"role": "user", "content": results})
+
+    # Stop, pressed while an answer is streaming in: close the connection, so it
+    # ends now instead of when the next piece arrives (or a long think is over).
+    @contextlib.contextmanager
+    def closing_on_stop(self, stream):
+        done = threading.Event()
+
+        def watch():
+            while not done.wait(0.2):
+                if self.ui.stopped():
+                    try:
+                        stream.close()
+                    except Exception:
+                        pass
+                    return
+        threading.Thread(target=watch, daemon=True).start()
+        try:
+            yield
+        finally:
+            done.set()
 
     # Claude Code answers with its own tools. One Claude Code session per
     # conversation (--session-id, then --resume), so it remembers what was said;
@@ -1667,6 +1866,10 @@ def main():
             if m.get("type") == "new":
                 agent.reset()
                 continue
+            if m.get("type") == "refresh":
+                agent.cfg = load_config()
+                ready()
+                continue
             if m.get("type") == "settings":
                 # Model and effort, chosen in the window: kept in ai.json.
                 try:
@@ -1686,6 +1889,8 @@ def main():
                 continue
             if m.get("type") == "user":
                 ui.stop.clear()
+                agent.cfg = load_config()
+                ready()
                 agent.turn(m.get("text", ""), m.get("files") or [])
                 ui.send(type="done")
     elif mode == "tools":
@@ -1728,7 +1933,10 @@ def main():
         sys.exit(1 if err else 0)
     elif mode == "ask":
         q = " ".join(sys.argv[2:])
-        if not sys.stdin.isatty():
+        # Piped input is attached; a stdin that's open but silent (another
+        # program running this one) isn't waited for.
+        import select
+        if not sys.stdin.isatty() and (not q.strip() or select.select([sys.stdin], [], [], 0.3)[0]):
             piped = sys.stdin.read()
             if piped.strip():
                 q = f"{q}\n\n```\n{clip(piped, 30000)}\n```"

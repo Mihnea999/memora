@@ -75,7 +75,20 @@ Scope {
   }
   property string pending: ""
   property var pendingFiles: []
-  function newChat() { if (busy) send({ type: "stop" }); items.clear(); send({ type: "new" }); busy = false; status = "" }
+  // Stop: right away in the window. The agent finishes the stopped turn with a
+  // "done"; until then whatever it still sends belongs to the old turn and is
+  // dropped (so a New Chat never gets the old answer).
+  property int stale: 0
+  function stop() {
+    if (!busy) return
+    send({ type: "stop" })
+    stale++
+    busy = false; status = ""; driving = false
+    const i = items.count - 1
+    if (i >= 0 && items.get(i).kind === "tool" && !items.get(i).done) { items.setProperty(i, "done", true); items.setProperty(i, "ok", false) }
+    for (let j = 0; j < items.count; j++) if (items.get(j).kind === "confirm" && !items.get(j).answered) { items.setProperty(j, "answered", true); items.setProperty(j, "ok", false) }
+  }
+  function newChat() { stop(); items.clear(); attached = []; send({ type: "new" }); busy = false; status = "" }
   function lastAssistant() {
     if (items.count && items.get(items.count - 1).kind === "assistant") return items.count - 1
     items.append({ kind: "assistant", text: "", id: 0, ok: true, done: false, level: "", title: "", detail: "", why: "", answered: false, files: "" })
@@ -90,6 +103,14 @@ Scope {
     if (ok && driving) expanded = false
   }
 
+  // System Settings > Memora AI changed (another service or model): the header
+  // shows it at once, not the one the agent started with.
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/memora/ai.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: { reload(); if (agent.running) ai.send({ type: "refresh" }) }
+  }
   // The agent starts the first time it is needed and then stays.
   Process {
     id: agent
@@ -103,6 +124,10 @@ Scope {
     stdout: SplitParser {
       onRead: line => {
         let m; try { m = JSON.parse(line) } catch (e) { return }
+        if (ai.stale > 0 && m.type !== "ready") {
+          if (m.type === "done") ai.stale--
+          return
+        }
         switch (m.type) {
         case "ready": {
           ai.models = m.models || []; ai.efforts = m.efforts || []
@@ -136,7 +161,7 @@ Scope {
         }
       }
     }
-    onExited: { if (ai.busy) items.append({ kind: "error", text: "The assistant stopped. Ask again to restart it.", id: 0, ok: false, done: true, level: "", title: "", detail: "", why: "", answered: false, files: "" }); ai.busy = false; ai.started = false }
+    onExited: { ai.stale = 0; if (ai.busy) items.append({ kind: "error", text: "The assistant stopped. Ask again to restart it.", id: 0, ok: false, done: true, level: "", title: "", detail: "", why: "", answered: false, files: "" }); ai.busy = false; ai.started = false }
   }
   Process {
     id: paster
@@ -187,6 +212,8 @@ Scope {
       WlrLayershell.keyboardFocus: ai.expanded && here ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
       // Only the island takes the pointer; the rest stays click-through.
       mask: Region { item: island }
+      // A click anywhere else folds it back into the bar (it keeps working).
+      OutsideClick { when: ai.expanded && win.here; windows: [win]; onOutside: ai.collapse() }
 
       // Ink for a dark island in both appearances.
       readonly property color ink: "#f5f5f7"
@@ -207,6 +234,9 @@ Scope {
         y: 0
         width: ai.expanded ? win.openW : win.foldedW
         height: ai.expanded ? win.openH : 30
+        // Nothing inside ever shows outside the island while it grows or shrinks
+        // (its top edge is the top of the screen, so nothing is lost there).
+        clip: true
         Behavior on width { SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.5; mass: 1.0 } }
         Behavior on height { SpringAnimation { spring: 3.0; damping: 0.34; epsilon: 0.5; mass: 1.0 } }
 
@@ -220,10 +250,10 @@ Scope {
           border.width: 1
           border.color: Qt.rgba(1, 1, 1, ai.expanded ? 0.1 : 0.06)
         }
-        // ---- folded content
+        // ---- folded content (comes back once the island has nearly closed)
         Item {
           anchors.fill: parent
-          opacity: ai.expanded ? 0 : 1
+          opacity: !ai.expanded && island.height < 44 ? 1 : 0
           visible: opacity > 0
           Behavior on opacity { NumberAnimation { duration: Theme.fast } }
           Sym {
@@ -271,12 +301,19 @@ Scope {
         }
 
         // ---- open content
+        // Laid out at the open size all the time and kept in the middle, so
+        // nothing moves around while the island changes size: it is uncovered
+        // as it opens, and fades out at once as it closes.
         Item {
           id: body
-          anchors { fill: parent; margins: 18; topMargin: 14 }
+          anchors.horizontalCenter: parent.horizontalCenter
+          y: 14
+          width: win.openW - 36
+          height: win.openH - 32
           opacity: ai.expanded ? 1 : 0
           visible: opacity > 0
-          Behavior on opacity { SequentialAnimation { PauseAnimation { duration: ai.expanded ? Prefs.motion(120) : 0 } NumberAnimation { duration: Theme.normal } } }
+          // Out at once when closing; in after the island has started to open.
+          Behavior on opacity { NumberAnimation { id: bodyFade; duration: Prefs.motion(90) } }
 
           // Header
           RowLayout {
@@ -471,7 +508,8 @@ Scope {
                   RotationAnimation on rotation { running: d.kind === "tool" && !d.done; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
                   Sym { visible: d.done; anchors.centerIn: parent; name: d.ok ? "check" : "close"; width: 8; height: 8; color: d.ok ? Theme.green : Theme.red }
                 }
-                Txt { anchors.verticalCenter: parent.verticalCenter; text: d.kind === "tool" ? d.text : ""; color: win.dim; font.pixelSize: Theme.small; width: Math.min(implicitWidth, d.width - 40); elide: Text.ElideRight }
+                // One line, whatever the command: a multi-line one would spill over its neighbours.
+                Txt { anchors.verticalCenter: parent.verticalCenter; text: d.kind === "tool" ? d.text.replace(/\s*\n\s*/g, " ⏎ ") : ""; color: win.dim; font.pixelSize: Theme.small; width: Math.min(implicitWidth, d.width - 40); elide: Text.ElideRight; maximumLineCount: 1; wrapMode: Text.NoWrap }
               }
               Rectangle {
                 id: cc
@@ -562,7 +600,9 @@ Scope {
               Behavior on color { ColorAnimation { duration: Theme.fast } }
               Sym { anchors.centerIn: parent; visible: !ai.busy; name: "arrow"; width: 14; height: 14; rotation: -90; color: go.ready ? "#ffffff" : win.dim }
               Rectangle { anchors.centerIn: parent; visible: ai.busy; width: 10; height: 10; radius: 2; color: "#000" }
-              TapHandler { onTapped: { if (ai.busy) ai.send({ type: "stop" }); else if (ai.ask(field.text)) field.text = "" } }
+              HoverHandler { cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: { if (ai.busy) ai.stop(); else if (ai.ask(field.text)) field.text = "" } }
+              Tip { text: ai.busy ? "Stop" : "Send"; delay: 400 }
             }
           }
           Connections { target: ai; function onExpandedChanged() { if (ai.expanded && win.here) Qt.callLater(() => field.forceActiveFocus()) } }
