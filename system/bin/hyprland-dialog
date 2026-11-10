@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Stands in for Hyprland's own question box (hyprland-guiutils), found first on
+# the PATH: "app not responding", "app wants to capture your screen" … come up
+# as a Memora dialog. Same interface: --title, --apptitle, --text, --buttons
+# "A;B"; the name of the chosen button is printed on stdout.
+title="" apptitle="" text="" buttons="OK"
+while (($#)); do
+  case $1 in
+    --title) title=${2-}; shift 2 ;;
+    --apptitle) apptitle=${2-}; shift 2 ;;
+    --text) text=${2-}; shift 2 ;;
+    --buttons) buttons=${2-}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+out=$(mktemp)
+TITLE=$title APPTITLE=${apptitle:-$title} TEXT=$text BUTTONS=$buttons OUT=$out \
+  qs -p "${MEMORA_PATH:-/usr/share/memora}/shell/dialog.qml" >/dev/null 2>&1 &
+pid=$!
+# Hyprland ends this when the app answers after all: take the box down with it.
+trap 'kill $pid 2>/dev/null; rm -f "$out"; exit 0' TERM INT HUP
+wait $pid
+status=$?
+choice=$(cat "$out" 2>/dev/null)
+rm -f "$out"
+# The desktop could not show it (no shell, an installer…): the original box.
+if ((status != 0)) && [[ -z $choice ]]; then
+  exec /usr/bin/hyprland-dialog ${title:+--title "$title"} ${apptitle:+--apptitle "$apptitle"} ${text:+--text "$text"} --buttons "$buttons"
+fi
+printf '%s' "$choice"

@@ -163,6 +163,16 @@ ICONS["apps/memora-ai"] = icon(
     <path filter="url(#soft)" fill="#ffffff" d="M512 238 C532 420 604 492 786 512 C604 532 532 604 512 786 C492 604 420 532 238 512 C420 492 492 420 512 238 Z"/>
     <path fill="#ffffff" fill-opacity="0.85" d="M716 262 C722 316 742 336 796 342 C742 348 722 368 716 422 C710 368 690 348 636 342 C690 336 710 316 716 262 Z"/>''')
 
+# Welcome: Memora's mark on midnight blue.
+ICONS["apps/memora-welcome"] = icon(
+    "welcome", lg("bg", "#3a4a78", "#141a2e") + '<radialGradient id="glow" cx="0.5" cy="0.2" r="0.75"><stop offset="0" stop-color="#6b9bff" stop-opacity="0.45"/><stop offset="1" stop-color="#6b9bff" stop-opacity="0"/></radialGradient>',
+    "url(#bg)",
+    '''<rect width="1024" height="1024" fill="url(#glow)"/>
+    <g filter="url(#soft)" transform="translate(224 236) scale(4.5)">
+      <path d="M26 100 V38 L64 78 L102 38 V100" fill="none" stroke="#f4f4f6" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="64" cy="26" r="9" fill="#8fb4ff"/>
+    </g>''')
+
 # Text Editor: a sheet of paper with an amber title bar.
 ICONS["apps/org.gnome.TextEditor"] = icon(
     "editor", lg("bg", "#ffffff", "#e9ebef"), "url(#bg)",

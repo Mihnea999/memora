@@ -35,6 +35,15 @@ ShellRoot {
       id: stage
       anchors { left: parent.left; right: parent.right; top: parent.top; bottom: footer.top; topMargin: 30 }
       clip: true
+      // The keyboard alone: Return or → goes on, ← goes back, Esc closes.
+      focus: true
+      Component.onCompleted: forceActiveFocus()
+      function next() { if (app.page === app.pages - 1) Qt.quit(); else app.page++ }
+      Keys.onReturnPressed: next()
+      Keys.onEnterPressed: next()
+      Keys.onRightPressed: if (app.page < app.pages - 1) app.page++
+      Keys.onLeftPressed: if (app.page > 0) app.page--
+      Keys.onEscapePressed: Qt.quit()
       Row {
         x: -app.page * stage.width
         Behavior on x { NumberAnimation { duration: Theme.slow; easing.type: Theme.easingEmph } }
@@ -91,7 +100,7 @@ ShellRoot {
             spacing: 14
             width: 460
             Image { anchors.horizontalCenter: parent.horizontalCenter; source: Quickshell.iconPath("memora-ai"); width: 84; height: 84; sourceSize: Qt.size(168, 168) }
-            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Meet Memora AI"; font.pixelSize: 22; font.weight: Font.Bold }
+            Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Memora AI"; font.pixelSize: 22; font.weight: Font.Bold }
             Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: Theme.textDim
               text: "Ask it to do things on this computer: change settings, sort files, install apps, fix problems. It asks before doing anything risky." }
             Rectangle {
@@ -115,7 +124,7 @@ ShellRoot {
               columns: 2; columnSpacing: 14; rowSpacing: 14
               Repeater {
                 model: [["search", "Find anything", "Super+Space"], ["dock", "All your apps", "Tap Super"],
-                        ["display", "Desktops & windows", "Ctrl+Super+↑, or three fingers up"], ["sparkle", "Windows side by side", "Drag to an edge, or Super+arrows"]]
+                        ["display", "Desktops & windows", "Ctrl+Super+↑, or three fingers up"], ["sidebar", "Windows side by side", "Drag to an edge, or Super+arrows"]]
                 delegate: Rectangle {
                   required property var modelData
                   width: 300; height: 84; radius: 14
@@ -149,9 +158,14 @@ ShellRoot {
               anchors.horizontalCenter: parent.horizontalCenter
               columns: 2; columnSpacing: 26; rowSpacing: 10
               Repeater {
-                model: [["Tap Super", "All your apps"], ["Super + Space", "Spotlight search"], ["Super + Tab", "Switch apps"],
-                        ["Super + A", "Memora AI"], ["Click the clock", "Calendar and notifications"], ["Click the switches icon", "Control Center"]]
-                delegate: Txt { required property var modelData; text: modelData[0]; font.weight: index % 2 === 0 ? Font.Bold : Font.Normal; required property int index }
+                // What to press, then what it opens: two cells for each.
+                model: ["Tap Super", "All your apps", "Super + Space", "Spotlight search", "Super + Tab", "Switch apps",
+                        "Super + A", "Memora AI", "Click the clock", "Calendar and notifications", "Click the switches icon", "Control Center"]
+                delegate: Txt {
+                  required property var modelData; required property int index
+                  text: modelData; font.weight: index % 2 === 0 ? Font.Bold : Font.Normal
+                  color: index % 2 === 0 ? Theme.text : Theme.textDim
+                }
               }
             }
           }
