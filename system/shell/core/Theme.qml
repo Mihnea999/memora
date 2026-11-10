@@ -26,7 +26,10 @@ Singleton {
   readonly property string wallpaper: wallpaperFor(mode)
 
   // Type
-  readonly property string font: "JetBrainsMono Nerd Font"
+  // The system face: yours from System Settings > Appearance (Inter unless changed).
+  // mono is for code and anything that must line up in columns.
+  readonly property string font: Prefs.font || "Inter"
+  readonly property string mono: "JetBrainsMono Nerd Font"
   readonly property real fontSize: 13
   readonly property real small: 11.5
   readonly property real large: 15
@@ -46,33 +49,40 @@ Singleton {
   readonly property color yellow: "#febc2e"
   readonly property color green: "#28c840"
 
-  // Glass: a translucent fill (Hyprland frosts what is behind it), light on the
-  // inner edge, a dark hairline outside. Clear lets more of the desktop through,
-  // Tinted is calmer; Transparency scales both; Reduce Transparency makes it solid.
+  // Glass: a thin tint over what is behind it (Hyprland frosts that lightly and,
+  // in the dark look, dims it: default/hypr/look.lua) and light caught on its
+  // rounded rim (ui/glass.frag). No shadow. Clear is close to see-through, as
+  // on a Mac; Tinted is calmer; Transparency scales both; Reduce Transparency makes it solid.
+  // The fills stay above the alpha under which Hyprland leaves a layer unblurred
+  // (ignore_alpha in default/hypr/rules.lua: 0.13 light, 0.16 dark).
   readonly property bool tinted: Prefs.glassStyle === "tinted"
   function see(a) {
     if (Prefs.reduceTransparency) return 0.97
     const base = tinted ? a + (0.9 - a) * 0.45 : a
     return base + (0.96 - base) * (1 - Prefs.transparency)
   }
-  readonly property color glass: dark ? Qt.rgba(0.09, 0.09, 0.11, see(0.22)) : Qt.rgba(0.98, 0.98, 0.99, see(0.26))
-  readonly property color glassStrong: dark ? Qt.rgba(0.11, 0.11, 0.13, see(0.34)) : Qt.rgba(0.99, 0.99, 1.0, see(0.40))
+  readonly property color glass: dark ? Qt.rgba(0.08, 0.08, 0.10, see(0.22)) : Qt.rgba(1, 1, 1, see(0.17))
+  // Strong glass carries text (menus, panels). The light one is thicker than the
+  // dark one: dark ink needs a bright sheet under it over a dark or vivid picture
+  // (what is behind dark glass is dimmed by the compositor instead).
+  readonly property color glassStrong: dark ? Qt.rgba(0.10, 0.10, 0.12, see(0.20)) : Qt.rgba(1, 1, 1, see(0.24))
+  // Menus and sheets drawn inside a window: nothing frosts what is behind them
+  // there (the compositor only blurs behind whole windows and layers), so they
+  // are close to solid, or the window's text would show through theirs.
+  readonly property color popover: dark ? Qt.rgba(0.15, 0.15, 0.17, 0.97) : Qt.rgba(0.975, 0.975, 0.985, 0.98)
   readonly property color glassSolid: dark ? "#232326" : "#f5f5f7"
   // App windows: only a hint of glass, so text in them always reads well over
   // whatever is behind (Frost blurs the rest).
   readonly property color window: dark ? Qt.rgba(0.105, 0.105, 0.12, see(0.9)) : Qt.rgba(0.975, 0.975, 0.98, see(0.92))
   readonly property color sidebar: dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
-  readonly property color bar: Prefs.menuBarTransparent && !Prefs.reduceTransparency ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.06, 0.06, 0.08, see(0.30)) : Qt.rgba(1, 1, 1, see(0.34)))
+  readonly property color bar: Prefs.menuBarTransparent && !Prefs.reduceTransparency ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.06, 0.06, 0.08, see(0.24)) : Qt.rgba(1, 1, 1, see(0.22)))
   readonly property real shine: Prefs.reduceTransparency ? 0.3 : Prefs.shine
-  readonly property color edge: dark ? Qt.rgba(1, 1, 1, 0.05 + 0.16 * shine) : Qt.rgba(1, 1, 1, 0.3 + 0.6 * shine)
-  readonly property color outline: dark ? Qt.rgba(0, 0, 0, 0.45) : Qt.rgba(0, 0, 0, 0.10)
   readonly property color hover: dark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.06)
   readonly property color pressed: dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.11)
   readonly property color separator: dark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.09)
   readonly property color field: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.05)
   readonly property color tile: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.55)
   readonly property color tileOn: accent
-  readonly property color shadow: Qt.rgba(0, 0, 0, dark ? 0.45 : 0.18)
 
   // Shape
   readonly property real radiusSmall: 7

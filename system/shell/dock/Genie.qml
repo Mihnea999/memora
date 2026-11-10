@@ -80,7 +80,6 @@ Scope {
           visible: view.useCard
           radius: Math.min(width, height) * 0.12
           fill: Theme.glassStrong
-          shadowSize: 20
           AppIcon { anchors.centerIn: parent; width: Math.min(96, parent.width * 0.5, parent.height * 0.5); height: width; appId: view.appId }
         }
         Connections { target: view; function onKickChanged() { if (wl.here) go.restart() } }

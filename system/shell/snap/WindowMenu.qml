@@ -71,6 +71,7 @@ Scope {
         TapHandler { acceptedButtons: Qt.AllButtons; onTapped: wm.open = false }
       }
       MenuPanel {
+        solid: false
         x: Math.min(wm.at.x - wl.modelData.x, wl.width - width - 8)
         y: Math.min(wm.at.y - wl.modelData.y, wl.height - height - 8)
         width: implicitWidth; height: implicitHeight

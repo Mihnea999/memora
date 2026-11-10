@@ -6,7 +6,7 @@ hl.window_rule({
 })
 
 -- Windows float like on a desktop and open centred at their own size.
--- Super+V puts one into the tiled layout; Super+Shift+F maximizes.
+-- Super+T puts one into the tiled layout; Super+Up fills the screen.
 hl.window_rule({ name = "memora-float-all", match = { class = ".*" }, float = true })
 
 -- The free part of a monitor: below the menu bar, above the Dock (logical pixels).
@@ -95,8 +95,15 @@ hl.window_rule({ name = "memora-welcome-size", match = { class = "^(memora-welco
 hl.window_rule({ name = "memora-float-tool-size", match = { class = "^(memora-float)$" }, size = "900 600" })
 
 -- Glass surfaces: blur what is behind the shell's translucent layers.
+-- ignore_alpha: where a layer is fainter than this (its anti-aliased edge) nothing is
+-- blurred. It sits just under the thinnest glass fill (core/Theme.qml).
+local tf = io.open(os.getenv("HOME") .. "/.config/memora/theme")
+local glass_floor = (tf and (tf:read("*l") or ""):match("light")) and 0.13 or 0.16
+if tf then tf:close() end
 for _, ns in ipairs({ "memora-bar", "memora-dock", "memora-panel", "memora-launchpad", "memora-spotlight", "memora-overview",
   "memora-notifications", "memora-osd", "memora-dialog", "memora-switcher" }) do
-  hl.layer_rule({ name = "memora-glass-" .. ns, match = { namespace = "^(" .. ns .. ")$" }, blur = true, ignore_alpha = 0.3 })
+  -- blur_popups: the menus that hang from the bar and the Dock are glass too
+  -- (without it they are see-through and what is behind shows sharp through the text).
+  hl.layer_rule({ name = "memora-glass-" .. ns, match = { namespace = "^(" .. ns .. ")$" }, blur = true, blur_popups = true, ignore_alpha = glass_floor })
 end
 hl.layer_rule({ name = "memora-no-anim-wallpaper", match = { namespace = "^(memora-wallpaper|memora-genie|memora-snap)$" }, no_anim = true })

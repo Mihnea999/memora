@@ -104,6 +104,9 @@ ShellRoot {
     // opens again next time instead of lingering without a window.
     onVisibleChanged: if (!visible) Qt.quit()
     title: "Activity Monitor"
+    Shortcut { sequence: "Ctrl+F"; onActivated: sf.forceActiveFocus() }
+    Shortcut { sequence: "Ctrl+W"; onActivated: Qt.quit() }
+    Shortcut { sequence: "Escape"; enabled: app.asking === ""; onActivated: { if (sf.text) sf.text = ""; else app.selected = -1 } }
     implicitWidth: 880
     implicitHeight: 620
     minimumSize: Qt.size(640, 420)
@@ -117,9 +120,9 @@ ShellRoot {
       height: 54
       DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
-      WindowControls { x: 16; anchors.verticalCenter: parent.verticalCenter; window: win; onCloseRequested: Qt.quit() }
+      WindowControls { id: lights; x: 16; anchors.verticalCenter: parent.verticalCenter; window: win; onCloseRequested: Qt.quit() }
       Column {
-        x: 90; anchors.verticalCenter: parent.verticalCenter
+        x: lights.x + lights.width + 18; anchors.verticalCenter: parent.verticalCenter
         Txt { text: "Activity Monitor"; font.weight: Font.Bold }
         Txt { text: app.procs.length + " processes"; color: Theme.textDim; font.pixelSize: Theme.small - 1 }
       }
@@ -291,7 +294,7 @@ ShellRoot {
         anchors.centerIn: parent
         width: 360; height: cq.implicitHeight + 40
         radius: 18
-        fill: Theme.glassStrong
+        fill: Theme.popover
         TapHandler {}
         ColumnLayout {
           id: cq

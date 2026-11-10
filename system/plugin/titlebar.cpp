@@ -72,7 +72,22 @@ namespace {
     constexpr int   BTN_GAP = 9;  // between buttons
     constexpr int   PAD     = 13; // left edge to the first button
     constexpr int   ZONE    = PAD + 3 * BTN + 2 * BTN_GAP + 6;
-    const char*     FONT    = "JetBrainsMono Nerd Font";
+
+    // The system typeface (System Settings > Appearance; memora-theme writes it).
+    const std::string& font() {
+        static std::string path = std::string(getenv("HOME") ? getenv("HOME") : "") + "/.config/memora/font";
+        static time_t      seen = -1;
+        static std::string val  = "Inter";
+        struct stat        st {};
+        if (stat(path.c_str(), &st) == 0 && st.st_mtime != seen) {
+            seen = st.st_mtime;
+            std::ifstream f(path);
+            std::string   s;
+            std::getline(f, s);
+            val = s.empty() || s.size() > 64 ? "Inter" : s;
+        }
+        return val;
+    }
 
     // Light or dark, as Memora's appearance (memora-theme writes it).
     bool dark() {
@@ -212,7 +227,7 @@ class CMemoraBar : public IHyprWindowDecoration {
                 auto& tex = m_symbols[i];
                 if (!tex || m_symbolScale != S) {
                     static const char* SYM[3] = {"×", "−", "+"};
-                    tex                       = g_pHyprRenderer->renderText(SYM[i], CHyprColor(0.2, 0.05, 0.02, 0.85), std::round(11 * S), false, FONT, 0, 700);
+                    tex                       = g_pHyprRenderer->renderText(SYM[i], CHyprColor(0.2, 0.05, 0.02, 0.85), std::round(11 * S), false, font(), 0, 700);
                 }
                 if (tex) {
                     CBox t{b.x + (b.w - tex->m_size.x) / 2.0, b.y + (b.h - tex->m_size.y) / 2.0, tex->m_size.x, tex->m_size.y};
@@ -225,14 +240,15 @@ class CMemoraBar : public IHyprWindowDecoration {
         // The title, in the middle.
         const std::string title = w->metadata().title();
         const int         maxW  = std::max(0, (int)std::round((bar.w - 2 * ZONE) * S));
-        if (!m_titleTex || title != m_title || m_titleActive != ACTIVE || m_titleDark != DARK || m_titleW != maxW) {
+        if (!m_titleTex || title != m_title || m_titleActive != ACTIVE || m_titleDark != DARK || m_titleW != maxW || m_titleFont != font()) {
             m_title       = title;
+            m_titleFont   = font();
             m_titleActive = ACTIVE;
             m_titleDark   = DARK;
             m_titleW      = maxW;
             CHyprColor tc = DARK ? (ACTIVE ? CHyprColor(0.90, 0.90, 0.92, 1) : CHyprColor(0.56, 0.56, 0.58, 1))
                                  : (ACTIVE ? CHyprColor(0.24, 0.24, 0.26, 1) : CHyprColor(0.60, 0.60, 0.62, 1));
-            m_titleTex    = (title.empty() || maxW < 20) ? nullptr : g_pHyprRenderer->renderText(title, tc, std::round(10.5 * S), false, FONT, maxW, 600);
+            m_titleTex    = (title.empty() || maxW < 20) ? nullptr : g_pHyprRenderer->renderText(title, tc, std::round(10.5 * S), false, font(), maxW, 600);
         }
         if (m_titleTex) {
             CBox t{clip.x + (clip.w - m_titleTex->m_size.x) / 2.0, clip.y + (clip.h - m_titleTex->m_size.y) / 2.0, m_titleTex->m_size.x, m_titleTex->m_size.y};
@@ -396,7 +412,7 @@ class CMemoraBar : public IHyprWindowDecoration {
     SP<Render::ITexture>                  m_symbols[3];
     float                                 m_symbolScale = 0;
     SP<Render::ITexture>                  m_titleTex;
-    std::string                           m_title;
+    std::string                           m_title, m_titleFont;
     bool                                  m_titleActive = false, m_titleDark = true;
     int                                   m_titleW = 0;
 };

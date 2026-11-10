@@ -70,7 +70,6 @@ Scope {
         height: Math.min(win.height - 120, grid.implicitHeight + 70)
         radius: 26
         fill: Theme.glassStrong
-        shadowSize: 40
         opacity: win.shown
         scale: 0.96 + 0.04 * win.shown
         clip: true

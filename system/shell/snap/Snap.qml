@@ -206,7 +206,6 @@ Scope {
         x: win.target.x; y: win.target.y; width: win.target.width; height: win.target.height
         radius: 16
         fill: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.16 : 0.2)
-        shadowSize: 30
         opacity: snap.zone !== "" ? 1 : 0
         scale: snap.zone !== "" ? 1 : 0.92
         Behavior on x { NumberAnimation { duration: Prefs.motion(240); easing.type: Easing.OutQuint } }
@@ -224,7 +223,6 @@ Scope {
         x: r.x; y: r.y + (snap.layoutsOpen ? 0 : -16); width: r.width; height: r.height
         radius: 20
         fill: Theme.glassStrong
-        shadowSize: 30
         opacity: snap.layoutsOpen ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: Prefs.motion(160) } }
@@ -315,7 +313,6 @@ Scope {
         x: aw.area.x; y: aw.area.y; width: aw.area.width; height: aw.area.height
         radius: 16
         fill: Theme.glassStrong
-        shadowSize: 30
         opacity: aw.shown
         scale: 0.96 + 0.04 * aw.shown
         TapHandler {}

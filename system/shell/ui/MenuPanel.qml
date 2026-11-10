@@ -7,9 +7,12 @@ Glass {
   id: m
   property var items: []
   signal picked(var item)
+  readonly property bool checks: items.some(i => i && i.checked !== undefined)
   radius: 12
-  fill: Theme.glassStrong
-  shadowSize: 24
+  // solid: for a menu inside a window (the default). A menu in a window of its
+  // own, which the compositor frosts, sets it to false and is real glass.
+  property bool solid: true
+  fill: solid ? Theme.popover : Theme.glassStrong
   implicitWidth: Math.max(220, col.implicitWidth + 12)
   implicitHeight: col.implicitHeight + 10
 
@@ -46,7 +49,16 @@ Glass {
           anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
           spacing: 24
           Txt {
-            text: (modelData.checked ? "✓ " : "") + (modelData.text || "")
+            id: label
+            // Check marks have their own column when the menu has any, so names line up.
+            leftPadding: m.checks ? 19 : 0
+            text: modelData.text || ""
+            Sym {
+              visible: !!modelData.checked
+              anchors.verticalCenter: parent.verticalCenter
+              name: "check"; width: 11; height: 11
+              color: label.color
+            }
             color: hover.hovered && parent.parent.on ? Theme.accentText : (parent.parent.on ? Theme.text : Theme.textFaint)
             Layout.fillWidth: true
           }

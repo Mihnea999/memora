@@ -1,51 +1,84 @@
 import QtQuick
-import QtQuick.Effects
+import Quickshell
+import Quickshell.Wayland
 import qs.core
 
-// A liquid-glass surface: translucent fill (the compositor blurs what is behind
-// it), a bright hairline on the inside, a dark hairline outside, a soft shadow.
+// A liquid-glass surface, drawn by glass.frag (after ybouane/liquidglass): a thin
+// tint, a rim rounded like a lens that catches the light, brightest at the top.
+// The compositor frosts what is behind it. Where the window itself draws what is
+// behind (the desktop picture under the widgets), the rim also bends that
+// picture inwards, as real glass does. No shadow, no dark outline.
 Item {
   id: g
   property real radius: Theme.radiusLarge
   property color fill: Theme.glass
-  property bool shadow: true
-  property real shadowSize: 28
+  // How far in from the edge the rounded rim reaches.
+  property real bevel: Math.max(8, Math.min(32, radius * 1.4))
   default property alias content: inner.data
+  // In a window that draws what is behind the glass itself (the desktop picture
+  // under the widgets) the compositor has nothing to frost: `backdrop` is then
+  // that picture already frosted, and backdropRect the part under this glass.
+  property Item backdrop: null
+  property rect backdropRect
 
-  RectangularShadow {
-    visible: g.shadow
-    anchors.fill: parent
-    radius: g.radius
-    blur: g.shadowSize
-    spread: -4
-    offset.y: g.shadowSize * 0.35
-    color: Theme.shadow
+  ShaderEffectSource {
+    id: slice
+    visible: false
+    sourceItem: g.backdrop
+    sourceRect: g.backdropRect
+    live: g.backdrop !== null
   }
-  Rectangle {
+  Item { id: blank; width: 1; height: 1; visible: false; layer.enabled: true }
+
+  ShaderEffect {
     anchors.fill: parent
-    radius: g.radius
-    color: g.fill
-    border.width: 1
-    border.color: Theme.outline
-  }
-  Rectangle {
-    anchors.fill: parent
-    anchors.margins: 1
-    radius: g.radius - 1
-    color: "transparent"
-    border.width: 1
-    border.color: Theme.edge
-    opacity: 0.9
-  }
-  // Light catching the top edge.
-  Rectangle {
-    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 1 }
-    height: Math.min(parent.height / 2, 40)
-    radius: g.radius - 1
-    gradient: Gradient {
-      GradientStop { position: 0; color: Qt.rgba(1, 1, 1, (Theme.dark ? 0.09 : 0.3) * Theme.shine) }
-      GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0) }
-    }
+    readonly property vector2d size: Qt.vector2d(width, height)
+    readonly property real radius: g.radius
+    readonly property real zRadius: g.bevel
+    readonly property real refraction: 0.69
+    readonly property real chroma: 0.05
+    readonly property real edgeLight: (Theme.dark ? 0.45 : 0.7) * Theme.shine
+    readonly property real fresnel: (Theme.dark ? 0.7 : 1.0) * Theme.shine
+    readonly property real hasBackdrop: g.backdrop !== null ? 1 : 0
+    readonly property real darkMode: Theme.dark ? 1 : 0
+    readonly property color fill: g.fill
+    readonly property var source: g.backdrop !== null ? slice : blank
+    fragmentShader: Qt.resolvedUrl("glass.frag.qsb")
   }
   Item { id: inner; anchors.fill: parent }
+
+  // In the shell's panels (layer surfaces) the compositor draws what is behind
+  // the glass, bent at the rim (system/plugin/glass.cpp): tell it where the
+  // glass is, after every frame in which it may have moved, faded or resized.
+  readonly property var host: QsWindow.window
+  // A menu (a popup) belongs to the panel it hangs from.
+  readonly property bool inPopup: !!host && host instanceof PopupWindow
+  readonly property var panel: inPopup ? (host.anchor ? host.anchor.window : null) : host
+  readonly property string layerName: {
+    // Only panels: asking an app window for its layer would make it one.
+    if (!panel || backdrop !== null || !(panel instanceof PanelWindow)) return ""
+    const ls = panel.WlrLayershell
+    return ls && typeof ls.namespace === "string" ? ls.namespace : ""
+  }
+  property int syncId: 0
+  function sync() {
+    if (layerName === "" || Prefs.reduceTransparency) { unsync(); return }
+    let a = 1
+    for (let p = g; p && a > 0.01; p = p.parent) a = p.visible ? a * p.opacity : 0
+    if (a <= 0.01 || width < 4 || height < 4) { unsync(); return }
+    const r = g.mapToItem(null, 0, 0, width, height)
+    const k = r.width / width
+    if (!syncId) syncId = GlassSync.newId()
+    const scr = panel.screen || host.screen
+    GlassSync.put(syncId, [layerName, scr ? scr.name : "-", Math.round(host.width), Math.round(host.height),
+      r.x.toFixed(1), r.y.toFixed(1), r.width.toFixed(1), r.height.toFixed(1),
+      (Math.min(radius, width / 2, height / 2) * k).toFixed(1), (bevel * k).toFixed(1), a.toFixed(2), inPopup ? "P" : "L"].join(" "))
+  }
+  function unsync() { if (syncId) GlassSync.drop(syncId) }
+  Connections {
+    target: g.layerName !== "" ? g.Window.window : null
+    function onFrameSwapped() { g.sync() }
+  }
+  Component.onCompleted: if (layerName !== "") Qt.callLater(sync)
+  Component.onDestruction: unsync()
 }

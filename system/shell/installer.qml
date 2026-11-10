@@ -294,7 +294,6 @@ ShellRoot {
         Behavior on height { NumberAnimation { duration: Theme.normal; easing.type: Theme.easing } }
         radius: 28
         fill: Theme.dark ? Qt.rgba(0.09, 0.09, 0.11, 0.84) : Qt.rgba(0.98, 0.98, 0.99, 0.88)
-        shadowSize: 50
         focus: true
 
         // Return goes on, Escape goes back; Tab moves between everything.
@@ -966,7 +965,6 @@ ShellRoot {
             height: Math.min(parent.height - 60, 600)
             radius: 20
             fill: Theme.dark ? "#26262a" : "#ffffff"
-            shadowSize: 30
             MouseArea { anchors.fill: parent }   // taps inside don't close it
             Txt { x: 22; y: 16; height: 34; text: sheet.owner ? sheet.owner.title : ""; font.pixelSize: 19; font.weight: Font.Bold }
             Btn { anchors { right: parent.right; rightMargin: 14; top: parent.top; topMargin: 12 } icon: "close"; tip: "Close"; onClicked: sheet.close() }

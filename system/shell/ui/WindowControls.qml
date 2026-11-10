@@ -106,7 +106,6 @@ Item {
     radius: 12
     // Solid: inside a window nothing blurs what is under it, so glass would let the text show through.
     fill: Theme.dark ? Qt.rgba(0.15, 0.15, 0.17, 0.98) : Qt.rgba(0.98, 0.98, 0.99, 0.98)
-    shadowSize: 22
     visible: opacity > 0
     opacity: open ? 1 : 0
     scale: open ? 1 : 0.9

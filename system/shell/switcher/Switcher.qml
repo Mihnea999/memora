@@ -185,7 +185,6 @@ Scope {
         anchors.margins: 6
         radius: 26
         fill: Theme.glassStrong
-        shadowSize: 30
 
         // ---- apps
         Row {

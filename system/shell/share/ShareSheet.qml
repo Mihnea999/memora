@@ -88,7 +88,6 @@ Scope {
       height: col.implicitHeight + 40
       radius: 22
       fill: Theme.glassStrong
-      shadowSize: 50
       opacity: win.shown
       scale: 0.94 + 0.06 * win.shown
       focus: true

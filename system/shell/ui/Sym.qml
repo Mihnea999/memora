@@ -146,7 +146,7 @@ Canvas {
     case "restart": {
       ctx.lineWidth = 1.7
       ctx.beginPath(); ctx.arc(8, 8.4, 5.4, -Math.PI * 0.45, Math.PI * 1.25); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(8.6, 0.8); ctx.lineTo(10.8, 3.2); ctx.lineTo(8.2, 4.8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(5.2, 6.7); ctx.lineTo(5.3, 3.45); ctx.lineTo(2.0, 3.6); ctx.stroke()  // head at the end of the arc, turning clockwise
       break
     }
     case "sleep": {
@@ -386,6 +386,26 @@ Canvas {
       ctx.beginPath(); ctx.arc(8, 5.6, 3, 0, Math.PI * 2); ctx.fill()
       ctx.beginPath(); ctx.moveTo(2.2, 14.4); ctx.quadraticCurveTo(2.6, 9.4, 8, 9.4)
       ctx.quadraticCurveTo(13.4, 9.4, 13.8, 14.4); ctx.closePath(); ctx.fill()
+      break
+    }
+    case "star": {
+      ctx.lineWidth = 1.4
+      ctx.beginPath()
+      for (let i = 0; i < 10; i++) {
+        const r = i % 2 ? 2.9 : 6.6, a = -Math.PI / 2 + i * Math.PI / 5
+        const px = 8 + Math.cos(a) * r, py = 8.5 + Math.sin(a) * r
+        if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py)
+      }
+      ctx.closePath()
+      if (c.filled) ctx.fill(); ctx.stroke()
+      break
+    }
+    case "gamepad": {
+      ctx.lineWidth = 1.4
+      rr(ctx, 1.4, 4.4, 13.2, 7.6, 3.7); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(3.9, 8.2); ctx.lineTo(6.7, 8.2); ctx.moveTo(5.3, 6.8); ctx.lineTo(5.3, 9.6); ctx.stroke()
+      ctx.beginPath(); ctx.arc(10.2, 9.1, 0.85, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.arc(11.9, 7.3, 0.85, 0, Math.PI * 2); ctx.fill()
       break
     }
     case "sparkle": {

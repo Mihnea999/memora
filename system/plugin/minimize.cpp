@@ -21,6 +21,9 @@ void memoraTitlebarExit();
 // touch.cpp: input mode (touch or pointer) and touch-screen gestures.
 void memoraTouchInit(HANDLE handle);
 void memoraTouchExit();
+// glass.cpp: liquid glass (refraction) under the shell's panels.
+void memoraGlassInit(HANDLE handle);
+void memoraGlassExit();
 
 static HANDLE                                         PHANDLE = nullptr;
 static CHyprSignalListener                            g_open, g_close, g_key, g_button;
@@ -78,10 +81,12 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_button = Event::bus()->m_events.input.mouse.button.listen([](const auto&, auto&) { chordWithSuper(); });
     memoraTitlebarInit(handle);
     memoraTouchInit(handle);
-    return {"memora-minimize", "Minimize buttons send windows to the Memora Dock; title bars for apps without their own", "Memora", "1.1"};
+    memoraGlassInit(handle);
+    return {"memora-minimize", "Minimize buttons send windows to the Memora Dock; title bars for apps without their own; liquid glass", "Memora", "1.2"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+    memoraGlassExit();
     memoraTitlebarExit();
     memoraTouchExit();
     g_state.clear();

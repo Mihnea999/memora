@@ -45,7 +45,6 @@ Item {
     width: 340; height: col.implicitHeight + 40
     radius: 16
     fill: Theme.dark ? Qt.rgba(0.16, 0.16, 0.18, 0.96) : Qt.rgba(0.99, 0.99, 1, 0.97)
-    shadowSize: 36
     TapHandler {}  // keep taps on the card from closing it
     ColumnLayout {
       id: col

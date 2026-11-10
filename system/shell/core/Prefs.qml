@@ -33,9 +33,9 @@ Singleton {
   property bool menuBarTransparent: true
   // Liquid glass (System Settings > Appearance)
   property string glassStyle: "clear"  // clear | tinted
-  property real blur: 0.6              // how much the glass frosts what is behind (0 … 1)
-  property real shine: 0.7             // light on the glass edges (0 … 1)
-  property real vibrancy: 0.5          // colour carried through the glass (0 … 1)
+  property real blur: 0.3              // how much the glass frosts what is behind (0 … 1)
+  property real shine: 0             // light on the glass edges (0 … 1); none: the shape shows by the bend and the tint
+  property real vibrancy: 0.7          // colour carried through the glass (0 … 1)
   property bool reduceTransparency: false
   property string accent: "blue"       // blue | purple | pink | red | orange | green | graphite
   // Privacy & Security
@@ -57,6 +57,7 @@ Singleton {
   // Desktops and windows
   property int desktops: 2             // how many desktops there are (more appear when needed)
   property bool snapAssist: true       // after docking a window, offer others for the rest of the screen
+  property string font: "Inter"        // the system typeface (System Settings > Appearance)
   property bool snapLayouts: true      // drag a window to the top middle for a choice of layouts
   property var desktopNames: []
   property var hotCorners: ({})
@@ -64,7 +65,7 @@ Singleton {
 
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet", "wallpaperRecent", "batteryPercent", "lowPowerOnBattery",
     "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockHiding", "dockPosition", "dockDots", "iconStyle", "snapping", "transparency", "menuBarTransparent",
-    "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
+    "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent", "font",
     "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "alertSound", "alertVolume", "startupSound", "uiSounds", "volumeFeedback", "updateCheck", "desktops", "snapAssist", "snapLayouts", "desktopNames", "hotCorners", "reopenWindows"]
 
   // A duration, scaled by the speed setting; 0 when animations are off.
@@ -88,6 +89,8 @@ Singleton {
     if (key === "wallpaper" && value) p.wallpaperRecent = [value].concat((p.wallpaperRecent || []).filter(f => f !== value)).slice(0, 6)
     if (["animations", "animationSpeed", "windowStyle"].indexOf(key) >= 0) writeMotion()
     if (["blur", "vibrancy", "reduceTransparency"].indexOf(key) >= 0) writeGlass()
+    // Other apps (GTK, title bars Memora draws) take the typeface from memora-theme.
+    if (key === "font") Quickshell.execDetached(["memora-theme", "font", String(value)])
     if (["lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower"].indexOf(key) >= 0) writeIdle()
     const j = {}
     keys.forEach(k => j[k] = p[k])

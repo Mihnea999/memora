@@ -49,7 +49,6 @@ PopupWindow {
     height: implicitHeight
     radius: 14
     fill: Theme.glassStrong
-    shadowSize: 24
     opacity: sm.shown ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Theme.fast } }
 
@@ -215,13 +214,13 @@ PopupWindow {
         model: sm.profile !== "" ? [{ t: "Low Power", v: "power-saver" }, { t: "Automatic", v: "balanced" }, { t: "High Performance", v: "performance" }] : []
         delegate: Action {
           required property var modelData
-          text: modelData.t; checked: sm.profile === modelData.v
+          text: modelData.t; checkable: true; checked: sm.profile === modelData.v
           onClicked: { sm.profile = modelData.v; Quickshell.execDetached(["powerprofilesctl", "set", modelData.v]) }
         }
       }
       Sep {}
-      Action { text: "Show Percentage"; checked: Prefs.batteryPercent; onClicked: Prefs.set("batteryPercent", !Prefs.batteryPercent) }
-      Action { text: "Battery Settings…"; onClicked: sm.settings("battery") }
+      Action { text: "Show Percentage"; checkable: true; checked: Prefs.batteryPercent; onClicked: Prefs.set("batteryPercent", !Prefs.batteryPercent) }
+      Action { text: "Battery Settings…"; checkable: true; onClicked: sm.settings("battery") }
     }
   }
 
@@ -411,13 +410,20 @@ PopupWindow {
     id: a
     property string text
     property bool checked: false
+    property bool checkable: false      // keeps room for the check mark, so names line up
     signal clicked()
     Layout.fillWidth: true
     implicitHeight: 28
     Rectangle { anchors.fill: parent; radius: 6; color: ah.hovered ? Theme.accent : "transparent" }
-    Txt {
+    Sym {
+      visible: a.checked
       x: 10; anchors.verticalCenter: parent.verticalCenter
-      text: (a.checked ? "✓  " : "") + a.text
+      name: "check"; width: 11; height: 11
+      color: ah.hovered ? Theme.accentText : Theme.text
+    }
+    Txt {
+      x: a.checkable || a.checked ? 28 : 10; anchors.verticalCenter: parent.verticalCenter
+      text: a.text
       color: ah.hovered ? Theme.accentText : Theme.text
     }
     HoverHandler { id: ah }

@@ -64,7 +64,6 @@ Scope {
       width: row.implicitWidth + 40; height: row.implicitHeight + 76
       radius: 26
       fill: Theme.glassStrong
-      shadowSize: 50
       opacity: win.shown
       scale: 0.94 + 0.06 * win.shown
       focus: pj.open

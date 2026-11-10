@@ -60,6 +60,7 @@ PanelWindow {
     anchors.margins: 10
     opacity: cc.shown
     transform: Translate { y: -8 * (1 - cc.shown) }
+    focus: true
     Keys.onEscapePressed: Shell.close()
 
     ColumnLayout {
@@ -159,7 +160,7 @@ PanelWindow {
             Module {
               visible: Host.hasAccelerometer
               Layout.preferredWidth: 71; Layout.preferredHeight: 71
-              Square { anchors.fill: parent; sym: "lock"; label: cc.rotationLocked ? "Rotation Off" : "Rotation"; opacity: cc.rotationLocked ? 1 : 0.7
+              Square { anchors.fill: parent; sym: "lock"; label: cc.rotationLocked ? "Locked" : "Rotation"; on: cc.rotationLocked
                 onClicked: { cc.rotationLocked = !cc.rotationLocked; Apps.run("memora-touch rotation " + (cc.rotationLocked ? "lock" : "unlock")) } }
             }
           }
@@ -279,7 +280,6 @@ PanelWindow {
     id: mod
     radius: 18
     fill: Theme.glassStrong
-    shadowSize: 18
     property real enter: cc.open ? 1 : 0
     Behavior on enter { SequentialAnimation {
       // Top to bottom: the delay follows how far down the module sits.
@@ -336,11 +336,12 @@ PanelWindow {
   component Square: Item {
     id: sq
     property string sym; property string label
+    property bool on: false          // a switch that is on wears the accent colour
     signal clicked()
     Column {
       anchors.centerIn: parent
       spacing: 5
-      Sym { anchors.horizontalCenter: parent.horizontalCenter; name: sq.sym; width: 18; height: 18 }
+      Sym { anchors.horizontalCenter: parent.horizontalCenter; name: sq.sym; width: 18; height: 18; color: sq.on ? Theme.accent : Theme.text }
       Txt { anchors.horizontalCenter: parent.horizontalCenter; text: sq.label; font.pixelSize: Theme.small - 1; color: Theme.textDim }
     }
     TapHandler { onTapped: sq.clicked() }

@@ -775,7 +775,7 @@ ShellRoot {
         anchors { right: parent.right; top: vtop.bottom; margins: 12 }
         width: 260; height: infoCol.implicitHeight + 28
         radius: 16
-        fill: Theme.glassStrong
+        fill: Theme.popover
         opacity: app.info ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: Theme.normal } }

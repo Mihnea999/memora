@@ -29,6 +29,25 @@ PanelWindow {
   readonly property bool desktop: cls === ""
   readonly property string appName: desktop ? "Files" : Apps.nameFor(cls)
 
+  // The bar's ink follows the picture under it, not only the appearance: white
+  // on a dark picture (also in the light appearance), dark on a bright one.
+  property real wallLum: Theme.dark ? 0.2 : 0.8      // brightness of the picture's top strip, 0..1
+  Process {
+    id: lumProbe
+    command: ["magick", Theme.wallpaper + "[0]", "-gravity", "North", "-crop", "100%x4%+0+0", "+repage", "-resize", "1x1!", "-colorspace", "Gray", "-format", "%[fx:mean]", "info:"]
+    stdout: StdioCollector { onStreamFinished: { const v = parseFloat(text); if (!isNaN(v)) bar.wallLum = v } }
+  }
+  readonly property string wall: Theme.wallpaper
+  onWallChanged: { lumProbe.running = false; lumProbe.running = true }
+  Component.onCompleted: lumProbe.running = true
+  // A frosted bar adds its own tint over the picture.
+  readonly property real under: Prefs.reduceTransparency ? (Theme.dark ? 0.1 : 0.95)
+    : Prefs.menuBarTransparent ? wallLum : wallLum * 0.66 + (Theme.dark ? 0.02 : 0.33)
+  readonly property bool onDark: under < 0.56
+  property color ink: onDark ? "#f5f5f7" : "#1c1c1e"
+  Behavior on ink { ColorAnimation { duration: Theme.slow } }
+  function plate(a) { return onDark ? Qt.rgba(1, 1, 1, a) : Qt.rgba(0, 0, 0, a * 0.7) }
+
   // Room for the app's menus: up to the AI notch when it is on this screen.
   // Menus that don't fit go under "»" (small screens, apps with many menus).
   readonly property bool hasNotch: !!Hyprland.focusedMonitor && Hyprland.focusedMonitor.name === modelData.name && !Shell.fullscreenApp
@@ -54,12 +73,13 @@ PanelWindow {
     color: Theme.bar
     Behavior on color { ColorAnimation { duration: Theme.slow } }
   }
-  // Transparent bar: a faint veil keeps the text readable on any picture.
+  // Transparent bar: a faint veil keeps the text readable on any picture. It stays
+  // fainter than the compositor's blur floor (rules.lua), so nothing is frosted behind it.
   Rectangle {
     visible: Prefs.menuBarTransparent
     anchors.fill: parent
     gradient: Gradient {
-      GradientStop { position: 0; color: Theme.dark ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(1, 1, 1, 0.22) }
+      GradientStop { position: 0; color: bar.onDark ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.12) }
       GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0) }
     }
   }
@@ -75,7 +95,7 @@ PanelWindow {
       menuId: "system"
       Image {
         anchors.centerIn: parent
-        source: "file://" + Theme.share + "/themes/" + Theme.mode + "/logo.png"
+        source: "file://" + Theme.share + "/themes/" + (bar.onDark ? "dark" : "light") + "/logo.png"
         sourceSize: Qt.size(32, 32)
         width: 15; height: 15
         cache: false
@@ -148,7 +168,7 @@ PanelWindow {
     BarButton {
       visible: Shell.keepAwake
       tip: "Keep Awake: " + Shell.awakeLabel.toLowerCase() + " · click to turn off"
-      Sym { anchors.centerIn: parent; name: "cup"; width: 16; height: 16 }
+      Sym { anchors.centerIn: parent; color: bar.ink; name: "cup"; width: 16; height: 16 }
       onClicked: Shell.setAwake(0)
     }
 
@@ -156,7 +176,7 @@ PanelWindow {
       // The notch is already the way in; on a narrow bar this one makes room.
       visible: !bar.hasNotch || bar.width >= 1400
       tip: "Memora AI (Super+A)"
-      Sym { anchors.centerIn: parent; name: "ai"; width: 15; height: 15 }
+      Sym { anchors.centerIn: parent; color: bar.ink; name: "ai"; width: 15; height: 15 }
       onClicked: Apps.run("memora-ai window")
     }
 
@@ -174,11 +194,11 @@ PanelWindow {
           text: UPower.displayDevice ? Math.round(UPower.displayDevice.percentage * 100) + "%" : ""
           font.pixelSize: Theme.small + 0.5
           // Low and not charging: red, as on a Mac.
-          color: UPower.displayDevice && UPower.displayDevice.percentage <= 0.1 && UPower.displayDevice.state !== UPowerDeviceState.Charging ? Theme.red : Theme.text
+          color: UPower.displayDevice && UPower.displayDevice.percentage <= 0.1 && UPower.displayDevice.state !== UPowerDeviceState.Charging ? Theme.red : bar.ink
         }
         Sym {
           anchors.verticalCenter: parent.verticalCenter
-          name: "battery"; width: 22; height: 22
+          name: "battery"; width: 22; height: 22; color: bar.ink
           level: UPower.displayDevice ? UPower.displayDevice.percentage : 1
           charging: UPower.displayDevice && UPower.displayDevice.state === UPowerDeviceState.Charging
         }
@@ -189,14 +209,14 @@ PanelWindow {
     BarButton {
       visible: Sys.btAvailable
       tip: "Bluetooth"
-      Sym { anchors.centerIn: parent; name: "bluetooth"; width: 15; height: 15; opacity: Sys.btOn ? 1 : 0.45 }
+      Sym { anchors.centerIn: parent; color: bar.ink; name: "bluetooth"; width: 15; height: 15; opacity: Sys.btOn ? 1 : 0.45 }
       menu: "bluetooth"
     }
 
     BarButton {
       tip: Net.label
       // A computer on a cable (no Wi-Fi in it) shows its network as a globe.
-      Sym { anchors.centerIn: parent; name: !Host.hasWifi ? "globe" : (Net.online ? "wifi" : "wifi-off"); level: Net.strength; width: Host.hasWifi ? 17 : 15; height: Host.hasWifi ? 17 : 15; opacity: Host.hasWifi || Net.online ? 1 : 0.45 }
+      Sym { anchors.centerIn: parent; color: bar.ink; name: !Host.hasWifi ? "globe" : (Net.online ? "wifi" : "wifi-off"); level: Net.strength; width: Host.hasWifi ? 17 : 15; height: Host.hasWifi ? 17 : 15; opacity: Host.hasWifi || Net.online ? 1 : 0.45 }
       menu: Host.hasWifi ? "wifi" : ""
       onClicked: if (!Host.hasWifi) Apps.run("memora-settings network")
     }
@@ -205,14 +225,14 @@ PanelWindow {
       visible: !!Sys.sink
       tip: "Sound"
       // Muted shows in red, so it can't pass for "very low".
-      Sym { anchors.centerIn: parent; name: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; level: Sys.volume; width: 16; height: 16; color: Sys.muted ? Theme.red : Theme.text }
+      Sym { anchors.centerIn: parent; name: Sys.muted || Sys.volume === 0 ? "sound-off" : "sound"; level: Sys.volume; width: 16; height: 16; color: Sys.muted ? Theme.red : bar.ink }
       menu: "sound"
       onScrolled: up => Sys.changeVolume(Sys.volume + (up ? 0.05 : -0.05))
     }
 
     BarButton {
       tip: "Search (Super+Space)"
-      Sym { anchors.centerIn: parent; name: "search"; width: 14; height: 14 }
+      Sym { anchors.centerIn: parent; color: bar.ink; name: "search"; width: 14; height: 14 }
       onClicked: Shell.toggle("spotlight")
     }
 
@@ -220,7 +240,7 @@ PanelWindow {
       id: ccButton
       tip: "Control Center"
       highlighted: Shell.open === "control" && Shell.menuScreen === bar.modelData.name
-      Sym { anchors.centerIn: parent; name: "control"; width: 16; height: 16 }
+      Sym { anchors.centerIn: parent; color: bar.ink; name: "control"; width: 16; height: 16 }
       onClicked: { Shell.menuScreen = bar.modelData.name; Shell.toggle("control") }
     }
 
@@ -235,6 +255,8 @@ PanelWindow {
     Txt {
       id: clockText
       anchors.centerIn: parent
+      color: bar.ink
+      font.features: { "tnum": 1 }   // digits of one width: the clock doesn't shift as it ticks
       font.weight: Font.Medium
       text: (bar.dateFits ? bar.dateText : "") + bar.timeText
     }
@@ -256,6 +278,7 @@ PanelWindow {
 
     MenuPanel {
       id: panel
+      solid: false
       x: 0; y: 0
       width: implicitWidth
       height: implicitHeight
@@ -286,11 +309,12 @@ PanelWindow {
     Rectangle {
       anchors.fill: parent
       radius: 6
-      color: title.current ? Theme.pressed : "transparent"
+      color: title.current ? bar.plate(0.16) : "transparent"
     }
     Txt {
       id: labelText
       anchors.centerIn: parent
+      color: bar.ink
       text: title.label
       font.weight: title.bold ? Font.Bold : Font.Normal
       visible: title.label !== ""
@@ -337,7 +361,7 @@ PanelWindow {
     Rectangle {
       anchors.fill: parent
       radius: 6
-      color: btn.highlighted ? Theme.pressed : (hh.hovered ? Theme.hover : "transparent")
+      color: btn.highlighted ? bar.plate(0.16) : (hh.hovered ? bar.plate(0.10) : "transparent")
       Behavior on color { ColorAnimation { duration: Theme.fast } }
     }
     HoverHandler { id: hh; onHoveredChanged: if (hovered && btn.tip) tipWait.restart(); else { tipWait.stop(); if (bar.tipFor === btn) bar.tipFor = null } }

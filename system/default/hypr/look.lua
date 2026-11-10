@@ -18,15 +18,15 @@ hl.config({
     dim_inactive = false,
     blur = {
       enabled = true,
-      size = 12,
-      passes = 4,
-      noise = 0.012,
+      size = 6,
+      passes = 2,
+      noise = 0.006,
       contrast = 1.05,
       brightness = 1.0,
       vibrancy = 0.25,
       vibrancy_darkness = 0.2,
       popups = true,
-      popups_ignorealpha = 0.3,
+      popups_ignorealpha = 0.13,
       xray = false,
       new_optimizations = true,
     },
@@ -55,14 +55,25 @@ hl.config({
 -- Glass, from System Settings > Appearance (~/.config/memora/glass.lua).
 local okg, gl = pcall(dofile, os.getenv("HOME") .. "/.config/memora/glass.lua")
 if not okg or type(gl) ~= "table" then gl = {} end
-local gb = math.max(0, math.min(1, tonumber(gl.blur) or 0.6))
-local gv = math.max(0, math.min(1, tonumber(gl.vibrancy) or 0.5))
+local gb = math.max(0, math.min(1, tonumber(gl.blur) or 0.3))
+local gv = math.max(0, math.min(1, tonumber(gl.vibrancy) or 0.7))
+-- Liquid glass is close to clear: what is behind is softened, not turned to
+-- milk, so its shapes and colours still come through (Frost at the top of its
+-- slider is the heavy frost of before). In the dark look what is behind is also
+-- dimmed, so white text reads over a bright window with only a thin tint.
+local mf = io.open(os.getenv("HOME") .. "/.config/memora/theme")
+local mode = mf and (mf:read("*l") or "") or "dark"
+if mf then mf:close() end
+local light = mode:match("light") ~= nil
 hl.config({ decoration = { blur = {
   enabled = gl.reduce ~= true and gb > 0.02,
-  size = math.floor(3 + gb * 15 + 0.5),
-  passes = gb < 0.35 and 2 or (gb < 0.7 and 3 or 4),
-  vibrancy = 0.05 + gv * 0.45,
-  vibrancy_darkness = 0.1 + gv * 0.2,
+  size = math.floor(2 + gb * 7 + 0.5),
+  passes = gb < 0.75 and 2 or 3,
+  brightness = light and 1.06 or 0.85,
+  contrast = light and 1.0 or 1.08,
+  vibrancy = 0.12 + gv * 0.5,
+  vibrancy_darkness = 0.1 + gv * 0.25,
+  popups_ignorealpha = light and 0.13 or 0.16,
 } } })
 
 -- Motion, from System Settings > Animations (~/.config/memora/motion.lua).
