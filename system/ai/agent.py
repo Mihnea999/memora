@@ -12,7 +12,8 @@ With DeepSeek (its Anthropic-compatible API) it has the same tools, minus web se
 With Claude Code it uses Claude Code's own tools, plus Memora's through
 `memora-ai tool NAME JSON`; its permission prompts come to the window
 (permit.py) and the conversation carries on from message to message.
-Other providers (Ollama, OpenAI-compatible) answer without tools.
+Ollama and OpenAI-compatible servers get the same tools too (function calling),
+minus web search and pictures; a model that can't use tools answers as a plain chat.
 
   agent.py tools            Memora's tools, with their inputs (for Claude Code)
   agent.py tool NAME JSON   run one of them
@@ -31,6 +32,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -42,7 +44,7 @@ MEMORY = DATA / "memory.md"
 MEMORA_PATH = os.environ.get("MEMORA_PATH", "/usr/share/memora")
 DEFAULT_MODEL = "claude-opus-5-5"
 # The choice offered in the window and in System Settings > Memora AI.
-MODELS = [("claude-fable-5-1", "Fable 5.1"), ("claude-opus-5-5", "Opus 5.5"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5")]
+MODELS = [("claude-fable-5-2", "Fable 5.2"), ("claude-opus-5-5", "Opus 5.5"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5")]
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 DEFAULT_EFFORT = "high"
 OUT_LIMIT = 20000
@@ -66,7 +68,8 @@ def load_config():
         for line in (CONF / "ai.secret").read_text().splitlines():
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
-                os.environ[k.strip()] = v.strip()   # a key saved again in Settings counts at once
+                if re.fullmatch(r"[A-Z][A-Z0-9_]*_(API_KEY|BASE_URL)", k.strip()):
+                    os.environ[k.strip()] = v.strip()   # a key saved again in Settings counts at once
     except OSError:
         pass
     return cfg
@@ -118,11 +121,19 @@ Use them for anything on the desktop: opening apps and web pages (browse, open),
 {guides}"""
 
 
-def system_prompt(claude_code=False):
+def now_context():
+    """What changes from one message to the next (the time, what is on the screen).
+    It goes with each message, not in the system prompt, so that stays the same
+    and is read from the cache: answers start sooner and cost less."""
+    return f"[Now: {time.strftime('%A %d %B %Y, %H:%M %Z')}. On the screen: {on_screen()}]"
+
+
+def system_prompt(claude_code=False, with_now=True):
     f = system_facts()
     guides = "\n".join(f"  - {n}: {w}" for n, (w, _) in skills().items()) or "  (none installed)"
     memory = MEMORY.read_text() if MEMORY.exists() else "(empty)"
-    screen = on_screen()
+    when = f" Now: {f['time']}." if with_now else " The time and what is on the screen come with each message, in [Now: …]."
+    screen = f"\nOn the screen: {on_screen()}" if with_now else ""
     if claude_code:
         style = CLAUDE_CODE_NOTES.format(skills_dir=SKILLS, guides=guides)
         memory_note = "add to it with: memora-ai remember FACT"
@@ -131,8 +142,7 @@ def system_prompt(claude_code=False):
         memory_note = "add to it with the remember tool when they tell you something worth keeping"
     text = f"""You are Memora AI, the assistant built into Memora, a desktop operating system based on Arch Linux with the Hyprland compositor. You run on the person's own computer and can act on it with your tools.
 
-The computer: user {f['user']} (home {f['home']}), host {f['hostname']}, Memora {f['memora']}, kernel {f['kernel']}, CPU {f['cpu']}, memory {f['memory']}, graphics {f['gpu']}, disk (free/size) {f['disk']}, appearance {f['theme']}. Now: {f['time']}.
-On the screen: {screen}
+The computer: user {f['user']} (home {f['home']}), host {f['hostname']}, Memora {f['memora']}, kernel {f['kernel']}, CPU {f['cpu']}, memory {f['memory']}, graphics {f['gpu']}, disk (free/size) {f['disk']}, appearance {f['theme']}.{when}{screen}
 
 How Memora works: packages come from pacman (official Arch repositories); there is no AUR helper unless the person installed one. Settings live in System Settings (memora-settings PANE, panes: wifi, bluetooth, network, notifications, sound, appearance, wallpaper, dock, animations, displays, keyboard, mouse, battery, datetime, users, privacy, ai, update, about). Light/dark: memora-theme set light|dark. Updates: memora-update. Snapshots: snapper (one is taken before every pacman transaction). Hyprland is configured in Lua (~/.config/hypr/user.lua for personal changes). The shell (menu bar, Dock, Launchpad) is memora-shell. Developer toolkits: memora-dev.
 
@@ -145,6 +155,12 @@ Working style:
 {guides}
 - Commands that need administrator rights: write them with sudo; Memora shows its own password dialog.
 - Risky actions are confirmed by the person before they run; if one is declined, accept it and offer an alternative. Never try to get around a declined action.
+- Finish the job: when a request has several steps, do all of them; after an action, check that it worked (a quick look with a tool) before saying it is done. If something fails, try another way before giving up, and say plainly what didn't work.
+- When a detail is missing but a sensible choice is obvious and easy to undo, make it and say which; ask only when a wrong guess would cost the person something.
+- Files: read_file also reads PDFs, Word/LibreOffice documents and pictures; change part of a file with edit_file (not by writing it all again); delete with trash (it can be restored), not rm.
+- Earlier conversations: when the person refers to one ("what we talked about yesterday", "that command from before"), look with past_chats.
+- Memory: when the person tells you something lasting about themselves or how they like things done (their name, city, language, preferred apps, people they mention often), save it with remember without asking; if something saved is wrong or they ask you to forget it, use forget.
+- Selected text: "this"/"the selected text" with nothing attached usually means what they selected: clipboard(action=selection).
 - Keep answers short and plain. Answer in the language the person writes in. Use Markdown only where it helps (code blocks for commands and files).
 
 What you know about this person (their memory file; {memory_note}):
@@ -156,7 +172,7 @@ What you know about this person (their memory file; {memory_note}):
     head, rest = text.split("{STYLE}", 1)
     cut = rest.index("\nWhat you know")
     bullets = ("\n" + rest[:cut]).split("\n- ")
-    keep = [b.strip() for b in bullets if b.startswith(("Keep answers short", "Do what is asked"))]
+    keep = [b.strip() for b in bullets if b.startswith(("Keep answers short", "Do what is asked", "Finish the job", "When a detail", "Earlier conversations", "Memory:"))]
     return head + style + "\n- " + "\n- ".join(keep) + "\n" + rest[cut:]
 
 
@@ -195,7 +211,39 @@ RISKY = [
     (r"\bnmcli\s+(con(nection)?\s+delete|radio\s+all\s+off)", "removes network connections"),
     (r"\bdd\b", "copies raw data"),
     (r"\bfind\b.*\s-delete\b|\bfind\b.*-exec\s+rm\b", "deletes files"),
+    (r"\|\s*(sudo\s+)?(env\s+)?(python[0-9.]*|perl|ruby|node|php|lua|fish|dash|ksh)\b|\b(ba|z|da)?sh\s+<\(|\b(eval|source)\s+[\"'$<(]|\bbase64\s+(-d|--decode)\b.*\|",
+     "runs code it builds or downloads on the way"),
+    (r"\bcurl\b.*\s(-d|--data\S*|-F|--form|-T|--upload-file)\b|\bwget\b.*--post|\b(scp|sftp|rsync)\b.*\S+:|\b(nc|ncat|netcat|socat)\b",
+     "sends data from this computer to another one"),
+    (r"(\.ssh/|\.gnupg/|ai\.secret|\.netrc|\.aws/|\.kube/|\.docker/config|keyrings/|Login Data|Cookies|logins\.json|key4\.db|/etc/shadow)",
+     "touches passwords or keys"),
+    (r"(>>?|\btee\b(\s+-a)?)\s*[\"']?(~|\$HOME|/home/[^/\s]+)/(\.bash\w*|\.profile|\.zsh\w*|\.config/(autostart|systemd|hypr|environment\.d|memora)|\.local/(bin|share/applications))",
+     "changes what runs when you log in"),
+    (r"\bsed\s+(-\w+\s+)*-i|\bsystemd-run\b|\bcrontab\b|\bat\s+now\b", "changes files in place or schedules a command"),
 ]
+
+# Places in the home folder that decide what runs at login or in every
+# terminal, and the ones that hold passwords and keys.
+STARTUP = [".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc", ".zprofile", ".pam_environment", ".xprofile",
+           ".config/autostart", ".config/systemd", ".config/hypr", ".config/environment.d", ".config/memora",
+           ".config/uwsm", ".local/bin", ".local/share/applications", ".local/share/mise/shims"]
+SECRETS = [".ssh", ".gnupg", ".config/memora/ai.secret", ".netrc", ".aws", ".kube", ".docker/config.json", ".local/share/keyrings",
+           ".password-store", ".config/chromium", ".mozilla", ".config/gh/hosts.yml", ".git-credentials", ".claude/.credentials.json"]
+
+
+def _under(p, names):
+    try:
+        rel = p.relative_to(HOME).as_posix()
+    except ValueError:
+        return False
+    return any(rel == n or rel.startswith(n + "/") for n in names)
+
+
+def classify_path_read(path):
+    p = Path(path).expanduser().resolve()
+    if _under(p, SECRETS) or str(p) in ("/etc/shadow", "/etc/gshadow") or str(p).startswith("/etc/NetworkManager/system-connections"):
+        return "risky", "holds passwords or keys"
+    return "safe", ""
 
 
 def classify_command(cmd):
@@ -213,8 +261,12 @@ def classify_path_write(path, exists):
     system = ["/usr", "/etc", "/boot", "/bin", "/lib", "/lib64", "/sbin", "/opt", "/var", "/root", "/srv"]
     if any(str(p) == s or str(p).startswith(s + "/") for s in system):
         return "risky", "changes a system file"
-    if not (str(p).startswith(str(HOME)) or str(p).startswith("/tmp")):
+    if not (p == HOME or HOME in p.parents or Path("/tmp") in p.parents):
         return "risky", "writes outside your home folder"
+    if _under(p, SECRETS):
+        return "risky", "changes where passwords or keys are kept"
+    if _under(p, STARTUP):
+        return "risky", "changes what runs when you log in or open a terminal"
     if exists:
         return "risky", "replaces an existing file"
     return "safe", ""
@@ -236,10 +288,14 @@ TOOLS = [
     tool("run_command", "Run a bash command on this computer and get its output (stdout, stderr, exit code). Use sudo for administrator commands. Times out after `timeout` seconds (default 120, max 900). Do not use it to open GUI apps (use open).",
          {"command": S, "reason": {"type": "string", "description": "One short sentence on why, shown to the person when it needs their OK."}, "timeout": I},
          ["command", "reason"]),
-    tool("read_file", "Read a text file. Returns up to max_bytes (default 60000) starting at offset.",
+    tool("read_file", "Read a file: text (up to max_bytes, default 60000, from offset), PDFs and Word/LibreOffice/RTF documents (their text), pictures (you see them).",
          {"path": S, "offset": I, "max_bytes": I}, ["path"]),
-    tool("write_file", "Create or replace a text file with the given content. Folders are created as needed.",
+    tool("write_file", "Create a text file, or replace one entirely, with the given content. Folders are created as needed. To change part of an existing file use edit_file.",
          {"path": S, "content": S}, ["path", "content"]),
+    tool("edit_file", "Change part of a text file: replace `old_text` (copied exactly from the file, unique in it unless replace_all) with `new_text`. Empty new_text deletes it.",
+         {"path": S, "old_text": S, "new_text": S, "replace_all": {"type": "boolean"}}, ["path", "old_text", "new_text"]),
+    tool("trash", "The Trash: move files or folders there (`paths`; they can be restored, unlike rm), list what is in it, restore one by its original path, or empty it.",
+         {"action": {"type": "string", "enum": ["move", "list", "restore", "empty"]}, "paths": {"type": "array", "items": S}, "path": S}, ["action"]),
     tool("list_directory", "List a folder: names, kinds and sizes.", {"path": S}, ["path"]),
     tool("open", "Open an app (by name, e.g. 'Files', 'Browser', 'Terminal', 'Text Editor', or a desktop id), a file or folder (path), or a web address (URL).",
          {"target": S}, ["target"]),
@@ -266,8 +322,8 @@ TOOLS = [
          {"zone": {"type": "string", "enum": ["left", "right", "top", "bottom", "fill", "center", "top-left", "top-right", "bottom-left", "bottom-right", "left-third", "center-third", "right-third", "left-two-thirds", "right-two-thirds", "restore"]}, "window": S}, ["zone"]),
     tool("desktops", "Desktops (workspaces): go to desktop `number`, or move the focused window (or `window`) to it.",
          {"action": {"type": "string", "enum": ["go", "move_window"]}, "number": I, "window": S}, ["action", "number"]),
-    tool("clipboard", "Read the clipboard, or put text on it (then paste in an app with press_keys ctrl+v).",
-         {"action": {"type": "string", "enum": ["get", "set"]}, "text": S}, ["action"]),
+    tool("clipboard", "Read the clipboard (get), the text selected right now in any app (selection), or put text on the clipboard (set; then paste in an app with press_keys ctrl+v).",
+         {"action": {"type": "string", "enum": ["get", "selection", "set"]}, "text": S}, ["action"]),
     tool("media", "Music and video playing in any app (Player, Browser, Spotify…): status shows what is playing; play, pause, toggle, next, previous control it.",
          {"action": {"type": "string", "enum": ["status", "play", "pause", "toggle", "next", "previous"]}}, ["action"]),
     tool("apps", "Apps on this computer and in the App Store: list (installed apps), running (open apps), search (the App Store / Flathub), install or uninstall an App Store app by its id.",
@@ -279,11 +335,11 @@ TOOLS = [
     tool("calendar", "The Calendar app: list events (and public holidays are not included) from today for `days` days (default 7); add an event (title, start 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD' for all day, optional end, calendar name, location, notes, repeat none/daily/weekly/monthly/yearly, alert minutes before, -1 for none); remove one by id; list the calendars. The person gets a notification at the alert time.",
          {"action": {"type": "string", "enum": ["list", "add", "remove", "calendars"]}, "days": I, "title": S, "start": S, "end": S, "calendar": S,
           "location": S, "notes": S, "repeat": {"type": "string", "enum": ["none", "daily", "weekly", "monthly", "yearly"]}, "alert": I, "id": S}, ["action"]),
-    tool("notes", "The Notes app: create a note (title and text; lines starting with '☐ ' are checklist items), list recent notes, search them, or read one by id.",
-         {"action": {"type": "string", "enum": ["create", "list", "search", "read"]}, "title": S, "text": S, "query": S, "id": S}, ["action"]),
+    tool("notes", "The Notes app: create a note (title and text; lines starting with '☐ ' are checklist items), list recent notes, search them, read one by id, append text to one by id (e.g. add to a shopping list), or delete one by id (it goes to Recently Deleted).",
+         {"action": {"type": "string", "enum": ["create", "list", "search", "read", "append", "delete"]}, "title": S, "text": S, "query": S, "id": S}, ["action"]),
     tool("widget", "Desktop widgets of your own: small glass cards on the desktop picture. create (or update) one from QML you write (read the widgets guide first: skill('widgets')), remove one, list them, show one's QML, or check one. After create it says whether it loaded, then describes how it looks once its data is in (each text and where it is, overlaps, things cut off, QML errors while running): keep fixing and creating again until it reports no problems.",
          {"action": {"type": "string", "enum": ["create", "remove", "list", "show", "check"]}, "name": S,
-          "size": {"type": "string", "enum": ["small", "medium"]}, "qml": S}, ["action"]),
+          "size": {"type": "string", "enum": ["small", "medium", "large"]}, "qml": S}, ["action"]),
     tool("power", "Lock the screen, sleep, restart, shut down or log out. Restart, shut down and log out show their own question on screen.",
          {"action": {"type": "string", "enum": ["lock", "sleep", "restart", "shutdown", "logout"]}}, ["action"]),
     tool("system_info", "Facts about the computer now: battery, network, storage, memory, cpu, processes (the busiest), displays, audio, or all.",
@@ -293,6 +349,9 @@ TOOLS = [
     tool("weather", "Current weather and the next days, for `place` (a city) or where the computer is.", {"place": S}),
     tool("skill", "Read a how-to guide before a task it covers (the list is in the system prompt). Follow it.", {"name": S}, ["name"]),
     tool("remember", "Save a fact about the person or their preferences to the memory file, for later conversations.", {"fact": S}, ["fact"]),
+    tool("forget", "Remove from the memory file every saved fact that contains `text`.", {"text": S}, ["text"]),
+    tool("past_chats", "Earlier conversations with the person: list the recent ones (date and first message), search them for `query`, or read one by `id`.",
+         {"action": {"type": "string", "enum": ["list", "search", "read"]}, "query": S, "id": S}, ["action"]),
 ]
 SCREEN_TOOLS = {"screenshot", "click", "type_text", "press_keys", "scroll"}
 # Tools that put an app in front of the person or work in one: the chat folds into
@@ -318,7 +377,8 @@ def check_input(name, data):
     for k, v in data.items():
         t = props.get(k, {}).get("type")
         ok = {"string": isinstance(v, str), "integer": isinstance(v, int) and not isinstance(v, bool),
-              "boolean": isinstance(v, bool)}.get(t, True)
+              "boolean": isinstance(v, bool),
+              "array": isinstance(v, list) and all(isinstance(x, str) for x in v)}.get(t, True)
         if not ok:
             return f"field '{k}' should be {t}"
         enum = props.get(k, {}).get("enum")
@@ -430,7 +490,7 @@ def find_window(spec):
         return next((c for c in cs if c["address"] == spec), None)
     want = spec.lower().removesuffix(".desktop")
     app = find_app(spec)
-    aliases = {"browser": "chromium", "terminal": "com.mitchellh.ghostty", "files": "org.gnome.nautilus",
+    aliases = {"browser": "chromium", "terminal": "com.mitchellh.ghostty", "files": "memora-files",
                "text editor": "org.gnome.texteditor", "settings": "memora-settings", "system settings": "memora-settings"}
     want = aliases.get(want, want)
     for test in (lambda c: c["class"].lower() == want or c.get("initialClass", "").lower() == want,
@@ -473,6 +533,12 @@ def html_text(html):
 
 
 SKILLS = Path(MEMORA_PATH) / "ai" / "skills"
+SHIMS = Path(__file__).with_name("shims")
+
+
+def with_sudo():
+    """The environment for commands the assistant runs: its own sudo first."""
+    return {**os.environ, "PATH": f"{SHIMS}:{os.environ.get('PATH', '/usr/bin')}"}
 
 
 def skills():
@@ -522,12 +588,11 @@ class Tools:
         level, why = classify_command(command)
         if level != "safe" and not self.ui.confirm(level, "Run this command?", command, f"{reason.strip()} It {why}."):
             return "The person declined to run this command.", True
-        run = command
-        if re.search(r"(^|[;&|(]\s*)sudo\s", command):
-            # Administrator commands go through polkit, which shows Memora's password dialog.
-            run = "pkexec bash -c " + shlex.quote(re.sub(r"(^|(?<=[;&|(]))\s*sudo\s+(-\S+\s+)*", r"\1 ", command))
+        # Administrator commands: "sudo" here is ai/shims/sudo, which goes through
+        # polkit (Memora's password dialog) for that one command only.
         # Stop (in the window) ends the command too, not only the answer.
-        p = subprocess.Popen(["bash", "-lc", run], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=HOME, start_new_session=True)
+        p = subprocess.Popen(["bash", "-lc", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=HOME,
+                             start_new_session=True, env=with_sudo())
         end = time.time() + timeout
         while True:
             try:
@@ -547,6 +612,25 @@ class Tools:
 
     def t_read_file(self, path, offset=0, max_bytes=60000):
         p = Path(path).expanduser()
+        level, why = classify_path_read(str(p))
+        if level != "safe" and not self.ui.confirm(level, f"Read {p}?", "", f"This file {why}."):
+            return "The person declined to share this file.", True
+        if p.is_dir():
+            return f"{p} is a folder: use list_directory.", True
+        ext = p.suffix.lower()
+        if ext in IMAGE_TYPES or ext in (".bmp", ".tif", ".tiff", ".heic", ".avif"):
+            if not self.vision:
+                return f"{p} is a picture ({p.stat().st_size:,} bytes); this model can't look at pictures.", True
+            data, media = picture(str(p), ext)
+            if not data:
+                return f"Couldn't open the picture {p}.", True
+            return [{"type": "text", "text": f"The picture {p}:"}, {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}], False
+        doc = document_text(p)
+        if doc is not None:
+            start = max(0, offset)
+            part = doc[start:start + max(1, min(max_bytes, 200000))]
+            tail = f"\n[characters {start}-{start + len(part)} of {len(doc)}; read more with offset]" if len(doc) > start + len(part) else ""
+            return (part or "(no text in this document: it may be scanned pictures)") + tail, False
         with open(p, "rb") as f:
             f.seek(max(0, offset))
             data = f.read(max(1, min(max_bytes, 200000)))
@@ -565,6 +649,61 @@ class Tools:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
         return f"Wrote {len(content)} characters to {p}.", False
+
+    def t_edit_file(self, path, old_text, new_text, replace_all=False):
+        p = Path(path).expanduser()
+        if not p.is_file():
+            return f"No file {p}. To make a new one use write_file.", True
+        text = p.read_text(errors="strict")
+        n = text.count(old_text) if old_text else 0
+        if n == 0:
+            return "old_text is not in the file (it must match exactly, spaces and line breaks too). Read the file again and copy it.", True
+        if n > 1 and not replace_all:
+            return f"old_text is in the file {n} times: give more of the text around it, or replace_all=true.", True
+        level, why = classify_path_write(str(p), True)
+        # A plain edit of one's own document is shown, not asked about; startup
+        # files, keys and system files still wait for the person's OK.
+        if level != "safe" and why != "replaces an existing file":
+            preview = "\n".join(f"- {l}" for l in old_text[:700].splitlines()) + "\n" + "\n".join(f"+ {l}" for l in new_text[:700].splitlines())
+            if not self.ui.confirm(level, f"Change {p}?", preview, f"This {why}."):
+                return "The person declined this change.", True
+        p.write_text(text.replace(old_text, new_text) if replace_all else text.replace(old_text, new_text, 1))
+        return f"Changed {p} ({n if replace_all else 1} place{'s' if replace_all and n > 1 else ''}).", False
+
+    def t_trash(self, action, paths=None, path=""):
+        if action == "list":
+            r = sh(["gio", "trash", "--list"])
+            rows = [l.split("\t", 1)[-1] for l in r.stdout.splitlines() if l.strip()]
+            return ("In the Trash:\n" + "\n".join(rows[:100]) + (f"\n… and {len(rows) - 100} more" if len(rows) > 100 else "")) if rows else "The Trash is empty.", False
+        if action == "restore":
+            want = str(Path(path or "").expanduser())
+            r = sh(["gio", "trash", "--list"])
+            hit = next((l.split("\t", 1)[0] for l in r.stdout.splitlines() if l.split("\t", 1)[-1] == want), None)
+            if not hit:
+                return f"Nothing from {want} is in the Trash (see trash list).", True
+            r = sh(["gio", "trash", "--restore", hit])
+            return (f"Restored {want}." if r.returncode == 0 else f"Couldn't restore it: {r.stderr.strip()}"), r.returncode != 0
+        if action == "empty":
+            if not self.ui.confirm("risky", "Empty the Trash?", "", "Everything in it is deleted for good."):
+                return "The person declined.", True
+            r = sh(["gio", "trash", "--empty"])
+            return ("The Trash is empty." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
+        items = [Path(x).expanduser() for x in (paths or ([path] if path else []))]
+        if not items:
+            return "Give the paths to move to the Trash.", True
+        missing = [str(x) for x in items if not x.exists() and not x.is_symlink()]
+        if missing:
+            return "These don't exist: " + ", ".join(missing), True
+        # Things in the home folder can come back from the Trash: no question.
+        # Startup files, keys, the home folder itself and anything outside it: asked.
+        grave = [x for x in items if x.resolve() == HOME or HOME not in x.resolve().parents or _under(x.resolve(), STARTUP + SECRETS)]
+        if grave and not self.ui.confirm("risky", "Move to the Trash?", "\n".join(map(str, items)),
+                                         "Some of these are outside your home folder, or hold settings or keys."):
+            return "The person declined.", True
+        r = sh(["gio", "trash", "--", *map(str, items)], timeout=120)
+        if r.returncode:
+            return f"Couldn't move to the Trash: {r.stderr.strip()}", True
+        return f"Moved {len(items)} item{'s' if len(items) > 1 else ''} to the Trash (restore with trash action=restore).", False
 
     def t_list_directory(self, path):
         p = Path(path).expanduser()
@@ -652,6 +791,8 @@ class Tools:
             return "\n".join(rows) or "No windows.", False
         if not window:
             return "Say which window (address or app class).", True
+        if window.startswith("0x") and not re.fullmatch(r"0x[0-9a-fA-F]+", window):
+            return "That is not a window address. Use windows(list) to see them.", True
         sel = f"address:{window}" if window.startswith("0x") else f"class:{re.escape(window)}"
         lua = {
             "focus": f'hl.dsp.focus({{ window = "{sel}" }})',
@@ -752,6 +893,9 @@ class Tools:
             # wl-copy stays behind to serve the clipboard: don't wait on its output.
             r = subprocess.run(["wl-copy"], input=text, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
             return ("On the clipboard." if r.returncode == 0 else "Couldn't set the clipboard."), r.returncode != 0
+        if action == "selection":
+            r = sh(["wl-paste", "-p", "-n"], timeout=10)
+            return (clip(r.stdout) or "(nothing is selected right now)"), False
         r = sh(["wl-paste", "-n"], timeout=10)
         return (clip(r.stdout) or "(the clipboard is empty or holds an image)"), False
 
@@ -778,10 +922,10 @@ class Tools:
         if action == "running":
             return "\n".join(sorted({f"{c['class']}: {c['title'][:50]}" for c in clients()})) or "No apps are open.", False
         if action == "search":
-            r = sh(["flatpak", "search", "--columns=application,name,description", query], timeout=60)
+            r = sh(["flatpak", "search", "--columns=application,name,description", "--", query], timeout=60)
             rows = [l for l in r.stdout.splitlines() if l.strip() and not re.search(r"\.(Plugin|Extension|Locale|Debug|Manual|Docs)\b", l)]
             return clip("\n".join(rows[:25]) or "Nothing found in the App Store."), False
-        if not id:
+        if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]*", id or ""):
             return "Give the app's id (from search or list).", True
         if action == "install":
             if not self.ui.confirm("risky", f"Install {id}?", f"flatpak install --user flathub {id}", "It installs an app from the App Store (Flathub) for you."):
@@ -795,7 +939,7 @@ class Tools:
 
     # ---- files
     def t_find_files(self, name="", text="", folder="~"):
-        root = Path(folder or "~").expanduser()
+        root = Path(folder or "~").expanduser().resolve()
         if not root.exists():
             return f"No folder {root}.", True
         skip = ["-path", "*/.cache", "-prune", "-o", "-path", "*/.local/share/flatpak", "-prune", "-o", "-path", "*/node_modules", "-prune", "-o", "-path", "*/.git", "-prune", "-o"]
@@ -809,12 +953,20 @@ class Tools:
         return ("\n".join(files[:50]) + (f"\n… and {len(files) - 50} more" if len(files) > 50 else "")) or "No files found.", False
 
     def t_download(self, url, folder="~/Downloads"):
+        if not re.match(r"^https?://", url):
+            return "Give a full web address (https://…).", True
         d = Path(folder or "~/Downloads").expanduser()
+        level, why = classify_path_write(str(d / "download"), False)
+        if level != "safe" and not self.ui.confirm(level, f"Download into {d}?", url, f"This {why}."):
+            return "The person declined this download.", True
         d.mkdir(parents=True, exist_ok=True)
-        r = sh(["curl", "-fsSL", "--max-time", "600", "-OJ", "--output-dir", str(d), "-w", "%{filename_effective}", url], timeout=620)
+        r = sh(["curl", "-fsSL", "--proto", "=http,https", "--max-time", "600", "--no-clobber", "-OJ", "--output-dir", str(d),
+                "-w", "%{filename_effective}", "--", url], timeout=620)
         return (f"Saved {r.stdout.strip()}." if r.returncode == 0 else f"Download failed: {r.stderr.strip()}"), r.returncode != 0
 
     def t_fetch_url(self, url):
+        if not re.match(r"^https?://", url):      # not file:// and the like
+            return "Give a full web address (https://…).", True
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) MemoraAI"})
         with urllib.request.urlopen(req, timeout=20) as r:
             body = r.read(3_000_000).decode(r.headers.get_content_charset() or "utf-8", errors="replace")
@@ -913,6 +1065,8 @@ class Tools:
         if action == "cancel":
             if not id:
                 return "Give the reminder's id (from list).", True
+            if not re.fullmatch(r"memora-reminder-\d+(\.timer)?", id):
+                return "That is not a reminder id (see list).", True
             r = sh(["systemctl", "--user", "stop", id.removesuffix(".timer") + ".timer"])
             return ("Cancelled." if r.returncode == 0 else f"Failed: {r.stderr.strip()}"), r.returncode != 0
         if not text:
@@ -953,16 +1107,36 @@ class Tools:
             n = next((n for n in notes if n["id"] == id), None)
             return (n["text"] if n else "No note with that id."), not n
         import html as h
-        body = [l for l in text.splitlines()]
         para = lambda l: (f"<p><span style='font-size:22px; color:#9a9aa2;'>☐</span>&nbsp;{h.escape(l[2:])}</p>" if l.startswith("☐ ")
                           else f"<p>{h.escape(l) or '<br>'}</p>")
         now = int(time.time() * 1000)
+
+        def save():
+            NOTES.parent.mkdir(parents=True, exist_ok=True)
+            tmp = NOTES.with_suffix(".tmp")
+            tmp.write_text(json.dumps(j))
+            tmp.replace(NOTES)
+        if action in ("append", "delete"):
+            n = next((n for n in notes if n["id"] == id), None)
+            if not n:
+                return "No note with that id (see list or search).", True
+            if action == "delete":
+                n["deleted"], n["modified"] = True, now
+                save()
+                return "The note is in Recently Deleted (in Notes).", False
+            if not text.strip():
+                return "What should be added?", True
+            n["text"] = n.get("text", "").rstrip("\n") + "\n" + text
+            n["html"] = n.get("html", "") + "".join(para(l) for l in text.splitlines())
+            n["modified"] = now
+            save()
+            return "Added to the note.", False
+        body = [l for l in text.splitlines()]
         n = {"id": f"n{now}", "folder": (j.get("folders") or ["Notes"])[0], "pinned": False, "deleted": False,
              "created": now, "modified": now, "text": (title + "\n" if title else "") + text,
              "html": (f"<h1>{h.escape(title)}</h1>" if title else "") + "".join(para(l) for l in body)}
         j.setdefault("notes", []).append(n)
-        NOTES.parent.mkdir(parents=True, exist_ok=True)
-        NOTES.write_text(json.dumps(j))
+        save()
         return f"Note \"{title or text[:30]}\" saved in Notes.", False
 
     # ---- desktop widgets (shell/widgets/Widgets.qml shows them)
@@ -995,11 +1169,19 @@ class Tools:
             return f"Removed the {name} widget.", False
         if not qml.strip():
             return "Write the widget's QML in `qml`.", True
+        # A widget that runs commands does so by itself at every login: the
+        # person sees them first (the same widget again, unchanged, isn't asked twice).
+        if re.search(r"\b(Process|execDetached|FileView|XMLHttpRequest|openUrlExternally|Socket)\b", qml) and not (f.exists() and f.read_text() == qml):
+            cmds = [" ".join(c.split())[:300] for c in re.findall(r"command\s*:\s*(\[.*?\])", qml, re.S) + re.findall(r"execDetached\s*\((.*?)\)", qml, re.S)]
+            level = "critical" if any(classify_command(c)[0] == "critical" for c in cmds) else "risky"
+            if not self.ui.confirm(level, f"Put the {name} widget on the desktop?", "\n".join(cmds) or "(it builds its commands while it runs)",
+                                   "It runs these by itself whenever the desktop is on."):
+                return "The person declined this widget.", True
         wdir.mkdir(parents=True, exist_ok=True)
         st = wdir / f"{name}.status"
         before = st.stat().st_mtime if st.exists() else 0
         f.write_text(qml)
-        size = size if size in ("small", "medium") else "small"
+        size = size if size in ("small", "medium", "large") else "small"
         if layout is None:
             layout = [{"type": "weather", "size": "medium", "x": 24, "y": 48}, {"type": "clock", "size": "small", "x": 24, "y": 232},
                       {"type": "calendar", "size": "small", "x": 208, "y": 232}, {"type": "music", "size": "medium", "x": 24, "y": 416}]
@@ -1015,8 +1197,19 @@ class Tools:
             if st.exists() and st.stat().st_mtime > before:
                 break
         if not (st.exists() and st.stat().st_mtime > before):
-            return f"Saved {f}. The desktop has not reported back yet (is the desktop running?); look with a screenshot.", False
+            return f"Saved {f}. The desktop has not reported back yet; it is probably there already. Do not debug it with commands: tell the person.", False
         result = st.read_text().strip()
+        # "No such file" / "case mismatch": the desktop looked at its copy while it was
+        # still being made. Not the widget's fault: write it once more and look again.
+        if result.startswith("error") and re.search(r"No such file|case mismatch", result):
+            before = st.stat().st_mtime
+            time.sleep(1.0)
+            f.write_text(qml + "\n")
+            for _ in range(30):
+                time.sleep(0.2)
+                if st.stat().st_mtime > before:
+                    break
+            result = st.read_text().strip()
         if result.startswith("error"):
             return f"The widget did not load. Fix the QML and create it again:\n{result.partition(chr(10))[2].strip()}", True
         # Loaded: now how it actually looks once its data is in.
@@ -1051,8 +1244,8 @@ class Tools:
                 accent = accent.get(json.loads((CONF / "shell.json").read_text()).get("accent", "blue"), "#3d8bff")
             except (OSError, ValueError, AttributeError):
                 accent = "#3d8bff"
-            env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "W": str(w), "SIZE": size if size in ("small", "medium") else "small",
-                   "DARK": dark, "ACCENT": accent, "OUT": str(out), "WAIT": "7000"}
+            env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "W": str(w), "SIZE": size if size in ("small", "medium", "large") else "small",
+                   "DARK": dark, "ACCENT": accent, "OUT": str(out), "WAIT": "7000", "QT_QUICK_BACKEND": "software"}
             try:
                 r = subprocess.run(["qs", "-p", str(check)], capture_output=True, text=True, timeout=30, env=env, cwd=str(tmp))
                 log = (r.stdout or "") + (r.stderr or "")
@@ -1069,6 +1262,14 @@ class Tools:
                 m = re.search(re.escape(str(w)) + r"\[(\d+):?(-?\d+)?\]:?\s*(.*)", l)
                 warns.append(f"line {m.group(1)}: {m.group(3)}" if m else l.split(str(w))[-1].strip(": "))
         shutil.rmtree(tmp, ignore_errors=True)
+        # The check itself didn't run (it never reached "done"): that says nothing
+        # about the widget, which already loaded on the desktop. Say so plainly, so
+        # the model finishes instead of trying to build its own checker.
+        if not any(l.startswith("done") or l.startswith("error") for l in lines):
+            return ("The off-screen check could not run on this computer, so the widget could not be inspected. "
+                    "That is not a problem with the widget: it loaded on the desktop without errors. "
+                    "Finish now and tell the person it is on their desktop. Do not run commands, write test files "
+                    "or try to check it another way."), False
         problems = [l for l in lines if re.search(r"CUT OFF|OUTSIDE|BROKEN|STILL WAITING|DID NOT LOAD|overlap |^empty|^error|no size|invisible", l)]
         text = "How it looks after 7 seconds (positions inside the card's content area):\n" + "\n".join("- " + l for l in lines if l != "done")
         if warns:
@@ -1078,6 +1279,15 @@ class Tools:
         else:
             text += "\n\nNo problems found."
         bad = bool(problems or warns)
+        # Don't let it chase the checker in circles: after a few rounds the widget
+        # is on the desktop as it is, and the person is told what is left.
+        tries = self.widget_tries = getattr(self, "widget_tries", {})
+        tries[f.stem] = tries.get(f.stem, 0) + 1
+        if bad and tries[f.stem] >= 4:
+            text += ("\n\nSTOP fixing this. The widget is already on the desktop. Do not run commands, edit widgets.json, "
+                     "write test files or start qs yourself: only the widget tool changes widgets. Tell the person it is there "
+                     "and, in one short sentence, what is still not perfect.")
+            bad = False
         if self.vision and out.exists():
             import base64 as b64
             return [{"type": "text", "text": text}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64.b64encode(out.read_bytes()).decode()}}], bad
@@ -1156,9 +1366,73 @@ class Tools:
 
     def t_remember(self, fact):
         DATA.mkdir(parents=True, exist_ok=True)
+        fact = " ".join(fact.split())
+        old = MEMORY.read_text() if MEMORY.exists() else ""
+        if fact.lower() in old.lower():
+            return "Already in memory.", False
         with open(MEMORY, "a") as f:
-            f.write(f"- {fact.strip()} ({time.strftime('%Y-%m-%d')})\n")
+            f.write(f"- {fact} ({time.strftime('%Y-%m-%d')})\n")
         return "Saved to memory.", False
+
+    def t_forget(self, text):
+        if not MEMORY.exists() or not text.strip():
+            return "Nothing like that is saved.", True
+        lines = MEMORY.read_text().splitlines(keepends=True)
+        keep = [l for l in lines if text.lower() not in l.lower()]
+        if len(keep) == len(lines):
+            return "Nothing like that is saved.", True
+        MEMORY.write_text("".join(keep))
+        return f"Forgot {len(lines) - len(keep)} saved fact{'s' if len(lines) - len(keep) > 1 else ''}.", False
+
+    def t_past_chats(self, action, query="", id=""):
+        chats = DATA / "chats"
+        files = sorted(chats.glob("*.json"), reverse=True) if chats.exists() else []
+
+        def turns(f):
+            """(role, text) of the words said, without tool results and pictures."""
+            try:
+                msgs = json.loads(f.read_text())
+            except (OSError, ValueError):
+                return []
+            out = []
+            for m in msgs:
+                c = m.get("content")
+                if isinstance(c, list):
+                    c = "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+                c = re.sub(r"\n*\[Now: [^\]]*\]\s*$", "", c or "").strip()
+                if c:
+                    out.append((m.get("role"), c))
+            return out
+
+        def when(f):
+            try:
+                return datetime.strptime(f.stem, "%Y-%m-%d-%H%M%S").strftime("%a %d %b %Y %H:%M")
+            except ValueError:
+                return f.stem
+        current = getattr(self, "chat_id", None)
+        files = [f for f in files if f.stem != current]
+        if action == "read":
+            f = chats / f"{re.sub(r'[^0-9-]', '', id)}.json"
+            t = turns(f) if f.exists() else []
+            if not t:
+                return "No conversation with that id (see list).", True
+            return clip("\n\n".join(f"{'Person' if r == 'user' else 'You'}: {c}" for r, c in t), 30000), False
+        rows = []
+        for f in files:
+            t = turns(f)
+            if not t:
+                continue
+            first = next((c for r, c in t if r == "user"), "")
+            if action == "search":
+                hits = [c for r, c in t if query.lower() in c.lower()]
+                if not hits:
+                    continue
+                i = hits[0].lower().index(query.lower())
+                first = "…" + hits[0][max(0, i - 80):i + 120].replace("\n", " ") + "…"
+            rows.append(f"{f.stem}  {when(f)}  {first[:200].replace(chr(10), ' ')}")
+            if len(rows) >= 25:
+                break
+        return "\n".join(rows) or ("Nothing found in earlier conversations." if action == "search" else "No earlier conversations."), False
 
 
 def active_ws():
@@ -1174,6 +1448,11 @@ def describe(name, data):
         "run_command": lambda d: d.get("command", ""),
         "read_file": lambda d: "Reading " + d.get("path", ""),
         "write_file": lambda d: "Writing " + d.get("path", ""),
+        "edit_file": lambda d: "Editing " + d.get("path", ""),
+        "trash": lambda d: {"move": "Moving to the Trash: " + ", ".join(Path(x).name for x in (d.get("paths") or [d.get("path", "")])),
+                            "list": "Looking in the Trash", "restore": "Restoring " + d.get("path", ""), "empty": "Emptying the Trash"}.get(d.get("action"), "Trash"),
+        "forget": lambda d: "Forgetting: " + d.get("text", "")[:60],
+        "past_chats": lambda d: {"search": "Looking through earlier chats for " + d.get("query", ""), "read": "Reading an earlier chat"}.get(d.get("action"), "Looking at earlier chats"),
         "list_directory": lambda d: "Looking in " + d.get("path", ""),
         "open": lambda d: "Opening " + d.get("target", ""),
         "system_setting": lambda d: f"{d.get('setting', '').replace('_', ' ').capitalize()}: {d.get('value', '')}",
@@ -1189,7 +1468,7 @@ def describe(name, data):
         "wait_for_window": lambda d: "Waiting for " + d.get("app", ""),
         "arrange_window": lambda d: f"Placing {d.get('window') or 'the window'}: {d.get('zone', '')}",
         "desktops": lambda d: f"Desktop {d.get('number')}",
-        "clipboard": lambda d: "Reading the clipboard" if d.get("action") == "get" else "Copying to the clipboard",
+        "clipboard": lambda d: {"get": "Reading the clipboard", "selection": "Reading the selected text"}.get(d.get("action"), "Copying to the clipboard"),
         "media": lambda d: "Media: " + d.get("action", ""),
         "apps": lambda d: f"Apps: {d.get('action', '')} {d.get('query') or d.get('id') or ''}".strip(),
         "find_files": lambda d: "Looking for " + (d.get("name") or d.get("text") or "files"),
@@ -1245,8 +1524,11 @@ class PermitServer:
         except OSError:
             pass
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.bind(self.path)
-        os.chmod(self.path, 0o600)
+        old = os.umask(0o177)
+        try:
+            self.sock.bind(self.path)
+        finally:
+            os.umask(old)
         self.sock.listen(8)
         threading.Thread(target=self.serve, daemon=True).start()
 
@@ -1342,6 +1624,7 @@ class Agent:
         self.ui = ui
         self.cfg = load_config()
         self.messages = []
+        self.started = time.strftime("%Y-%m-%d-%H%M%S")
         self.tools = Tools(ui)
         self.cc_session = None     # Claude Code: this conversation's session (resumed every turn)
         self.cc_started = False
@@ -1359,6 +1642,7 @@ class Agent:
 
     def reset(self):
         self.messages = []
+        self.started = time.strftime("%Y-%m-%d-%H%M%S")
         self.cc_session = None
         self.cc_started = False
 
@@ -1371,10 +1655,14 @@ class Agent:
         # Attached files: Claude sees pictures and PDFs; the others get the text
         # of text files and the paths of the rest (they can open them with tools).
         blocks, note = attachments(files, images=provider == "anthropic")
+        self.tools.chat_id = self.started
+        # The time and the screen as the message is sent (kept with it, so the
+        # conversation before it never changes and stays cached).
+        now = "" if provider == "claude-code" else "\n\n" + now_context()
         if blocks:
-            self.messages.append({"role": "user", "content": blocks + [{"type": "text", "text": (text or "What is this?") + note}]})
+            self.messages.append({"role": "user", "content": blocks + [{"type": "text", "text": (text or "What is this?") + note + now}]})
         else:
-            self.messages.append({"role": "user", "content": (text or ("What is this?" if files else "")) + note})
+            self.messages.append({"role": "user", "content": (text or ("What is this?" if files else "")) + note + now})
         try:
             if provider == "anthropic":
                 self.claude_turn()
@@ -1419,15 +1707,34 @@ class Agent:
             tools = self.tool_specs() + SERVER_TOOLS
             extra = {"max_tokens": 32000, "thinking": {"type": "adaptive"},
                      "output_config": {"effort": effort_of(self.cfg)}}
+        # The system prompt stays the same for the whole chat (the time and the
+        # screen come with each message), so it and the conversation so far are
+        # read from the cache: the answer starts sooner and costs a tenth.
+        system = system_prompt(with_now=False)
+        if not deepseek:
+            system = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        betas, body = [], {}
+        if not deepseek and not getattr(self, "lean", False):
+            body["cache_control"] = {"type": "ephemeral"}            # the newest message too
+            # A long chat (many screenshots, long files) is summarised by the
+            # server instead of stopping when it no longer fits.
+            betas.append("compact-2026-01-12")
+            body["context_management"] = {"edits": [{"type": "compact_20260112"}]}
+            # A request a model declines is answered by another one, not dropped.
+            if model in ("claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5"):
+                betas.append("server-side-fallback-2026-07-01")
+                body["fallbacks"] = "default"
         retries = 0
         while not self.ui.stopped():
+            api = client.beta.messages if betas else client.messages
+            more = {"betas": betas, "extra_body": body} if betas else ({"extra_body": body} if body else {})
             try:
-                with client.messages.stream(
+                with api.stream(
                     model=model,
-                    system=system_prompt(),
+                    system=system,
                     tools=tools,
-                    messages=self.messages,
-                    **extra,
+                    messages=recent_pictures(self.messages),
+                    **extra, **more,
                 ) as stream, self.closing_on_stop(stream):
                     for event in stream:
                         if self.ui.stopped():
@@ -1438,6 +1745,8 @@ class Agent:
                             b = event.content_block
                             if b.type == "thinking":
                                 self.ui.status("Thinking…")
+                            elif b.type == "compaction":
+                                self.ui.status("Summing up the conversation so far…")
                             elif b.type == "server_tool_use":
                                 self.ui.status(describe(b.name, getattr(b, "input", {}) or {}))
                     if self.ui.stopped():
@@ -1449,10 +1758,15 @@ class Agent:
                 if retries > 2:
                     raise
                 continue
-            except Exception:
+            except Exception as e:
                 # The connection closed by Stop: not an error.
                 if self.ui.stopped():
                     return
+                # An account or SDK that doesn't take the newer options (compaction,
+                # fallbacks): ask again the plain way, and keep to it from now on.
+                if type(e).__name__ in ("BadRequestError", "TypeError") and betas and re.search(r"context_management|compact|fallback|beta|cache_control", str(e)):
+                    self.lean, betas, body = True, [], {}
+                    continue
                 raise
 
             self.messages.append({"role": "assistant", "content": msg.content})
@@ -1484,6 +1798,7 @@ class Agent:
                 self.ui.tool_end(tid, not err)
                 results.append({"type": "tool_result", "tool_use_id": b.id, "content": content, "is_error": bool(err)})
             self.messages.append({"role": "user", "content": results})
+            self.save()   # after every round, so a chat that gets stuck is on disk too
 
     # Stop, pressed while an answer is streaming in: close the connection, so it
     # ends now instead of when the next piece arrives (or a long think is over).
@@ -1527,7 +1842,7 @@ class Agent:
             args += ["--model", self.cfg["model"]]
         args += ["--resume", self.cc_session] if self.cc_started else ["--session-id", self.cc_session]
         p = subprocess.Popen(args + ["--", text], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=HOME,
-                             env={**os.environ, "MEMORA_AI_PERMIT": self.permit.path})
+                             env={**with_sudo(), "MEMORA_AI_PERMIT": self.permit.path})
         answer, tids = "", {}
         for line in p.stdout:
             if self.ui.stopped():
@@ -1598,10 +1913,6 @@ class Agent:
         if name == "Bash":
             cmd = inp.get("command", "")
             level, why = classify_command(cmd)
-            if re.search(r"(^|[;&|(]\s*)sudo\s", cmd):
-                # Administrator commands go through polkit: Memora's password dialog.
-                inp = dict(inp, command="pkexec bash -c " + shlex.quote(re.sub(r"(^|(?<=[;&|(]))\s*sudo\s+(-\S+\s+)*", r"\1 ", cmd)))
-                level, why = (level if level == "critical" else "risky"), (why if level != "safe" else "runs as administrator")
             if level == "safe":
                 return allow(inp)
             reason = (req.get("input") or {}).get("description", "").strip()
@@ -1623,51 +1934,266 @@ class Agent:
             title = ("Change " if exists else "Create ") + (path.replace(str(HOME), "~") or "a file") + "?"
             ok = self.ui.confirm("critical" if level == "critical" else "risky", title, preview, why if why else "")
             return allow(inp) if ok else deny("The person declined this change.")
-        if name in ("Read", "Glob", "Grep", "LS", "WebSearch", "WebFetch", "TodoWrite", "Task", "Agent", "ExitPlanMode", "ToolSearch", "Skill"):
+        if name == "Read":
+            path = inp.get("file_path") or ""
+            level, why = classify_path_read(path)
+            if level != "safe" and not self.ui.confirm(level, f"Read {path.replace(str(HOME), '~')}?", "", f"This file {why}."):
+                return deny("The person declined to share this file.")
+            return allow(inp)
+        if name in ("Glob", "Grep", "LS", "WebSearch", "WebFetch", "TodoWrite", "Task", "Agent", "ExitPlanMode", "ToolSearch", "Skill"):
             return allow(inp)
         ok = self.ui.confirm("risky", f"Allow {name}?", clip(json.dumps(inp, ensure_ascii=False, indent=1), 1200), "Memora AI wants to use this tool.")
         return allow(inp) if ok else deny("The person declined.")
 
-    # Ollama and OpenAI-compatible servers: plain chat.
+    # Ollama and OpenAI-compatible servers, with the same tools and confirmations.
+    # Ollama through its own API (/api/chat), which lets the context be big enough
+    # for the tools; the others through /v1/chat/completions (function calling).
+    # A model that can't use tools still answers, as a plain chat.
     def openai_turn(self, provider):
-        base = (self.cfg.get("baseUrl") or ("http://localhost:11434/v1" if provider == "ollama" else "")).rstrip("/")
+        native = provider == "ollama"
+        base = (self.cfg.get("baseUrl") or ("http://localhost:11434" if native else "")).rstrip("/")
         if not base:
             raise RuntimeError("Set the server address in System Settings > Memora AI.")
-        def plain(c):
-            if isinstance(c, str):
-                return c
-            return "\n".join(b.get("text", "") if isinstance(b, dict) and b.get("type") == "text" else
-                             ("[a picture]" if isinstance(b, dict) and b.get("type") == "image" else json.dumps(b, default=str)) for b in c)
-        msgs = [{"role": "system", "content": system_prompt()}] + [
-            {"role": m["role"], "content": plain(m["content"])} for m in self.messages]
-        body = json.dumps({"model": self.cfg.get("model") or "qwen3:8b", "stream": True, "messages": msgs}).encode()
-        req = urllib.request.Request(base + "/chat/completions", data=body, headers={
+        if native:
+            base = re.sub(r"/v1$", "", base)
+        model = self.cfg.get("model") or "qwen3:8b"
+        no_tools = self.__dict__.setdefault("no_tools", set())
+        specs = self.tool_specs() + [FETCH_TOOL]
+        fns = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in specs]
+        for _ in range(40):     # small models can go round in circles: a limit
+            if self.ui.stopped():
+                return
+            msgs = [{"role": "system", "content": system_prompt(with_now=False)}] + chat_messages(self.messages, native)
+            tools = None if model in no_tools else fns
+            try:
+                text, calls = (self.ollama_stream if native else self.oa_stream)(base, model, msgs, tools)
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode("utf-8", "replace")[:500]
+                if tools and e.code in (400, 404, 422, 500) and re.search(r"tool|function", detail, re.I):
+                    no_tools.add(model)     # this model can't use tools: answer without them
+                    continue
+                if e.code == 404 and native and "not found" in detail:
+                    raise RuntimeError(f"Ollama doesn't have the model {model} yet. Get it with: ollama pull {model}")
+                if e.code in (401, 403):
+                    raise RuntimeError("The server didn't accept the API key. Check it in System Settings > Memora AI.")
+                raise RuntimeError(f"The AI server answered {e.code}: {detail.strip() or e.reason}")
+            if self.ui.stopped():
+                return
+            content = ([{"type": "text", "text": text}] if text else []) + \
+                      [{"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["input"] if isinstance(c["input"], dict) else {}} for c in calls]
+            self.messages.append({"role": "assistant", "content": content or ""})
+            if not calls:
+                self.save()
+                return
+            results = []
+            for c in calls:
+                problem = c["input"] if isinstance(c["input"], str) else check_input(c["name"], c["input"])
+                if problem:
+                    results.append({"type": "tool_result", "tool_use_id": c["id"], "is_error": True,
+                                    "content": f"Invalid input for {c['name']}: {problem}. Call it again with valid JSON arguments."})
+                    continue
+                tid = self.ui.tool_start(c["name"], describe(c["name"], c["input"]))
+                try:
+                    if c["name"] in SCREEN_TOOLS and not self.cfg.get("screenControl", True):
+                        out, err = "The person turned off screen control (System Settings > Privacy & Security).", True
+                    else:
+                        out, err = self.tools.run(c["name"], c["input"])
+                except Exception as e:
+                    out, err = f"{type(e).__name__}: {e}", True
+                self.ui.tool_end(tid, not err)
+                if isinstance(out, list):
+                    out = "\n".join(b.get("text", "") for b in out if b.get("type") == "text")
+                results.append({"type": "tool_result", "tool_use_id": c["id"], "content": out, "is_error": bool(err)})
+            self.messages.append({"role": "user", "content": results})
+            self.save()
+            if text and not text.endswith("\n"):
+                self.ui.text("\n\n")
+        self.save()
+        raise RuntimeError("Stopped after many steps without finishing. Ask again, maybe in smaller parts.")
+
+    def oa_stream(self, base, model, msgs, tools):
+        """/v1/chat/completions, streamed: (text, [{id, name, input}])."""
+        body = {"model": model, "stream": True, "messages": msgs}
+        if tools:
+            body["tools"] = tools
+        req = urllib.request.Request(base + "/chat/completions", data=json.dumps(body).encode(), headers={
             "Content-Type": "application/json", "Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "none")})
-        answer = ""
+        text, parts = "", {}
         with urllib.request.urlopen(req, timeout=300) as r:
             for raw in r:
                 if self.ui.stopped():
-                    return
-                line = raw.decode().strip()
+                    break
+                line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data: ") or line == "data: [DONE]":
                     continue
                 try:
-                    delta = json.loads(line[6:])["choices"][0]["delta"].get("content") or ""
-                except (ValueError, KeyError, IndexError):
+                    delta = json.loads(line[6:])["choices"][0].get("delta") or {}
+                except (ValueError, KeyError, IndexError, TypeError):
                     continue
-                answer += delta
-                self.ui.text(delta)
-        self.messages.append({"role": "assistant", "content": answer})
-        self.save()
+                if delta.get("reasoning_content") or delta.get("reasoning"):
+                    self.ui.status("Thinking…")
+                if delta.get("content"):
+                    text += delta["content"]
+                    self.ui.text(delta["content"])
+                for tc in delta.get("tool_calls") or []:
+                    p = parts.setdefault(tc.get("index", len(parts)), {"id": "", "name": "", "args": ""})
+                    p["id"] = tc.get("id") or p["id"]
+                    fn = tc.get("function") or {}
+                    p["name"] += fn.get("name") or ""
+                    p["args"] += fn.get("arguments") or ""
+        calls = []
+        for i in sorted(parts):
+            p = parts[i]
+            try:
+                args = json.loads(p["args"] or "{}")
+                if not isinstance(args, dict):
+                    args = "the arguments are not a JSON object"
+            except ValueError:
+                args = "the arguments are not valid JSON"
+            calls.append({"id": p["id"] or f"call_{uuid.uuid4().hex[:12]}", "name": p["name"], "input": args})
+        return text, calls
+
+    def ollama_stream(self, base, model, msgs, tools):
+        """Ollama's /api/chat, streamed: (text, [{id, name, input}])."""
+        body = {"model": model, "stream": True, "messages": msgs,
+                # The tools and the system prompt alone are several thousand tokens:
+                # Ollama's small default context would cut them off.
+                "options": {"num_ctx": int(self.cfg.get("contextLength") or 16384)}}
+        if tools:
+            body["tools"] = tools
+        req = urllib.request.Request(base + "/api/chat", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        text, calls = "", []
+        self.ui.status("Loading the model…")
+        with urllib.request.urlopen(req, timeout=600) as r:
+            for raw in r:
+                if self.ui.stopped():
+                    break
+                try:
+                    j = json.loads(raw)
+                except ValueError:
+                    continue
+                if j.get("error"):
+                    raise RuntimeError(f"Ollama: {j['error']}")
+                m = j.get("message") or {}
+                if m.get("thinking"):
+                    self.ui.status("Thinking…")
+                if m.get("content"):
+                    text += m["content"]
+                    self.ui.text(m["content"])
+                for tc in m.get("tool_calls") or []:
+                    fn = tc.get("function") or {}
+                    args = fn.get("arguments")
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args or "{}")
+                        except ValueError:
+                            args = "the arguments are not valid JSON"
+                    calls.append({"id": tc.get("id") or f"call_{uuid.uuid4().hex[:12]}", "name": fn.get("name", ""),
+                                  "input": args if args is not None else {}})
+                if j.get("done"):
+                    break
+        return text, calls
 
     def save(self):
-        DATA.mkdir(parents=True, exist_ok=True)
+        """The conversation on disk after every round: last-session.json, and one file
+        per chat in ~/.local/share/memora/ai/chats (the newest 30 are kept). Pictures
+        are left out of the files (they are huge)."""
+        def plain(b):
+            b = b.model_dump() if hasattr(b, "model_dump") else b
+            if isinstance(b, dict):
+                if b.get("type") == "image":
+                    return {"type": "image", "omitted": True}
+                if isinstance(b.get("content"), list):
+                    b = {**b, "content": [plain(x) for x in b["content"]]}
+            return b
         try:
-            plain = [{"role": m["role"], "content": m["content"] if isinstance(m["content"], str) else
-                      [b.model_dump() if hasattr(b, "model_dump") else b for b in m["content"]]} for m in self.messages]
-            (DATA / "last-session.json").write_text(json.dumps(plain, default=str)[:5_000_000])
+            DATA.mkdir(parents=True, exist_ok=True)
+            out = [{"role": m["role"], "content": m["content"] if isinstance(m["content"], str) else
+                    [plain(b) for b in m["content"]]} for m in self.messages]
+            text = json.dumps(out, default=str, ensure_ascii=False, indent=1)[:5_000_000]
+            (DATA / "last-session.json").write_text(text)
+            chats = DATA / "chats"
+            chats.mkdir(exist_ok=True)
+            (chats / f"{getattr(self, 'started', 'chat')}.json").write_text(text)
+            for old in sorted(chats.glob("*.json"))[:-30]:
+                old.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def chat_messages(messages, native=False):
+    """The conversation (kept in Claude's shape) for Ollama or an OpenAI-compatible
+    server: tool calls and results become theirs; pictures, PDFs and Claude's own
+    thinking and web searches are left out."""
+    out, names = [], {}
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, str):
+            out.append({"role": m["role"], "content": c})
+            continue
+        blocks = [b.model_dump() if hasattr(b, "model_dump") else b for b in c or []]
+        blocks = [b for b in blocks if isinstance(b, dict)]
+        if m["role"] == "assistant":
+            text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+            calls = []
+            for b in blocks:
+                if b.get("type") != "tool_use":
+                    continue
+                names[b["id"]] = b["name"]
+                fn = {"name": b["name"], "arguments": b.get("input") or {}}
+                calls.append({"function": fn} if native else
+                             {"id": b["id"], "type": "function", "function": {**fn, "arguments": json.dumps(fn["arguments"], ensure_ascii=False)}})
+            msg = {"role": "assistant", "content": text}
+            if calls:
+                msg["tool_calls"] = calls
+            out.append(msg)
+            continue
+        said = []
+        for b in blocks:
+            t = b.get("type")
+            if t == "tool_result":
+                r = b.get("content")
+                if isinstance(r, list):
+                    r = "\n".join(x.get("text", "[a picture]" if x.get("type") == "image" else "") for x in r if isinstance(x, dict))
+                r = str(r or "")
+                if b.get("tool_use_id") not in names:
+                    continue    # a result of one of Claude's own server tools
+                out.append({"role": "tool", "tool_name": names[b["tool_use_id"]], "content": r} if native else
+                           {"role": "tool", "tool_call_id": b["tool_use_id"], "content": r})
+            elif t == "text":
+                said.append(b.get("text", ""))
+            elif t == "image":
+                said.append("[a picture]")
+            elif t == "document":
+                said.append("[a PDF]")
+        if said:
+            out.append({"role": "user", "content": "\n".join(said)})
+    return out
+
+
+def recent_pictures(messages, keep=3):
+    """The conversation with only the newest `keep` tool pictures (screenshots,
+    widget checks): each is large, and an old one no longer shows the screen."""
+    left, out = keep, []
+    for m in reversed(messages):
+        c = m.get("content")
+        if m.get("role") == "user" and isinstance(c, list):
+            blocks = []
+            for b in reversed(c):
+                if isinstance(b, dict) and b.get("type") == "tool_result" and isinstance(b.get("content"), list):
+                    inner = []
+                    for x in reversed(b["content"]):
+                        if isinstance(x, dict) and x.get("type") == "image":
+                            if left > 0:
+                                left -= 1
+                            else:
+                                x = {"type": "text", "text": "[an earlier picture, no longer kept]"}
+                        inner.append(x)
+                    b = {**b, "content": inner[::-1]}
+                blocks.append(b)
+            m = {**m, "content": blocks[::-1]}
+        out.append(m)
+    return out[::-1]
 
 
 IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
@@ -1707,6 +2233,33 @@ def attachments(files, images=True):
             kind = "picture" if ext in IMAGE_TYPES else "file"
             notes.append(f"Attached {kind}: {f} ({size:,} bytes). Use your tools to look at it if needed.")
     return blocks, ("\n\n" + "\n\n".join(notes)) if notes else ""
+
+
+def document_text(p):
+    """The text of a PDF or an office document, or None for anything else."""
+    import zipfile
+    import html as h
+    ext = p.suffix.lower()
+    try:
+        if ext == ".pdf":
+            r = subprocess.run(["pdftotext", "-layout", "-enc", "UTF-8", str(p), "-"], capture_output=True, text=True, timeout=60)
+            return r.stdout if r.returncode == 0 else None
+        xml = {".docx": "word/document.xml", ".odt": "content.xml", ".ods": "content.xml", ".odp": "content.xml",
+               ".pptx": None, ".xlsx": "xl/sharedStrings.xml"}
+        if ext in xml:
+            with zipfile.ZipFile(p) as z:
+                names = [xml[ext]] if xml[ext] else sorted((n for n in z.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", n)),
+                                                           key=lambda n: int(re.search(r"\d+", n.rsplit("/", 1)[1]).group()))
+                raw = "\n".join(z.read(n).decode("utf-8", "replace") for n in names if n in z.namelist())
+            raw = re.sub(r"</(w:p|text:p|text:h|a:p|si|table:table-row)>", "\n", raw)
+            raw = re.sub(r"<(w:tab|text:tab|table:table-cell)\b[^>]*/?>", "\t", raw)
+            return re.sub(r"\n{3,}", "\n\n", h.unescape(re.sub(r"<[^>]+>", "", raw))).strip()
+        if ext in (".rtf", ".epub") and shutil.which("pandoc"):
+            r = subprocess.run(["pandoc", "-t", "plain", str(p)], capture_output=True, text=True, timeout=60)
+            return r.stdout if r.returncode == 0 else None
+    except (OSError, zipfile.BadZipFile, subprocess.SubprocessError):
+        return None
+    return None
 
 
 def picture(f, ext):
@@ -1915,7 +2468,10 @@ def main():
         tools = Tools(BridgeUI())
         tools.hands_on = False
         try:
-            content, err = tools.run(name, data)
+            if name in SCREEN_TOOLS and not load_config().get("screenControl", True):
+                content, err = "The person turned off screen control (System Settings > Privacy & Security).", True
+            else:
+                content, err = tools.run(name, data)
         except Exception as e:
             content, err = f"{type(e).__name__}: {e}", True
         if isinstance(content, list):
