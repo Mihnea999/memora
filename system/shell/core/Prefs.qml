@@ -26,6 +26,7 @@ Singleton {
   property string dockHiding: ""       // auto | never | smart (when a window needs the room) | always; "" = from dockAutohide
   property string dockPosition: "bottom"   // bottom | left | right
   property bool dockDots: true         // a dot under apps that are open
+  property string iconStyle: "color"   // color | mono (black and white) | tinted (the accent colour)
   property bool snapping: true
   // Look
   property real transparency: 1.0      // 0 solid … 1 full glass
@@ -62,7 +63,7 @@ Singleton {
   property bool reopenWindows: true    // reopen the apps that were open, after shutting down or logging out        // { tl, tr, bl, br }: overview | expose | desktop | launchpad | notifications | control | ai | lock | display        // names given in Mission Control ("" = Desktop N)
 
   readonly property var keys: ["dockSize", "magnify", "magnifySize", "clock24", "showDate", "wallpaper", "wallpaperSet", "wallpaperRecent", "batteryPercent", "lowPowerOnBattery",
-    "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockHiding", "dockPosition", "dockDots", "snapping", "transparency", "menuBarTransparent",
+    "animations", "animationSpeed", "windowStyle", "dockBounce", "dockAutohide", "dockHiding", "dockPosition", "dockDots", "iconStyle", "snapping", "transparency", "menuBarTransparent",
     "glassStyle", "blur", "shine", "vibrancy", "reduceTransparency", "accent",
     "lockAfter", "sleepAfter", "displayOffAfter", "sleepOnPower", "awakeUntil", "awakeFullscreen", "awakeLid", "alertSound", "alertVolume", "startupSound", "uiSounds", "volumeFeedback", "updateCheck", "desktops", "snapAssist", "snapLayouts", "desktopNames", "hotCorners", "reopenWindows"]
 

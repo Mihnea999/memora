@@ -110,7 +110,7 @@ PanelWindow {
   // A soft veil over the desktop; click it to close.
   Rectangle {
     anchors.fill: parent
-    color: Qt.rgba(0, 0, 0, Theme.dark ? 0.28 : 0.12)
+    color: Qt.rgba(0, 0, 0, Theme.dark ? 0.36 : 0.18)
     opacity: lp.shown
   }
   TapHandler {
@@ -133,7 +133,9 @@ PanelWindow {
     scale: 0.94 + 0.06 * lp.shown
     transformOrigin: Item.Bottom
     radius: 28
-    fill: Theme.glassStrong
+    // Thicker glass than the menus: it opens over windows full of text, and
+    // names and icons must read clearly over them (frosted or not).
+    fill: Theme.dark ? Qt.rgba(0.10, 0.10, 0.12, Theme.see(0.74)) : Qt.rgba(0.98, 0.98, 0.99, Theme.see(0.78))
     // No shadow: over the veil it would pass Hyprland's blur threshold and
     // show as a blurred halo around the panel.
     shadow: false

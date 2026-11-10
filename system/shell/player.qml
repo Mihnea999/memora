@@ -126,7 +126,7 @@ ShellRoot {
     running: true
     // setpriv: mpv ends with the app, even when the app is killed (no music left playing on its own).
     command: ["setpriv", "--pdeathsig", "TERM", "mpv", "--idle=yes", "--no-video", "--no-terminal", "--force-window=no", "--audio-display=no",
-              "--input-ipc-server=" + app.sock, "--volume=" + app.volume, "--title=Music", "--gapless-audio=weak"]
+              "--input-ipc-server=" + app.sock, "--volume=" + app.volume, "--title=Music", "--audio-client-name=Music", "--gapless-audio=weak"]
   }
   Socket {
     id: ipc
@@ -201,6 +201,8 @@ ShellRoot {
   IpcHandler {
     target: "player"
     function open(path: string): void { app.openFile(path) }
+    // A view by name: recent, albums, artists, songs, favs, album:NAME, full (Now Playing).
+    function view(v: string): void { if (v === "full") app.full = true; else app.go(v) }
   }
   function time(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") }
   function minutes(list) { const m = Math.round(list.reduce((a, t) => a + (t.dur || 0), 0) / 60); return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min" }
@@ -328,7 +330,7 @@ ShellRoot {
       Txt {
         id: scanNote
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 14 }
-        text: app.scanText || (app.tracks.length ? app.tracks.length + " songs" : "")
+        text: app.scanText || (app.tracks.length ? app.tracks.length + (app.tracks.length === 1 ? " song" : " songs") : "")
         color: Theme.textFaint; font.pixelSize: Theme.small - 0.5; elide: Text.ElideRight
       }
     }
@@ -347,51 +349,67 @@ ShellRoot {
       id: bar
       anchors { left: win.compact ? parent.left : side.right; right: parent.right; top: parent.top; leftMargin: win.compact ? 132 : 1 }
       height: 64
+      // Not much room: shuffle, repeat and the volume slider step aside for the song.
+      readonly property bool tight: width < 760
       DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) }
       Row {
         id: transport
         x: 18; anchors.verticalCenter: parent.verticalCenter
         spacing: 6
-        Btn { sym: "shuffle"; size: 15; on: app.shuffled; tip: "Shuffle"; onClicked: app.toggleShuffle() }
+        Btn { visible: !bar.tight; sym: "shuffle"; size: 15; on: app.shuffled; tip: "Shuffle"; onClicked: app.toggleShuffle() }
         Btn { sym: "prev"; size: 17; tip: "Previous (Ctrl+←)"; onClicked: app.prev() }
         Btn { sym: app.playing ? "pause" : "play"; size: 22; tip: app.playing ? "Pause (Space)" : "Play (Space)"; onClicked: app.toggle() }
         Btn { sym: "next"; size: 17; tip: "Next (Ctrl+→)"; onClicked: app.next() }
-        Btn { sym: app.repeat === "one" ? "repeat-one" : "repeat"; size: 15; on: app.repeat !== "off"; tip: ({ off: "Repeat", all: "Repeat: all", one: "Repeat: this song" })[app.repeat]; onClicked: app.cycleRepeat() }
+        Btn { visible: !bar.tight; sym: app.repeat === "one" ? "repeat-one" : "repeat"; size: 15; on: app.repeat !== "off"; tip: ({ off: "Repeat", all: "Repeat: all", one: "Repeat: this song" })[app.repeat]; onClicked: app.cycleRepeat() }
       }
       // Now playing: cover, title, where it is.
       Rectangle {
         id: lcd
         anchors { left: transport.right; leftMargin: 18; right: tools.left; rightMargin: 18; verticalCenter: parent.verticalCenter }
-        height: 50; radius: 10
+        height: 56; radius: 10
         color: Theme.field
         Cover {
-          id: npCover; x: 4; y: 4; width: 42; height: 42; radius: 6; src: app.current ? app.current.cover : ""; small: true
+          id: npCover; x: 4; y: 4; width: 48; height: 48; radius: 7; src: app.current ? app.current.cover : ""; small: true
           hover: nph.hovered
           HoverHandler { id: nph; cursorShape: app.current ? Qt.PointingHandCursor : Qt.ArrowCursor }
           TapHandler { onTapped: if (app.current) app.full = true }
         }
+        // Three lines, none over another: title, artist — album, then the
+        // position with the time on each side of it.
         Column {
-          anchors { left: npCover.right; leftMargin: 12; right: parent.right; rightMargin: 12; top: parent.top; topMargin: 6 }
-          spacing: 1
-          Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; font.weight: Font.Bold; text: app.current ? app.current.title : "Music" }
+          anchors { left: npCover.right; leftMargin: 12; right: parent.right; rightMargin: 12 }
+          y: app.current ? 5 : (parent.height - implicitHeight) / 2
+          spacing: 0
+          Txt { width: parent.width; height: 17; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; font.weight: Font.Bold; text: app.current ? app.current.title : "Music" }
           Txt {
-            width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; color: Theme.textDim; font.pixelSize: Theme.small
+            width: parent.width; height: 15; visible: text !== ""; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; color: Theme.textDim; font.pixelSize: Theme.small
             text: app.current ? [app.current.artist, app.current.album].filter(x => x).join(" — ") : (app.tracks.length ? "Choose something to play" : "")
           }
+        }
+        Txt {
+          id: elapsed
+          visible: !!app.current && lcd.width > 250
+          anchors { left: npCover.right; leftMargin: 12; verticalCenter: seekbar.verticalCenter }
+          width: 38; text: app.time(app.pos); color: Theme.textFaint; font.pixelSize: Theme.small - 1; font.features: { "tnum": 1 }
+        }
+        Txt {
+          id: remaining
+          visible: !!app.current && lcd.width > 250
+          anchors { right: parent.right; rightMargin: 12; verticalCenter: seekbar.verticalCenter }
+          width: 42; horizontalAlignment: Text.AlignRight; text: "-" + app.time(Math.max(0, app.dur - app.pos)); color: Theme.textFaint; font.pixelSize: Theme.small - 1
         }
         // The position: drag or click to move in the song.
         Item {
           id: seekbar
-          anchors { left: npCover.right; leftMargin: 12; right: parent.right; rightMargin: 12; bottom: parent.bottom; bottomMargin: 6 }
-          height: 8
+          anchors { left: elapsed.visible ? elapsed.right : npCover.right; leftMargin: elapsed.visible ? 6 : 12; right: remaining.visible ? remaining.left : parent.right; rightMargin: remaining.visible ? 6 : 12; bottom: parent.bottom; bottomMargin: 4 }
+          height: 12
           visible: !!app.current
           readonly property real frac: app.dur > 0 ? Math.min(1, (sd.active ? sd.frac : app.pos) / app.dur) : 0
-          Txt { anchors { right: parent.left; rightMargin: -40; verticalCenter: parent.verticalCenter } visible: false; text: "" }
           readonly property real thick: seekHover.hovered || sd.active ? 5 : 3
           Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: seekbar.thick; radius: height / 2; color: Theme.separator; Behavior on height { NumberAnimation { duration: 120 } } }
           Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width * seekbar.frac; height: seekbar.thick; radius: height / 2; color: seekHover.hovered ? tint.vivid : Theme.textDim; Behavior on height { NumberAnimation { duration: 120 } } }
-          Rectangle { visible: seekHover.hovered || sd.active; x: parent.width * seekbar.frac - 6; anchors.verticalCenter: parent.verticalCenter; width: 12; height: 12; radius: 6; color: "#ffffff"; border.color: Theme.separator }
+          Rectangle { visible: seekHover.hovered || sd.active; x: parent.width * seekbar.frac - 5; anchors.verticalCenter: parent.verticalCenter; width: 10; height: 10; radius: 5; color: "#ffffff"; border.color: Theme.separator }
           DragHandler {
             id: sd; target: null; xAxis.enabled: true; yAxis.enabled: false
             property real frac: 0
@@ -401,16 +419,15 @@ ShellRoot {
           TapHandler { onTapped: ev => app.seek(Math.max(0, Math.min(1, ev.position.x / seekbar.width)) * app.dur) }
           HoverHandler { id: seekHover }
         }
-        Txt { visible: !!app.current; anchors { left: npCover.right; leftMargin: 12; top: parent.top; topMargin: 7 } text: app.time(app.pos); color: Theme.textFaint; font.pixelSize: Theme.small - 1 }
-        Txt { visible: !!app.current; anchors { right: parent.right; rightMargin: 12; top: parent.top; topMargin: 7 } text: "-" + app.time(app.dur - app.pos); color: Theme.textFaint; font.pixelSize: Theme.small - 1 }
       }
       Row {
         id: tools
         anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
         spacing: 6
-        Sym { anchors.verticalCenter: parent.verticalCenter; name: app.volume === 0 ? "sound-off" : "sound"; level: app.volume / 100; width: 15; height: 15; color: Theme.textDim }
+        Sym { visible: !bar.tight; anchors.verticalCenter: parent.verticalCenter; name: app.volume === 0 ? "sound-off" : "sound"; level: app.volume / 100; width: 15; height: 15; color: Theme.textDim }
         Item {
           id: vol
+          visible: !bar.tight
           anchors.verticalCenter: parent.verticalCenter
           width: 90; height: 16
           Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 3; radius: 1.5; color: Theme.separator }
@@ -419,7 +436,7 @@ ShellRoot {
           DragHandler { target: null; xAxis.enabled: true; yAxis.enabled: false; onCentroidChanged: if (active) app.setVolume(Math.round(Math.max(0, Math.min(1, centroid.position.x / vol.width)) * 100)) }
           TapHandler { onTapped: ev => app.setVolume(Math.round(Math.max(0, Math.min(1, ev.position.x / vol.width)) * 100)) }
         }
-        Item { width: 6; height: 1 }
+        Item { visible: !bar.tight; width: 6; height: 1 }
         Btn { sym: "lyrics"; size: 15; on: app.showLyrics; enabled: app.lyrics.length > 0; opacity: enabled ? 1 : 0.35; tip: app.lyrics.length ? "Lyrics" : "No lyrics for this song"; onClicked: app.showLyrics = !app.showLyrics }
         Btn { sym: "queue"; size: 15; on: app.showQueue; tip: "Up Next"; onClicked: app.showQueue = !app.showQueue }
       }
@@ -447,7 +464,7 @@ ShellRoot {
         Sym { anchors.horizontalCenter: parent.horizontalCenter; name: "music"; width: 54; height: 54; color: Theme.textFaint }
         Txt { anchors.horizontalCenter: parent.horizontalCenter; text: app.scanText || "No music yet"; font.weight: Font.Bold; font.pixelSize: Theme.large + 2 }
         Txt { anchors.horizontalCenter: parent.horizontalCenter; text: "Put songs in your Music folder (or drop them on this window)."; color: Theme.textDim }
-        Pill { anchors.horizontalCenter: parent.horizontalCenter; text: "Open the Music Folder"; strong: true; onClicked: Quickshell.execDetached(["bash", "-c", "mkdir -p ~/Music && xdg-open ~/Music"]) }
+        Pill { anchors.horizontalCenter: parent.horizontalCenter; text: "Open the Music Folder"; strong: true; onClicked: Quickshell.execDetached(["bash", "-c", "mkdir -p ~/Music && exec memora-files ~/Music"]) }
       }
 
       // Search results, and every list of songs.
@@ -552,6 +569,8 @@ ShellRoot {
         anchors.centerIn: parent
         width: Math.max(parent.width, parent.height) * 1.5; height: width
         src: app.current ? app.current.cover : ""; radius: 0; blurred: true
+        // A song without a cover: no giant placeholder note behind the words.
+        visible: src !== ""
         opacity: 0.85
         RotationAnimation on rotation { running: np.visible && app.playing; from: 0; to: 360; duration: 180000; loops: Animation.Infinite }
       }
@@ -1048,14 +1067,14 @@ ShellRoot {
         spacing: 12
         TextInput {
           id: ttl
-          width: Math.min(contentWidth + 2, app.width * 0.45)
+          width: Math.min(contentWidth + 2, st.width * 0.6)
           clip: true   // long text scrolls inside the field, never spills out
           text: st.title; readOnly: !st.editable
           color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.Bold
           selectByMouse: st.editable
           onEditingFinished: if (st.editable) app.renamePlaylist(st.playlist, text)
         }
-        Txt { anchors.baseline: ttl.baseline; text: st.list.length ? st.list.length + " songs · " + app.minutes(st.list) : ""; color: Theme.textDim; font.pixelSize: Theme.small }
+        Txt { anchors.baseline: ttl.baseline; text: st.list.length ? st.list.length + (st.list.length === 1 ? " song · " : " songs · ") + app.minutes(st.list) : ""; color: Theme.textDim; font.pixelSize: Theme.small }
       }
       Row {
         spacing: 10
@@ -1068,10 +1087,12 @@ ShellRoot {
       Item { width: 1; height: 6 }
       Row {
         visible: st.list.length > 0
-        x: 40
-        Txt { width: (st.width - 56 - 40 - 70) * 0.42; text: "Title"; color: Theme.textDim; font.pixelSize: Theme.small; font.weight: Font.Bold }
-        Txt { width: (st.width - 56 - 40 - 70) * 0.29; text: "Artist"; color: Theme.textDim; font.pixelSize: Theme.small; font.weight: Font.Bold }
-        Txt { width: (st.width - 56 - 40 - 70) * 0.29; text: "Album"; color: Theme.textDim; font.pixelSize: Theme.small; font.weight: Font.Bold }
+        // Lined up with the rows below (SongRow: 6 + 30 + 6 in, 80 for the heart and time).
+        x: 42
+        readonly property real w: st.width - 56 - 116
+        Txt { width: parent.w * 0.42; rightPadding: 12; text: "Title"; color: Theme.textDim; font.pixelSize: Theme.small; font.weight: Font.Bold }
+        Txt { width: parent.w * 0.29; rightPadding: 12; text: "Artist"; color: Theme.textDim; font.pixelSize: Theme.small; font.weight: Font.Bold }
+        Txt { width: parent.w * 0.29; rightPadding: 12; text: "Album"; color: Theme.textDim; font.pixelSize: Theme.small; font.weight: Font.Bold }
       }
     }
     delegate: SongRow {

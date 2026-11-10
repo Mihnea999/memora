@@ -109,7 +109,9 @@ Item {
     opacity: hover.hovered && it.dockRoot.menuFor === null && !it.dragging ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     radius: 8
-    fill: Theme.glassStrong
+    // Nearly solid: it sits over windows and the desktop, outside the Dock's
+    // frosted area, where see-through glass makes the name hard to read.
+    fill: Theme.dark ? Qt.rgba(0.14, 0.14, 0.16, 0.94) : Qt.rgba(0.98, 0.98, 0.99, 0.95)
     shadowSize: 12
     width: tipText.implicitWidth + 22
     height: 26

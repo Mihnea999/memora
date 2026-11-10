@@ -24,6 +24,7 @@ Scope {
       else if (ev.name === "memorakeyup" && ev.data === "super") { hold.stop(); ks.close() }
     }
   }
+  Connections { target: Shell; function onSuperChord() { hold.stop(); ks.close() } }
   function close() { wanted = false; if (open) { open = false; Shell.sheetClosedAt = Date.now() } }
   readonly property var mods: [[64, "Super"], [4, "Ctrl"], [8, "Alt"], [1, "Shift"]]
   Process {

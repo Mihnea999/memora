@@ -29,7 +29,35 @@ ShellRoot {
   // Screenshots of the app in detail, from Flathub: [{ src, w, h }]; bigShot: the one shown large.
   property var shots: []
   property int bigShot: -1
-  onDetailChanged: { shots = []; bigShot = -1; if (detail && !detail.startsWith("cli.")) { shotProc.running = false; shotProc.appId = detail; shotProc.running = true } }
+  onDetailChanged: {
+    shots = []; bigShot = -1
+    const e = entry(detail)
+    // ArtCraft's apps: their screenshots came with its index (memora-store-meta).
+    if (detail && e && e.remote) { shots = (metaShots[detail] || []).map(z => ({ src: z.src, w: z.w, h: z.h })); return }
+    if (detail && !detail.startsWith("cli.")) { shotProc.running = false; shotProc.appId = detail; shotProc.running = true }
+  }
+  // `qs -p …/store.qml ipc call store open WHAT`: a section (ArtCraft, Games…) or an app id.
+  IpcHandler {
+    target: "store"
+    function open(what: string): void {
+      if (app.catalog.apps && app.catalog.apps.find(a => a.id === what)) app.detail = what
+      else { app.detail = ""; app.section = what }
+    }
+  }
+  // Icons and screenshots of the apps that aren't on Flathub (ArtCraft).
+  property string metaDir: ""
+  property var metaShots: ({})
+  Process {
+    running: true
+    command: ["memora-store-meta"]
+    stdout: StdioCollector { onStreamFinished: { app.metaDir = text.trim() ? text.trim() + "/" : ""; metaFile.reload() } }
+  }
+  FileView {
+    id: metaFile
+    path: app.metaDir ? app.metaDir + "shots.json" : ""
+    printErrors: false
+    onLoaded: { try { app.metaShots = JSON.parse(text()) } catch (e) {} }
+  }
   Process {
     id: shotProc
     property string appId
@@ -58,8 +86,10 @@ ShellRoot {
   Process {
     id: setup
     running: true
-    command: ["bash", "-c", "flatpak remote-add --user --if-not-exists artcraft-oci https://getartcraft.com/artcraft-oci.flatpakrepo >/dev/null 2>&1; flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak update --user --appstream flathub >/dev/null 2>&1; echo $?; d=$(ls -dt ~/.local/share/flatpak/appstream/flathub/x86_64/*/icons/128x128 2>/dev/null | head -1); echo \"$d\""]
-    stdout: StdioCollector { onStreamFinished: { const f = text.trim().split("\n"); app.iconDir = f[1] ? f[1] + "/" : ""; app.ready = f[0] === "0"; app.status = app.ready ? "" : "Flathub can't be reached. Check the internet connection." ; app.refresh() } }
+    // Flathub's catalogue (with the icons) is fetched again only when it is
+    // more than 6 hours old: otherwise the icons show at once.
+    command: ["bash", "-c", "flatpak remote-add --user --if-not-exists artcraft-oci https://getartcraft.com/artcraft-oci.flatpakrepo >/dev/null 2>&1; flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; r=$?; a=~/.local/share/flatpak/appstream/flathub/x86_64/active; if [ $r = 0 ] && { [ ! -e $a ] || [ -n \"$(find -L $a -maxdepth 0 -mmin +360 2>/dev/null)\" ]; }; then flatpak update --user --appstream flathub >/dev/null 2>&1; r=$?; fi; echo $r; d=$(ls -dt ~/.local/share/flatpak/appstream/flathub/x86_64/*/icons/128x128 2>/dev/null | head -1); echo \"$d\""]
+    stdout: StdioCollector { onStreamFinished: { const f = text.trim().split("\n"); if (f[1]) app.iconDir = f[1] + "/"; app.ready = f[0] === "0"; app.status = app.ready ? "" : "Flathub can't be reached. Check the internet connection." ; app.refresh() } }
   }
   Process {
     id: lister
@@ -154,7 +184,18 @@ ShellRoot {
   function open(id) { Quickshell.execDetached(id.startsWith("cli.") ? ["memora-store-cli", "open", id] : ["flatpak", "run", id]) }
   function entry(id) { return catalog.apps.find(x => x.id === id) || extra[id] || null }
   function nameOf(id) { const a = entry(id); return a ? a.name : id }
-  function iconOf(id) { const e = entry(id); return iconDir && id && !id.startsWith("cli.") && !(e && e.remote) ? "file://" + iconDir + id + ".png" : "" }
+  function iconOf(id) {
+    const e = entry(id)
+    if (!id || id.startsWith("cli.")) return ""
+    if (e && e.remote) return metaDir ? "file://" + metaDir + "icons/" + id + ".png" : ""
+    return iconDir ? "file://" + iconDir + id + ".png" : ""
+  }
+  // The icon folder, straight away (the setup above can take a while).
+  Process {
+    running: true
+    command: ["bash", "-c", "ls -dt ~/.local/share/flatpak/appstream/flathub/x86_64/*/icons/128x128 2>/dev/null | head -1"]
+    stdout: StdioCollector { onStreamFinished: if (!app.iconDir && text.trim()) app.iconDir = text.trim() + "/" }
+  }
 
   readonly property var shown: {
     const q = query.toLowerCase()
@@ -323,10 +364,18 @@ ShellRoot {
                 }
                 scale: fh.hovered ? 1.02 : 1
                 Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
-                Txt { x: 20; y: 18; text: ["New: Claude for Memora", "ArtCraft", "For engineers"][index % 3]; color: Qt.rgba(1, 1, 1, 0.8); font.pixelSize: Theme.small; font.weight: Font.Bold }
-                Txt { x: 20; y: 40; width: parent.width - 130; height: 28; text: parent.a.name; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Bold; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 13; verticalAlignment: Text.AlignVCenter }
-                Txt { x: 20; y: 72; width: parent.width - 130; text: parent.a.summary; color: Qt.rgba(1, 1, 1, 0.85); wrapMode: Text.Wrap; maximumLineCount: 3 }
-                StoreIcon { appId: parent.modelData; width: 86; height: 86; anchors { right: parent.right; rightMargin: 20; verticalCenter: parent.verticalCenter } }
+                // Narrow: a small icon in the corner and the words under it, so
+                // nothing is drawn over the icon.
+                readonly property bool narrow: width < 320
+                Txt { x: 20; y: 18; width: parent.width - 40 - (parent.narrow ? 56 : 0); text: ["New: Claude for Memora", "ArtCraft", "For engineers"][index % 3]; color: Qt.rgba(1, 1, 1, 0.8); font.pixelSize: Theme.small; font.weight: Font.Bold; elide: Text.ElideRight }
+                Txt { x: 20; y: parent.narrow ? 70 : 40; width: parent.width - (parent.narrow ? 40 : 136); height: 28; text: parent.a.name; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Bold; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 13; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+                Txt { x: 20; y: parent.narrow ? 100 : 72; width: parent.width - (parent.narrow ? 40 : 136); text: parent.a.summary; color: Qt.rgba(1, 1, 1, 0.85); wrapMode: Text.Wrap; maximumLineCount: parent.narrow ? 2 : 3; elide: Text.ElideRight }
+                StoreIcon {
+                  appId: parent.modelData
+                  width: parent.narrow ? 46 : 86; height: width
+                  anchors { right: parent.right; rightMargin: parent.narrow ? 16 : 20 }
+                  y: parent.narrow ? 14 : (parent.height - height) / 2
+                }
                 GetButton { appId: parent.modelData; anchors { left: parent.left; leftMargin: 20; bottom: parent.bottom; bottomMargin: 18 } light: true }
                 HoverHandler { id: fh }
                 TapHandler { onTapped: app.detail = parent.modelData }

@@ -70,6 +70,9 @@ b(S .. " + CTRL + P", shell("pin"), "Keep the window on top, on every desktop")
 b(S .. " + T", hl.dsp.window.float({ action = "toggle" }), "Tile or float window")
 b(S .. " + mouse:272", hl.dsp.window.drag(), "Move window", { mouse = true })
 b(S .. " + mouse:273", hl.dsp.window.resize(), "Resize window", { mouse = true })
+-- …and tell the shell: holding Super was for the mouse, not for the shortcuts sheet or Apps.
+hl.bind(S .. " + mouse:272", shell("super-chord"), { non_consuming = true })
+hl.bind(S .. " + mouse:273", shell("super-chord"), { non_consuming = true })
 
 -- Desktops
 b("CTRL + " .. S .. " + UP", shell("toggle overview"), "Desktops and windows (Mission Control)")

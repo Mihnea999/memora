@@ -238,7 +238,7 @@ PanelWindow {
         }
         Column {
           anchors { left: art.right; leftMargin: 10; right: controls.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
-          Txt { width: parent.width; text: Sys.player ? (Sys.player.trackTitle || Sys.player.identity) : ""; font.weight: Font.Medium }
+          Txt { width: parent.width; text: Sys.player ? (Sys.player.trackTitle || Sys.playerName(Sys.player)) : ""; font.weight: Font.Medium }
           Txt { width: parent.width; text: Sys.player ? (Sys.player.trackArtist || "") : ""; color: Theme.textDim; font.pixelSize: Theme.small }
         }
         Row {

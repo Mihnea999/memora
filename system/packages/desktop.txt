@@ -5,6 +5,7 @@ greetd
 cage
 xdg-desktop-portal-hyprland
 xdg-desktop-portal-gtk
+xdg-utils
 hypridle
 hyprpicker
 hyprsunset

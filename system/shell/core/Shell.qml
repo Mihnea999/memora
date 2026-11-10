@@ -80,6 +80,9 @@ Singleton {
   // When the Super shortcuts sheet last went away: letting Super go then
   // doesn't open Apps.
   property real sheetClosedAt: 0
+  // Super was used with the mouse (Super+drag moves a window, Super+right-drag
+  // resizes it): holding it wasn't for the shortcuts sheet, letting go isn't a tap.
+  signal superChord()
 
   // Width of the Memora AI notch in the middle of the menu bar (on the focused
   // screen), so the bar keeps its menus clear of it.

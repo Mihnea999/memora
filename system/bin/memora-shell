@@ -19,6 +19,7 @@ case "${1:-}" in
   minimize) exec qs -p "$dir" ipc call shell minimize ;;
   project) exec qs -p "$dir" ipc call display project ;;
   super-up) exec qs -p "$dir" ipc call switcher superUp ;;
+  super-chord) exec qs -p "$dir" ipc call switcher superChord ;;
   quit-app) exec qs -p "$dir" ipc call shell quitApp ;;
   hide-app) exec qs -p "$dir" ipc call shell hideApp ;;
   desktop) shift; exec qs -p "$dir" ipc call desktops "${1:-next}" "${2:-0}" ;;

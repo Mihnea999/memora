@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""memora-store-meta — icons and screenshots for the App Store's apps that
+don't come from Flathub (ArtCraft's OCI repository). Its index carries each
+app's icon (as a picture in the label) and its AppStream data (with the
+screenshots); they are kept in ~/.cache/memora/store: icons/ID.png and
+shots.json ({ID: [{src, w, h}]}), fetched again once a day. Prints the folder.
+"""
+import base64
+import json
+import os
+import re
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "memora/store"
+INDEX = "https://getartcraft.com/index/static?label:org.flatpak.ref:exists=1&architecture=amd64&os=linux"
+
+
+def main():
+    icons = CACHE / "icons"
+    shots_file = CACHE / "shots.json"
+    fresh = shots_file.exists() and time.time() - shots_file.stat().st_mtime < 86400
+    if fresh and "--force" not in sys.argv:
+        print(CACHE)
+        return
+    try:
+        req = urllib.request.Request(INDEX, headers={"User-Agent": "MemoraStore"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            index = json.load(r)
+    except Exception:
+        print(CACHE)       # offline: whatever is cached already
+        return
+    icons.mkdir(parents=True, exist_ok=True)
+    shots = {}
+    for res in index.get("Results", []):
+        for img in res.get("Images", [])[:1]:
+            lab = img.get("Labels", {})
+            ref = lab.get("org.flatpak.ref", "")
+            if not ref.startswith("app/"):
+                continue
+            app = ref.split("/")[1]
+            icon = lab.get("org.freedesktop.appstream.icon-128") or lab.get("org.freedesktop.appstream.icon-64") or ""
+            if icon.startswith("data:image/png;base64,"):
+                try:
+                    (icons / f"{app}.png").write_bytes(base64.b64decode(icon.split(",", 1)[1]))
+                except ValueError:
+                    pass
+            xml = lab.get("org.freedesktop.appstream.appdata", "")
+            found = []
+            for m in re.finditer(r'<image([^>]*)>([^<]+)</image>', xml):
+                w = re.search(r'width="(\d+)"', m.group(1))
+                h = re.search(r'height="(\d+)"', m.group(1))
+                found.append({"src": m.group(2).strip(), "w": int(w.group(1)) if w else 0, "h": int(h.group(1)) if h else 0})
+            if found:
+                shots[app] = found[:8]
+    shots_file.write_text(json.dumps(shots))
+    print(CACHE)
+
+
+if __name__ == "__main__":
+    main()

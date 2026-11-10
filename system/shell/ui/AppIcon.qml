@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import qs.core
 
@@ -10,6 +11,18 @@ Item {
   property string iconName: ""          // overrides the desktop entry's icon
   readonly property string name: iconName !== "" ? iconName : Apps.iconNameFor(appId)
   readonly property bool own: Apps.nativeIcons.indexOf(name) >= 0
+  // System Settings > Desktop & Dock > App icons: in colour, black and white,
+  // or tinted with the accent colour (like a Mac's). styled: false keeps colour.
+  property bool styled: true
+  readonly property string look: styled ? Prefs.iconStyle : "color"
+  layer.enabled: look !== "color"
+  layer.smooth: true
+  layer.effect: MultiEffect {
+    saturation: a.look === "mono" ? -1 : 0
+    contrast: a.look === "mono" ? 0.08 : 0
+    colorization: a.look === "tinted" ? 0.85 : 0
+    colorizationColor: Theme.accent
+  }
 
   Image {
     anchors.fill: parent

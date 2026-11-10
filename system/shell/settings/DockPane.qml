@@ -41,6 +41,14 @@ Kit.Page {
       }
     }
     Kit.Row {
+      label: "App icons"; detail: "In the Dock, Apps and the app switcher"
+      Kit.Choice {
+        value: Prefs.iconStyle
+        options: [{ text: "Colour", value: "color" }, { text: "Black & White", value: "mono" }, { text: "Tinted", value: "tinted" }]
+        onPicked: v => Prefs.set("iconStyle", v)
+      }
+    }
+    Kit.Row {
       label: "Show indicators for open apps"
       Kit.Switch { checked: Prefs.dockDots; onToggled: on => Prefs.set("dockDots", on) }
     }

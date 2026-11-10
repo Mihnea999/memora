@@ -16,6 +16,7 @@ import qs.ui
 Scope {
   id: sw
   property bool open: false
+  property bool superAlone: true      // Super has been used on its own since it went down
   property string mode: "windows"     // windows | apps
   property string onlyApp: ""         // windows mode for one app
   property int index: 0
@@ -100,7 +101,13 @@ Scope {
   // Super or Alt let go (reported by the Memora plugin): finish switching.
   Connections {
     target: Hyprland
-    function onRawEvent(ev) { if (ev.name === "memorakeyup" && sw.open) sw.commit() }
+    function onRawEvent(ev) {
+      if (ev.name === "memorakeyup" && sw.open) sw.commit()
+      // Super went down: not used with anything yet. A key or a click with it
+      // (Super+drag moves a window) means letting go isn't a tap.
+      else if (ev.name === "memorakeydown") sw.superAlone = true
+      else if (ev.name === "memorachord") sw.superAlone = false
+    }
   }
   Connections {
     target: Shell
@@ -128,7 +135,8 @@ Scope {
     function commit(): void { sw.commit() }
     function cancel(): void { sw.open = false }
     // Super let go: finish switching, or (a tap on its own) open Apps.
-    function superUp(): void { if (sw.open) sw.commit(); else if (Date.now() - Shell.sheetClosedAt > 700) Shell.toggle("launchpad") }
+    function superChord(): void { sw.superAlone = false; Shell.superChord() }
+    function superUp(): void { if (sw.open) sw.commit(); else if (sw.superAlone && Date.now() - Shell.sheetClosedAt > 700) Shell.toggle("launchpad") }
   }
 
   Variants {

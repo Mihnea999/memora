@@ -15,7 +15,8 @@ Requires Docker. The build runs `mkarchiso` in a privileged Arch container.
 Write it to a USB stick (`dd` or Ventoy) and boot it in **UEFI** mode. The graphical installer
 starts on its own (`system/shell/installer.qml` in cage): keyboard and language, Wi-Fi, disk and
 encryption, account, time zone (guessed from the network), appearance, developer tools, a review
-page, then progress. If the screen can't show it, the text installer runs instead.
+page (with the drivers it will download for this computer), then progress. It works with a mouse,
+the keyboard alone (Tab, Space, Return, Esc) or a finger (its own on-screen keyboard). If the screen can't show it, the text installer runs instead.
 
 ## Test in a VM
 
@@ -49,8 +50,9 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 | Dialogs | Administrator password (polkit), volume and brightness |
 | Switching | Super+Tab: apps (Q quits, H hides, ` shows its windows); Alt+Tab: windows with live pictures; Super+`: the app's windows; hold Super to see the shortcuts |
 
-Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Photos**, **Player** (films and
-music), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
+Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Calendar** (week, month and year,
+calendars in their own colours, your country's public holidays, events typed the way you'd say them,
+reminders from the desktop), **Photos**, **Player** (films and music), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
 **Activity Monitor**, **Welcome**, all in the same style. Terminal is Ghostty with Memora's light and dark themes. Anything that
 can't be undone (shut down, restart, log out, emptying the Trash, deleting forever) asks first.
 
