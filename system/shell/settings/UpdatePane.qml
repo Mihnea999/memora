@@ -146,7 +146,7 @@ Kit.Page {
         badge: modelData.source === "app" ? "dock" : (modelData.source === "memora" ? "sparkle" : "gear")
         badgeColor: modelData.source === "app" ? "#2fb6d9" : (modelData.source === "memora" ? Theme.accent : "#8a8d96")
         last: index === Math.min(p.items.length, 40) - 1
-        Kit.Value { text: modelData.source === "app" ? "App" : (modelData.source === "memora" ? "Memora" : "System") }
+        Kit.Value { text: modelData.source === "app" ? "App" : (modelData.source === "memora" ? "Memora" : (modelData.source === "firmware" ? "Firmware" : "System")) }
       }
     }
   }

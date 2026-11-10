@@ -40,8 +40,19 @@ memora_update() {
     printf 'memora\tMemora\t%s\t%s\n' "$cur" "$latest"
 }
 
+# Drivers that live in the device itself (firmware for the laptop, SSD, dock,
+# touchpad…), from LVFS. Drivers in the system (graphics, Wi-Fi) come with the
+# system packages above.
+firmware_updates() {
+  command -v fwupdmgr >/dev/null || return 0
+  timeout 60 fwupdmgr refresh >/dev/null 2>&1
+  timeout 60 fwupdmgr get-updates --json 2>/dev/null |
+    jq -r '.Devices[]? | select(.Releases[0]) | "firmware\t\(.Name)\t\(.Version // "")\t\(.Releases[0].Version)"' 2>/dev/null
+  return 0
+}
+
 check() {
-  { pacman_updates; flatpak_updates; memora_update; } | tee "$cache/updates.tsv"
+  { pacman_updates; flatpak_updates; memora_update; firmware_updates; } | tee "$cache/updates.tsv"
   grep -q '^@error' "$cache/updates.tsv" && return 1
   date +%s > "$cache/updates.checked"
 }
@@ -91,6 +102,19 @@ root_part() { # memora-url memora-version
   if [[ -n ${1:-} && -n ${2:-} ]]; then
     echo "@step 2 3 Updating Memora"
     apply_memora "$1" "$2" || echo "@warn Memora itself could not be updated this time."
+  fi
+  # Packages a newer Memora needs that this computer doesn't have yet.
+  local missing
+  missing="$(cat "$MEMORA_PATH"/packages/{base,desktop,cli}.txt 2>/dev/null | sed 's/#.*//' | awk 'NF' | xargs -r pacman -T 2>/dev/null)"
+  if [[ -n $missing ]]; then
+    echo "@step 2 3 Adding what's new"
+    pacman -S --needed --noconfirm --noprogressbar $missing 2>&1 || echo "@warn Some new parts of Memora could not be added this time."
+  fi
+  # Firmware: installed now, applied by the device (some at the next restart).
+  if command -v fwupdmgr >/dev/null && timeout 60 fwupdmgr get-updates --json 2>/dev/null | jq -e '[.Devices[]? | select(.Releases[0])] | length > 0' >/dev/null 2>&1; then
+    echo "@step 2 3 Updating firmware"
+    timeout 900 fwupdmgr update --assume-yes --no-reboot-check 2>&1 | tail -3 || echo "@warn Some firmware could not be updated this time."
+    echo "@restart"
   fi
 }
 

@@ -110,6 +110,10 @@ if grep -qi nvidia <<<"$gpu"; then
     touch /etc/memora/nvidia-legacy
   fi
 fi
+# Wi-Fi chips that only work with their maker's driver (Broadcom wl).
+if lspci -nn | grep -iE 'network controller' | grep -qE '\[14e4:(4311|4312|4313|4315|4328|4329|432a|432b|432c|432d|4331|4353|4357|4358|4359|4360|4365|43a0|43b1|43b2|4727)\]'; then
+  gfx+=(broadcom-wl-dkms)
+fi
 pac -S --needed --noconfirm "${gfx[@]}"
 if [[ -f /etc/memora/nvidia ]]; then
   systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true

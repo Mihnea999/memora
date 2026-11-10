@@ -23,4 +23,5 @@ file_permissions=(
   ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/memora-install"]="0:0:755"
   ["/usr/local/bin/memora-disks"]="0:0:755"
+  ["/usr/local/bin/memora-drivers"]="0:0:755"
 )

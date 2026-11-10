@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# memora-drivers — the drivers this computer needs, one per line, in words.
+# Shown on the installer's review page; they are downloaded while installing
+# (system/install/chroot.sh), and kept up to date with the system after that.
+l="$(lspci -nn 2>/dev/null)"
+gpu="$(grep -iE 'vga|3d|display' <<<"$l")"
+if grep -qi nvidia <<<"$gpu"; then
+  if grep -qE '\b(TU|GA|GH|AD|GB)[0-9]{3}|RTX|GTX 16[0-9]{2}|\[10de:(1e|1f|2[0-9a-f])' <<<"$gpu"; then echo "NVIDIA graphics"
+  else echo "NVIDIA graphics (open-source)"; fi
+fi
+grep -qE 'AMD|ATI|Radeon' <<<"$gpu" && echo "AMD graphics"
+grep -qi intel <<<"$gpu" && echo "Intel graphics"
+# Broadcom chips that only work with Broadcom's own driver (wl).
+grep -iE 'network controller' <<<"$l" | grep -qE '\[14e4:(4311|4312|4313|4315|4328|4329|432a|432b|432c|432d|4331|4353|4357|4358|4359|4360|4365|43a0|43b1|43b2|4727)\]' && echo "Broadcom Wi-Fi"
+echo "Firmware updates"
