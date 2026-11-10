@@ -98,6 +98,28 @@ ICONS["apps/memora-notes"] = icon(
       <rect x="610" y="380" width="64" height="44" rx="10" fill="#ff7a8a"/>
     </g>''', rim="#000000", rim_op=0.07)
 
+# Calendar: a white page with a red band and two rings, the days in a grid,
+# one of them circled in red.
+def _days():
+    out = []
+    for r in range(4):
+        for c in range(5):
+            x, y = 262 + c * 125, 450 + r * 105
+            if (r, c) == (2, 2):
+                out.append(f'<circle cx="{x}" cy="{y}" r="44" fill="#ff3b30"/><circle cx="{x}" cy="{y}" r="15" fill="#ffffff"/>')
+            else:
+                out.append(f'<circle cx="{x}" cy="{y}" r="17" fill="#{"c9cbd2" if r < 3 or c < 3 else "e4e6eb"}"/>')
+    return "".join(out)
+
+
+ICONS["apps/memora-calendar"] = icon(
+    "calendar", lg("bg", "#ffffff", "#eceef2") + lg("band", "#ff6259", "#e8312a"), "url(#bg)",
+    f'''<rect x="100" y="100" width="824" height="230" fill="url(#band)"/>
+    <rect x="100" y="320" width="824" height="12" fill="#000" fill-opacity="0.08"/>
+    <g fill="#ffffff" fill-opacity="0.95"><rect x="300" y="190" width="424" height="40" rx="20"/></g>
+    <g filter="url(#soft)"><rect x="318" y="70" width="44" height="150" rx="22" fill="#d9dbe1"/><rect x="662" y="70" width="44" height="150" rx="22" fill="#d9dbe1"/></g>
+    {_days()}''', rim="#000000", rim_op=0.07)
+
 # App Store: a white "A" built from three strokes, on a vivid blue.
 ICONS["apps/memora-store"] = icon(
     "store", lg("bg", "#3fb8ff", "#1f5ef0"), "url(#bg)",

@@ -14,6 +14,12 @@ PanelWindow {
   screen: modelData
   readonly property bool open: Shell.open === "calendar" && (Shell.menuScreen === modelData.name || !Shell.menuScreen)
 
+  // A day (or the month's name): Calendar, on that day.
+  function openCalendar(d) {
+    Shell.close()
+    const day = Qt.formatDate(d, "yyyy-MM-dd")
+    Quickshell.execDetached(["bash", "-c", "memora-app calendar & for i in $(seq 20); do sleep 0.2; qs -p \"${MEMORA_PATH:-/usr/share/memora}/shell/calendar.qml\" ipc call calendar show \"$1\" 2>/dev/null && break; done", "_", day])
+  }
   visible: open || anim.running
   anchors { top: true; right: true; bottom: true }
   margins { top: 6; right: 8; bottom: 90 }
@@ -53,7 +59,12 @@ PanelWindow {
         spacing: 8
         RowLayout {
           Layout.fillWidth: true
-          Txt { text: Qt.formatDate(nc.month, "MMMM yyyy"); font.weight: Font.Bold; font.pixelSize: Theme.large; Layout.fillWidth: true }
+          Txt {
+            text: Qt.formatDate(nc.month, "MMMM yyyy"); font.weight: Font.Bold; font.pixelSize: Theme.large; Layout.fillWidth: true
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: nc.openCalendar(new Date(nc.month)) }
+            Tip { text: "Open Calendar" }
+          }
           Sym { name: "chevron"; width: 14; height: 14; rotation: 180; TapHandler { onTapped: nc.month = new Date(nc.month.getFullYear(), nc.month.getMonth() - 1, 1) } }
           Item { width: 8 }
           Sym { name: "chevron"; width: 14; height: 14; TapHandler { onTapped: nc.month = new Date(nc.month.getFullYear(), nc.month.getMonth() + 1, 1) } }
@@ -78,6 +89,8 @@ PanelWindow {
               width: parent.cell; height: 30
               Rectangle { anchors.centerIn: parent; width: 26; height: 26; radius: 13; color: Theme.accent; visible: today }
               Txt { anchors.centerIn: parent; text: day.getDate(); color: today ? "#ffffff" : (inMonth ? Theme.text : Theme.textFaint); font.weight: today ? Font.Bold : Font.Normal }
+              HoverHandler { cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: nc.openCalendar(day) }
             }
           }
         }

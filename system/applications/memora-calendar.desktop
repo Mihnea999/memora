@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Comment=Events, reminders and public holidays
+Exec=memora-app calendar
+Icon=memora-calendar
+Terminal=false
+Categories=Office;Calendar;
+Keywords=calendar;event;agenda;schedule;holiday;reminder;meeting;

@@ -24,6 +24,7 @@ import qs.display
 import qs.desktops
 import qs.share
 import qs.corners
+import qs.reminders
 
 // Memora shell: one process draws the desktop picture, menu bar, Dock, Launchpad,
 // Spotlight, Control Center, notifications, the password dialog and the lock screen.
@@ -106,6 +107,7 @@ ShellRoot {
   Alert {}
   ShareSheet {}
   Notch {}
+  Reminders {}
   Project {}
   Desktops {}
   HotCorners {}

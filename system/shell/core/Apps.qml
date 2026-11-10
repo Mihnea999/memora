@@ -35,7 +35,7 @@ Singleton {
   }
 
   // Icons drawn for Memora (tools/icons.py); others are shown on a tile.
-  readonly property var nativeIcons: ["memora-store", "memora-photos", "memora-player", "com.mitchellh.ghostty", "memora-files", "memora-notes", "org.gnome.Nautilus", "memora-launchpad", "chromium", "org.gnome.Ptyxis",
+  readonly property var nativeIcons: ["memora-store", "memora-photos", "memora-player", "com.mitchellh.ghostty", "memora-files", "memora-notes", "memora-calendar", "org.gnome.Nautilus", "memora-launchpad", "chromium", "org.gnome.Ptyxis",
     "kitty", "memora-ai", "org.gnome.TextEditor", "org.gnome.Calculator", "org.gnome.Loupe", "org.gnome.Papers",
     "mpv", "memora-settings", "memora-activity", "folder", "folder-download", "user-trash", "user-trash-full"]
 
