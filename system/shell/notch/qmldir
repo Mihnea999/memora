@@ -1,2 +1,3 @@
 module qs.notch
 Notch 1.0 Notch.qml
+FilePanel 1.0 FilePanel.qml

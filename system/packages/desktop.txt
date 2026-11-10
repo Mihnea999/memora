@@ -20,6 +20,16 @@ gnome-calculator
 qt6-imageformats
 kimageformats
 imagemagick
+libheif
+libjxl
+librsvg
+ffmpeg
+ghostscript
+qpdf
+poppler
+tesseract
+tesseract-data-eng
+tesseract-data-ron
 qt6-multimedia
 qt6-multimedia-ffmpeg
 grim

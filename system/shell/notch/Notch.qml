@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -49,8 +50,121 @@ Scope {
   function detach(path) { attached = attached.filter(a => a.path !== path) }
   ListModel { id: items }
 
+  // ---- files dropped on the notch -------------------------------------------
+  // "chat" is Memora AI; "files" is the file panel: what was dropped on the
+  // notch, what can be done with it (convert, compress, combine…) and what
+  // came out. memora-convert does the work.
+  property string mode: "chat"
+  property var shelf: []              // [{ path, name, kind, ext, size, w, h, duration, pages, audio }]
+  property string jobAction: ""       // the action running or last run
+  property string jobLabel: ""        // "Converting to WebP…"
+  property string jobState: ""        // "" | running | done | error
+  property real jobProgress: 0
+  property var jobOut: []             // what it made: [{ path, name, kind, size, … }]
+  property string jobText: ""         // text it found (copied to the clipboard)
+  property string jobMsg: ""          // why it failed
+  property real jobInSize: 0          // the size of what went in, to compare
+  property bool fileFresh: false      // finished while folded: a click shows it
+  function kindOf(p) {
+    const e = (p.split("/").pop().split(".").pop() || "").toLowerCase()
+    if (imageExt.test(p)) return "image"
+    if (/^(mp4|mkv|webm|mov|avi|m4v|wmv|flv|mpg|mpeg|3gp|ts|mts|ogv)$/.test(e)) return "video"
+    if (/^(mp3|m4a|aac|ogg|oga|opus|wav|flac|wma|aiff?|alac|amr)$/.test(e)) return "audio"
+    if (e === "pdf") return "pdf"
+    if (/^(zip|7z|rar|tar|gz|tgz|bz2|tbz|xz|txz|zst|tzst|iso|cab)$/.test(e)) return "archive"
+    if (/^(docx?|odt|rtf|pptx?|odp|xlsx?|ods)$/.test(e)) return "doc"
+    if (/^(txt|md|markdown|csv|json|log|xml|ya?ml|html?)$/.test(e)) return "text"
+    return p.split("/").pop().indexOf(".") < 0 ? "folder" : "other"
+  }
+  function fileEntry(p) {
+    const name = p.split("/").pop()
+    return { path: p, name: name, kind: kindOf(p), ext: name.indexOf(".") > 0 ? name.split(".").pop().toLowerCase() : "", size: -1, w: 0, h: 0, duration: 0, pages: 0, audio: true }
+  }
+  function openFiles(paths, add) {
+    const now = add ? shelf.slice() : []
+    for (const p of paths) if (p && !now.some(f => f.path === p)) now.push(fileEntry(p))
+    if (!now.length) return
+    if (jobState === "running" && !add) cancelJob()
+    shelf = now.slice(0, 50)
+    if (jobState !== "running") resetJob()
+    mode = "files"
+    fileFresh = false
+    inspect(shelf.map(f => f.path), false)
+    expand()
+  }
+  function removeFile(p) {
+    if (jobState === "running") return
+    shelf = shelf.filter(f => f.path !== p)
+    resetJob()
+    if (!shelf.length) closeFiles()
+  }
+  function closeFiles() { if (jobState === "running") cancelJob(); shelf = []; resetJob(); mode = "chat"; collapse() }
+  function resetJob() { jobAction = ""; jobState = ""; jobProgress = 0; jobOut = []; jobText = ""; jobMsg = "" }
+  // What came out becomes what's on the shelf: convert, then compress, and so on.
+  function keepGoing() { const out = jobOut.map(o => o.path); if (out.length) openFiles(out, false) }
+  function askAbout(paths) { mode = "chat"; attach(paths) }
+  // Sizes, picture sizes, lengths and pages, filled in after the drop.
+  function inspect(paths, outputs) {
+    infoProc.createObject(ai, { outputs: outputs, command: ["memora-convert", "info"].concat(paths) })
+  }
+  function setInfo(o, outputs) {
+    const list = (outputs ? jobOut : shelf).slice()
+    const i = list.findIndex(f => f.path === o.path)
+    if (i < 0) { if (outputs) list.push(o); else return }
+    else list[i] = Object.assign({}, list[i], o)
+    if (outputs) jobOut = list; else shelf = list
+  }
+  function runAction(a, files) {
+    if (jobState === "running") return
+    resetJob()
+    jobAction = a.id; jobLabel = a.busy || "Working…"; jobState = "running"
+    jobInSize = files.reduce((s, f) => s + Math.max(0, (shelf.find(x => x.path === f) || {}).size || 0), 0)
+    runner.command = ["memora-convert", "run", a.id].concat(files)
+    runner.running = true
+  }
+  function cancelJob() { if (runner.running) { runner.cancelled = true; runner.running = false } resetJob() }
+  Component {
+    id: infoProc
+    Process {
+      property bool outputs: false
+      running: true
+      stdout: SplitParser { onRead: line => { try { ai.setInfo(JSON.parse(line), outputs) } catch (e) {} } }
+      onExited: destroy()
+    }
+  }
+  Process {
+    id: runner
+    property bool cancelled: false
+    property var made: []
+    onRunningChanged: if (running) { cancelled = false; made = [] }
+    stdout: SplitParser {
+      onRead: line => {
+        if (line.startsWith("PROGRESS ")) ai.jobProgress = parseInt(line.slice(9)) / 100
+        else if (line.startsWith("OUT ")) runner.made = runner.made.concat([line.slice(4)])
+        else if (line.startsWith("TEXT ")) { try { ai.jobText = JSON.parse(line.slice(5)) } catch (e) {} }
+        else if (line.startsWith("ERROR ")) ai.jobMsg = line.slice(6)
+      }
+    }
+    onExited: code => {
+      if (cancelled) { cancelled = false; return }
+      if (code === 0) {
+        ai.jobOut = made.map(p => ai.fileEntry(p))
+        ai.jobProgress = 1
+        ai.jobState = "done"
+        if (made.length) ai.inspect(made, true)
+        Quickshell.execDetached(["memora-sound", "done"])
+        if (!ai.expanded) { ai.fileFresh = true; ai.flash = true }
+      } else {
+        ai.jobState = "error"
+        if (!ai.jobMsg) ai.jobMsg = "Something went wrong."
+        Quickshell.execDetached(["memora-sound", "error"])
+        if (!ai.expanded) ai.fileFresh = true
+      }
+    }
+  }
+
   function toggle() { expanded ? collapse() : expand() }
-  function expand() { started = true; Shell.close(); expanded = true }
+  function expand() { started = mode === "chat" || started; Shell.close(); expanded = true }
   function collapse() { expanded = false; picking = false }
   function send(obj) { agent.write(JSON.stringify(obj) + "\n") }
   // Model and effort, from the header: the agent keeps them in ai.json.
@@ -186,9 +300,11 @@ Scope {
 
   IpcHandler {
     target: "ai"
-    function toggle(): void { ai.toggle() }
-    function open(): void { ai.expand() }
-    function ask(q: string): void { ai.expand(); ai.ask(q) }
+    function toggle(): void { if (!ai.expanded) ai.mode = "chat"; ai.toggle() }
+    function open(): void { ai.mode = "chat"; ai.expand() }
+    function ask(q: string): void { ai.mode = "chat"; ai.expand(); ai.ask(q) }
+    // Files to work on (memora-shell / Files): the notch opens on them.
+    function files(paths: string): void { ai.openFiles(paths.split("\n").filter(p => p !== ""), false) }
   }
   Connections { target: Shell; function onOpenChanged() { if (Shell.open !== "" && ai.expanded) ai.collapse() } }
 
@@ -223,17 +339,25 @@ Scope {
       readonly property color line: Qt.rgba(1, 1, 1, 0.1)
 
       // Folded: a pill in the bar; working: wider, with what it is doing.
-      readonly property real foldedW: ai.busy ? Math.min(460, win.width * 0.3, statusText.implicitWidth + 86) : (ai.flash ? 210 : 132)
+      readonly property bool converting: ai.jobState === "running"
+      readonly property real foldedW: ai.busy || converting ? Math.min(460, win.width * 0.3, statusText.implicitWidth + 86) : (ai.flash ? Math.max(210, Math.min(360, statusText.implicitWidth + 70)) : 132)
       Binding { target: Shell; property: "notchWidth"; value: win.foldedW; when: win.here }
-      readonly property real openW: Math.min(win.width - 40, 680)
-      readonly property real openH: Math.min(win.height - 40, Math.max(items.count ? 600 : 250 + (ai.attached.length ? 80 : 0), ai.picking ? picker.height + 70 : 0))
+      readonly property real chatW: Math.min(win.width - 40, 680)
+      readonly property real chatH: Math.min(win.height - 40, Math.max(items.count ? 600 : 250 + (ai.attached.length ? 80 : 0), ai.picking ? picker.height + 70 : 0))
+      readonly property real filesW: Math.min(win.width - 40, 600)
+      readonly property real filesH: Math.min(win.height - 40, filePanel.implicitHeight + 40)
+      readonly property real openW: ai.mode === "files" ? filesW : chatW
+      readonly property real openH: ai.mode === "files" ? filesH : chatH
+      // A file dragged over the folded notch: it opens a little into two
+      // places to drop it, "Convert & more" and "Ask AI".
+      readonly property bool dragWide: drop.containsDrag && !ai.expanded
 
       Item {
         id: island
         anchors.horizontalCenter: parent.horizontalCenter
         y: 0
-        width: ai.expanded ? win.openW : win.foldedW
-        height: ai.expanded ? win.openH : 30
+        width: ai.expanded ? win.openW : win.dragWide ? Math.min(win.width - 40, 420) : win.foldedW
+        height: ai.expanded ? win.openH : win.dragWide ? 118 : 30
         // Nothing inside ever shows outside the island while it grows or shrinks
         // (its top edge is the top of the screen, so nothing is lost there).
         clip: true
@@ -253,13 +377,22 @@ Scope {
         // ---- folded content (comes back once the island has nearly closed)
         Item {
           anchors.fill: parent
-          opacity: !ai.expanded && island.height < 44 ? 1 : 0
+          opacity: !ai.expanded && !win.dragWide && island.height < 44 ? 1 : 0
           visible: opacity > 0
           Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+          // Converting: a ring that fills instead of the sparkle.
+          FilePanel.Ring {
+            id: foldRing
+            visible: win.converting
+            x: 13; anchors.verticalCenter: parent.verticalCenter
+            width: 15; height: 15; thin: true
+            value: ai.jobProgress; spinning: ai.jobProgress <= 0.01
+          }
           Sym {
             id: spark
+            visible: !win.converting
             x: 14; anchors.verticalCenter: parent.verticalCenter
-            name: "sparkle"; width: 13; height: 13
+            name: ai.fileFresh && ai.flash ? "check" : "sparkle"; width: 13; height: 13
             color: ai.busy ? Theme.accent : (ai.flash ? Theme.green : Qt.rgba(1, 1, 1, 0.85))
             SequentialAnimation on scale {
               running: ai.busy; loops: Animation.Infinite
@@ -270,34 +403,90 @@ Scope {
           Txt {
             id: statusText
             anchors { left: spark.right; leftMargin: 9; right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
-            text: ai.busy ? (ai.status || "Working…") : (ai.flash ? "Answer ready" : "Ask AI")
-            color: ai.busy || ai.flash ? win.ink : win.dim
+            text: win.converting ? ai.jobLabel.replace(/…$/, "") + "  " + Math.round(ai.jobProgress * 100) + "%"
+              : ai.busy ? (ai.status || "Working…")
+              : ai.flash && ai.fileFresh ? (ai.jobState === "error" ? "Couldn't do it" : ai.jobOut.length === 1 ? "Saved " + ai.jobOut[0].name : "Done")
+              : (ai.flash ? "Answer ready" : "Ask AI")
+            color: ai.busy || ai.flash || win.converting ? win.ink : win.dim
+            font.features: { "tnum": 1 }
             font.pixelSize: Theme.small
             elide: Text.ElideRight
           }
         }
         HoverHandler { id: islandHover; cursorShape: ai.expanded ? Qt.ArrowCursor : Qt.PointingHandCursor }
-        TapHandler { enabled: !ai.expanded; onTapped: { ai.flash = false; ai.expand() } }
-        scale: !ai.expanded && islandHover.hovered ? 1.04 : 1 + (drop.containsDrag && !ai.expanded ? 0.08 : 0)
+        // A click: what is going on with files (working, or just done), else the chat.
+        TapHandler {
+          enabled: !ai.expanded
+          onTapped: {
+            ai.mode = (ai.shelf.length && (win.converting || ai.fileFresh)) ? "files" : "chat"
+            ai.flash = false; ai.fileFresh = false; ai.expand()
+          }
+        }
+        scale: !ai.expanded && islandHover.hovered && !win.dragWide ? 1.04 : 1
         Behavior on scale { NumberAnimation { duration: Theme.fast } }
 
-        // Files and pictures dropped on it (open or folded) go with the next message.
+        // Files dropped on it. Folded: on "Convert & more" they open the file
+        // panel, on "Ask AI" they go with the next message. Open: they join
+        // what is there (the file panel's files, or the message's).
         DropArea {
           id: drop
           anchors.fill: parent
           keys: ["text/uri-list"]
-          onEntered: ev => { if (!ev.hasUrls) ev.accepted = false }
+          property string zone: "files"
+          property int count: 0
+          property string kind: ""
+          onEntered: ev => {
+            if (!ev.hasUrls) { ev.accepted = false; return }
+            const files = ev.urls.map(u => u.toString()).filter(u => u.startsWith("file://"))
+            count = files.length
+            const ks = files.map(u => ai.kindOf(decodeURIComponent(u.slice(7))))
+            kind = ks.every(k => k === ks[0]) ? (ks[0] || "") : "mixed"
+            zone = "files"
+          }
+          onPositionChanged: ev => { if (!ai.expanded) zone = ev.x < width / 2 ? "files" : "ai" }
           onDropped: ev => {
             const paths = ev.urls.map(u => u.toString()).filter(u => u.startsWith("file://")).map(u => decodeURIComponent(u.slice(7)))
-            if (paths.length) { ev.acceptProposedAction(); ai.attach(paths) }
+            if (!paths.length) return
+            ev.acceptProposedAction()
+            // Dragged out of the notch and back onto it: nothing to do.
+            if (ai.expanded && ai.mode === "files" && paths.every(p => ai.shelf.some(f => f.path === p) || ai.jobOut.some(o => o.path === p))) return
+            if (ai.expanded) { if (ai.mode === "files") ai.openFiles(paths, true); else ai.attach(paths) }
+            else if (zone === "ai") { ai.mode = "chat"; ai.attach(paths) }
+            else ai.openFiles(paths, false)
           }
         }
+        // Over the open panel: a ring of light says it will take them.
         Rectangle {
           anchors { fill: parent; topMargin: -radius }
-          visible: drop.containsDrag
+          visible: drop.containsDrag && ai.expanded
           radius: shape.radius; color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12)
           border.width: 2; border.color: Theme.accent
           z: 10
+        }
+        // Over the folded notch: the two places to drop.
+        Row {
+          id: zones
+          z: 11
+          anchors { fill: parent; margins: 10; topMargin: 8 }
+          spacing: 8
+          opacity: win.dragWide && island.height > 80 ? 1 : 0
+          visible: opacity > 0
+          Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+          DropZone {
+            width: (zones.width - zones.spacing) / 2; height: zones.height
+            hot: drop.zone === "files"
+            sym: "convert"
+            title: drop.count > 1 ? "Work on " + drop.count + " files" : "Convert & more"
+            sub: ({ image: "PNG, JPEG, WebP, PDF · compress · resize", video: "MP4, GIF, MP3 · compress · mute", audio: "MP3, M4A, WAV, FLAC",
+                    pdf: drop.count > 1 ? "combine · compress · pictures" : "compress · pictures · text", archive: "extract here" })[drop.kind] || "zip · share · copy"
+          }
+          DropZone {
+            width: (zones.width - zones.spacing) / 2; height: zones.height
+            hot: drop.zone === "ai"
+            sym: "sparkle"
+            title: "Ask AI"
+            sub: drop.count > 1 ? "about these files" : "about this file"
+          }
         }
 
         // ---- open content
@@ -308,9 +497,9 @@ Scope {
           id: body
           anchors.horizontalCenter: parent.horizontalCenter
           y: 14
-          width: win.openW - 36
-          height: win.openH - 32
-          opacity: ai.expanded ? 1 : 0
+          width: win.chatW - 36
+          height: win.chatH - 32
+          opacity: ai.expanded && ai.mode === "chat" ? 1 : 0
           visible: opacity > 0
           // Out at once when closing; in after the island has started to open.
           Behavior on opacity { NumberAnimation { id: bodyFade; duration: Prefs.motion(90) } }
@@ -605,7 +794,22 @@ Scope {
               Tip { text: ai.busy ? "Stop" : "Send"; delay: 400 }
             }
           }
-          Connections { target: ai; function onExpandedChanged() { if (ai.expanded && win.here) Qt.callLater(() => field.forceActiveFocus()) } }
+          Connections { target: ai; function onExpandedChanged() { if (ai.expanded && win.here && ai.mode === "chat") Qt.callLater(() => field.forceActiveFocus()) } }
+        }
+
+        // ---- the file panel (laid out at its open width, like the chat)
+        FilePanel {
+          id: filePanel
+          n: ai
+          anchors.horizontalCenter: parent.horizontalCenter
+          y: 20
+          width: win.filesW - 40
+          shown: ai.expanded && ai.mode === "files" && win.here
+          opacity: shown ? 1 : 0
+          visible: opacity > 0
+          enabled: shown
+          focus: shown
+          Behavior on opacity { NumberAnimation { duration: Prefs.motion(90) } }
         }
       }
     }
@@ -632,6 +836,51 @@ Scope {
       width: 18; height: 18; radius: 9; color: Qt.rgba(0, 0, 0, 0.7)
       Sym { anchors.centerIn: parent; name: "close"; width: 8; height: 8; color: "#ffffff" }
       TapHandler { onTapped: ai.detach(at.path) }
+    }
+  }
+
+  // Where a dragged file can go: lights up while the file is over it.
+  component DropZone: Rectangle {
+    id: dz
+    property bool hot: false
+    property string sym
+    property string title
+    property string sub
+    radius: 20
+    color: hot ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.26) : Qt.rgba(1, 1, 1, 0.05)
+    Behavior on color { ColorAnimation { duration: Theme.fast } }
+    // A dashed edge that runs round while the file is over it.
+    Shape {
+      anchors.fill: parent
+      preferredRendererType: Shape.CurveRenderer
+      ShapePath {
+        strokeColor: dz.hot ? Theme.accent : Qt.rgba(1, 1, 1, 0.22)
+        strokeWidth: 1.5; fillColor: "transparent"
+        strokeStyle: ShapePath.DashLine; dashPattern: [4, 3]
+        NumberAnimation on dashOffset { running: dz.hot && dz.visible; from: 0; to: -14; duration: 600; loops: Animation.Infinite }
+        PathRectangle { x: 1; y: 1; width: dz.width - 2; height: dz.height - 2; radius: dz.radius - 1 }
+      }
+    }
+    Column {
+      anchors.centerIn: parent
+      width: parent.width - 20
+      spacing: 4
+      Item {
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: 34; height: 34
+        Rectangle { anchors.fill: parent; radius: 17; color: dz.hot ? Theme.accent : Qt.rgba(1, 1, 1, 0.1); Behavior on color { ColorAnimation { duration: Theme.fast } } }
+        Sym { anchors.centerIn: parent; name: dz.sym; width: 16; height: 16; color: "#ffffff" }
+        scale: dz.hot ? 1.12 : 1
+        Behavior on scale { SpringAnimation { spring: 5; damping: 0.25; epsilon: 0.005 } }
+        // A little hop when the file comes over it.
+        SequentialAnimation on y {
+          running: dz.hot && dz.visible; loops: Animation.Infinite
+          NumberAnimation { from: 0; to: -3; duration: 420; easing.type: Easing.OutQuad }
+          NumberAnimation { from: -3; to: 0; duration: 420; easing.type: Easing.InQuad }
+        }
+      }
+      Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: dz.title; color: "#f5f5f7"; font.weight: Font.Bold; elide: Text.ElideRight }
+      Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: dz.sub; color: Qt.rgba(0.96, 0.96, 0.97, dz.hot ? 0.75 : 0.45); font.pixelSize: Theme.small - 1; elide: Text.ElideRight }
     }
   }
 

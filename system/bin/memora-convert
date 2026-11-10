@@ -1,0 +1,620 @@
+#!/usr/bin/env python3
+"""memora-convert — what the notch does with files dropped on it: convert,
+compress, resize, combine, extract and so on, with the tools Memora ships
+(ffmpeg, ImageMagick, Ghostscript, qpdf, Tesseract, 7-Zip).
+
+  memora-convert info FILE...          one JSON line per file: kind, size,
+                                       width/height, duration, pages
+  memora-convert run ACTION FILE...    do it; prints "PROGRESS 0-100",
+                                       "OUT path" for each file made,
+                                       "TEXT json" for text it found,
+                                       then "DONE" or "ERROR why"
+
+The originals are never changed: every result is a new file next to the
+original ("photo.webp", "photo (compressed).jpg", "photo 2.webp" when the
+name is taken), or in Downloads when that folder is read-only. Stopped
+half-way (SIGTERM), it removes what it had started.
+"""
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+
+IMAGE = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif", "avif", "jxl", "svg", "ico", "tga", "jfif"}
+VIDEO = {"mp4", "mkv", "webm", "mov", "avi", "m4v", "wmv", "flv", "mpg", "mpeg", "3gp", "ts", "mts", "ogv"}
+AUDIO = {"mp3", "m4a", "aac", "ogg", "oga", "opus", "wav", "flac", "wma", "aiff", "aif", "alac", "amr"}
+ARCHIVE = {"zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz", "xz", "txz", "zst", "tzst", "iso", "cab"}
+DOC = {"doc", "docx", "odt", "rtf", "ppt", "pptx", "odp", "xls", "xlsx", "ods"}
+TEXT = {"txt", "md", "markdown", "csv", "json", "log", "xml", "yaml", "yml", "html", "htm"}
+
+made = []          # files started by this run: removed if it fails or is stopped
+child = None
+
+
+def say(*a):
+    try:
+        print(*a, flush=True)
+    except BrokenPipeError:
+        pass   # nobody listening any more: finish quietly
+
+
+last = -1
+
+
+def progress(x):
+    global last
+    n = max(0, min(100, round(x * 100)))
+    if n != last:
+        last = n
+        say("PROGRESS %d" % n)
+
+
+def ext_of(p):
+    n = os.path.basename(p).lower()
+    for double in (".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst"):
+        if n.endswith(double):
+            return "tar"
+    return n.rsplit(".", 1)[-1] if "." in n else ""
+
+
+def stem_of(p):
+    n = os.path.basename(p)
+    for double in (".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst"):
+        if n.lower().endswith(double):
+            return n[: -len(double)]
+    return n.rsplit(".", 1)[0] if "." in n[1:] else n
+
+
+def kind_of(p):
+    if os.path.isdir(p):
+        return "folder"
+    e = ext_of(p)
+    if e in IMAGE:
+        return "image"
+    if e in VIDEO:
+        return "video"
+    if e in AUDIO:
+        return "audio"
+    if e == "pdf":
+        return "pdf"
+    if e in ARCHIVE:
+        return "archive"
+    if e in DOC:
+        return "doc"
+    if e in TEXT:
+        return "text"
+    try:
+        m = subprocess.run(["file", "-b", "--mime-type", p], capture_output=True, text=True, timeout=3).stdout.strip()
+    except Exception:
+        m = ""
+    for k in ("image", "video", "audio"):
+        if m.startswith(k + "/"):
+            return k
+    if m == "application/pdf":
+        return "pdf"
+    if m.startswith("text/"):
+        return "text"
+    return "other"
+
+
+def out_dir(src):
+    d = os.path.dirname(os.path.abspath(src))
+    if os.access(d, os.W_OK):
+        return d
+    d = os.path.expanduser("~/Downloads")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def unique(d, stem, ext):
+    """A free name in d: "stem.ext", then "stem 2.ext", "stem 3.ext"…"""
+    tail = "." + ext if ext else ""
+    p = os.path.join(d, stem + tail)
+    n = 2
+    while os.path.exists(p):
+        p = os.path.join(d, "%s %d%s" % (stem, n, tail))
+        n += 1
+    made.append(p)
+    return p
+
+
+def target(src, ext, suffix=""):
+    return unique(out_dir(src), stem_of(src) + (" (%s)" % suffix if suffix else ""), ext)
+
+
+def run(cmd, on_line=None, stdin=None):
+    """Run a tool; on_line gets each line of its output (stdout and stderr)."""
+    global child
+    child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=stdin or subprocess.DEVNULL, text=True, errors="replace", bufsize=1)
+    tail = []
+    for line in child.stdout:
+        line = line.rstrip("\r\n")
+        tail = (tail + [line])[-8:]
+        if on_line:
+            for part in line.split("\r"):
+                on_line(part)
+    code = child.wait()
+    child = None
+    if code != 0:
+        why = next((l for l in reversed(tail) if l.strip()), "")
+        raise RuntimeError("%s failed%s" % (os.path.basename(cmd[0]), (": " + why.strip()[:160]) if why else ""))
+
+
+def which(*names):
+    for n in names:
+        if shutil.which(n):
+            return n
+    return None
+
+
+# ---- information -------------------------------------------------------------
+
+def probe(p):
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", p], capture_output=True, text=True, timeout=10)
+        return json.loads(r.stdout or "{}")
+    except Exception:
+        return {}
+
+
+def duration(p):
+    try:
+        return float(probe(p).get("format", {}).get("duration") or 0)
+    except Exception:
+        return 0.0
+
+
+def pdf_pages(p):
+    try:
+        if which("qpdf"):
+            r = subprocess.run(["qpdf", "--show-npages", p], capture_output=True, text=True, timeout=10)
+            return int(r.stdout.strip() or 0)
+        r = subprocess.run(["pdfinfo", p], capture_output=True, text=True, timeout=10)
+        m = re.search(r"^Pages:\s+(\d+)", r.stdout, re.M)
+        return int(m.group(1)) if m else 0
+    except Exception:
+        return 0
+
+
+def info(p):
+    o = {"path": p, "name": os.path.basename(p), "kind": kind_of(p), "ext": ext_of(p)}
+    try:
+        if os.path.isdir(p):
+            total = 0
+            for root, _, files in os.walk(p):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, f))
+                    except OSError:
+                        pass
+            o["size"] = total
+        else:
+            o["size"] = os.path.getsize(p)
+    except OSError:
+        o["size"] = 0
+    k = o["kind"]
+    try:
+        if k == "image":
+            r = subprocess.run(["magick", "identify", "-ping", "-format", "%w %h\n", p + "[0]"], capture_output=True, text=True, timeout=10)
+            w, h = (r.stdout.split() + ["0", "0"])[:2]
+            o["w"], o["h"] = int(w), int(h)
+        elif k in ("video", "audio"):
+            j = probe(p)
+            o["duration"] = float(j.get("format", {}).get("duration") or 0)
+            v = next((s for s in j.get("streams", []) if s.get("codec_type") == "video" and not s.get("disposition", {}).get("attached_pic")), None)
+            if v:
+                o["w"], o["h"] = int(v.get("width") or 0), int(v.get("height") or 0)
+            o["audio"] = any(s.get("codec_type") == "audio" for s in j.get("streams", []))
+        elif k == "pdf":
+            o["pages"] = pdf_pages(p)
+    except Exception:
+        pass
+    return o
+
+
+# ---- images ------------------------------------------------------------------
+
+def image_to(fmt):
+    def go(files, step):
+        for i, f in enumerate(files):
+            out = target(f, fmt)
+            args = ["magick", f + "[0]" if ext_of(f) in ("gif", "tif", "tiff", "ico") else f, "-auto-orient"]
+            if fmt in ("jpg",):
+                args += ["-background", "white", "-alpha", "remove", "-quality", "90"]
+            elif fmt in ("webp", "avif", "heic"):
+                args += ["-quality", "82"]
+            run(args + [out])
+            say("OUT " + out)
+            step(i + 1)
+    return go
+
+
+def image_compress(files, step):
+    for i, f in enumerate(files):
+        e = ext_of(f)
+        ext = "jpg" if e in ("jpg", "jpeg", "jfif") else e if e in ("webp", "avif") else "webp"
+        out = target(f, ext, "compressed")
+        run(["magick", f + "[0]", "-auto-orient", "-strip", "-resize", "3840x3840>", "-quality", "72" if ext == "jpg" else "70", out])
+        say("OUT " + out)
+        step(i + 1)
+
+
+def image_resize(geometry, suffix):
+    def go(files, step):
+        for i, f in enumerate(files):
+            out = target(f, ext_of(f) if ext_of(f) not in ("heic", "heif", "svg") else "jpg", suffix)
+            run(["magick", f, "-auto-orient", "-resize", geometry, out])
+            say("OUT " + out)
+            step(i + 1)
+    return go
+
+
+def image_rotate(files, step):
+    for i, f in enumerate(files):
+        out = target(f, ext_of(f) if ext_of(f) not in ("heic", "heif", "svg") else "jpg", "rotated")
+        run(["magick", f, "-auto-orient", "-rotate", "90", out])
+        say("OUT " + out)
+        step(i + 1)
+
+
+def image_strip(files, step):
+    for i, f in enumerate(files):
+        out = target(f, ext_of(f) if ext_of(f) not in ("svg",) else "png", "no info")
+        run(["magick", f, "-auto-orient", "-strip", out])
+        say("OUT " + out)
+        step(i + 1)
+
+
+def tesseract_langs():
+    try:
+        r = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True, timeout=5)
+        langs = [l.strip() for l in r.stdout.splitlines()[1:] if l.strip() and l.strip() != "osd"]
+    except Exception:
+        langs = []
+    pick = [l for l in ("eng", "ron", "deu", "fra", "spa", "ita") if l in langs]
+    return "+".join(pick or langs[:3] or ["eng"])
+
+
+def copy_text(text):
+    try:
+        subprocess.run(["wl-copy"], input=text, text=True, timeout=5)
+    except Exception:
+        pass
+    say("TEXT " + json.dumps(text))
+
+
+def image_text(files, step):
+    if not which("tesseract"):
+        raise RuntimeError("Text recognition isn't installed (tesseract).")
+    out = []
+    for i, f in enumerate(files):
+        tmp = None
+        src = f
+        if ext_of(f) in ("heic", "heif", "avif", "webp", "svg", "jxl"):
+            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+            run(["magick", f + "[0]", tmp])
+            src = tmp
+        try:
+            r = subprocess.run(["tesseract", src, "-", "-l", tesseract_langs()], capture_output=True, text=True)
+            out.append(r.stdout.strip())
+        finally:
+            if tmp:
+                os.unlink(tmp)
+        step(i + 1)
+    text = "\n\n".join(t for t in out if t)
+    if not text:
+        raise RuntimeError("No text found in the picture.")
+    copy_text(text)
+
+
+def image_clipboard(files, step):
+    f = files[0]
+    data = subprocess.run(["magick", f + "[0]", "-auto-orient", "png:-"], capture_output=True).stdout
+    if not data:
+        raise RuntimeError("Couldn't read the picture.")
+    subprocess.run(["wl-copy", "--type", "image/png"], input=data, timeout=10)
+    step(1)
+
+
+# ---- PDF ---------------------------------------------------------------------
+
+def to_pdf_parts(files, tmpdir, step):
+    """Each file as a PDF: PDFs as they are, pictures turned into pages."""
+    parts = []
+    for i, f in enumerate(files):
+        if ext_of(f) == "pdf":
+            parts.append(f)
+        else:
+            p = os.path.join(tmpdir, "%04d.pdf" % i)
+            run(["magick", f + "[0]", "-auto-orient", "-background", "white", "-alpha", "remove", "-quality", "92", p])
+            parts.append(p)
+        step(i + 1)
+    return parts
+
+
+def combine_pdf(files, step):
+    first = files[0]
+    name = stem_of(first) if len(files) == 1 else ("Combined" if any(ext_of(f) == "pdf" for f in files) else "Pictures")
+    out = unique(out_dir(first), name, "pdf")
+    with tempfile.TemporaryDirectory() as tmp:
+        parts = to_pdf_parts(files, tmp, lambda n: step(n * 0.8))
+        if len(parts) == 1:
+            shutil.copyfile(parts[0], out)
+        elif which("qpdf"):
+            run(["qpdf", "--empty", "--pages"] + parts + ["--", out])
+        else:
+            run(["gs", "-q", "-dBATCH", "-dNOPAUSE", "-sDEVICE=pdfwrite", "-sOutputFile=" + out] + parts)
+    say("OUT " + out)
+    step(len(files))
+
+
+def pdf_compress(files, step):
+    for i, f in enumerate(files):
+        out = target(f, "pdf", "compressed")
+        pages = max(1, pdf_pages(f))
+        def line(l, i=i):
+            m = re.match(r"Page (\d+)", l)
+            if m:
+                step(i + int(m.group(1)) / pages)
+        run(["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.5",
+             "-dPDFSETTINGS=/ebook", "-dDetectDuplicateImages=true", "-sOutputFile=" + out, f], line)
+        # Already as small as it gets: keep the original instead of a bigger copy.
+        if os.path.getsize(out) >= os.path.getsize(f):
+            shutil.copyfile(f, out)
+        say("OUT " + out)
+        step(i + 1)
+
+
+def pdf_images(files, step):
+    for i, f in enumerate(files):
+        d = unique(out_dir(f), stem_of(f) + " pages", "")
+        os.makedirs(d)
+        pages = max(1, pdf_pages(f))
+        def line(l, i=i):
+            m = re.match(r"Page (\d+)", l)
+            if m:
+                step(i + int(m.group(1)) / pages)
+        run(["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=png16m", "-r150", "-dTextAlphaBits=4", "-dGraphicsAlphaBits=4",
+             "-sOutputFile=" + os.path.join(d, stem_of(f) + " %03d.png"), f], line)
+        say("OUT " + d)
+        step(i + 1)
+
+
+def pdf_text(files, step):
+    texts = []
+    for i, f in enumerate(files):
+        out = target(f, "txt")
+        if which("pdftotext"):
+            run(["pdftotext", "-layout", f, out])
+        else:
+            run(["gs", "-q", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=txtwrite", "-sOutputFile=" + out, f])
+        with open(out, errors="replace") as fh:
+            texts.append(fh.read().strip())
+        say("OUT " + out)
+        step(i + 1)
+    text = "\n\n".join(t for t in texts if t)
+    if text:
+        copy_text(text[:200000])
+
+
+# ---- video and audio ---------------------------------------------------------
+
+def ffmpeg(src, args, out, step, i):
+    total = duration(src) or 1
+
+    def line(l):
+        if l.startswith("out_time_us="):
+            try:
+                step(i + min(1, int(l.split("=")[1]) / 1e6 / total))
+            except ValueError:
+                pass
+    run(["ffmpeg", "-hide_banner", "-nostdin", "-y", "-v", "error", "-progress", "pipe:1", "-nostats", "-i", src] + args + [out], line)
+
+
+EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+
+
+def video_to(fmt):
+    def go(files, step):
+        for i, f in enumerate(files):
+            out = target(f, fmt)
+            if fmt == "mp4":
+                args = ["-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+                        "-vf", EVEN, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
+            elif fmt == "webm":
+                args = ["-map", "0:v:0", "-map", "0:a?", "-c:v", "libvpx-vp9", "-crf", "33", "-b:v", "0", "-row-mt", "1", "-deadline", "good",
+                        "-cpu-used", "5", "-c:a", "libopus", "-b:a", "128k"]
+            else:  # mov
+                args = ["-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+                        "-vf", EVEN, "-c:a", "aac", "-b:a", "192k"]
+            ffmpeg(f, args, out, step, i)
+            say("OUT " + out)
+            step(i + 1)
+    return go
+
+
+def video_gif(files, step):
+    for i, f in enumerate(files):
+        out = target(f, "gif")
+        ffmpeg(f, ["-vf", "fps=12,scale='min(720,iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a", "-loop", "0"], out, step, i)
+        say("OUT " + out)
+        step(i + 1)
+
+
+def video_compress(files, step):
+    for i, f in enumerate(files):
+        out = target(f, "mp4", "compressed")
+        ffmpeg(f, ["-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "medium", "-crf", "28", "-pix_fmt", "yuv420p",
+                   "-vf", "scale='if(gt(ih,iw),-2,min(1920,iw))':'if(gt(ih,iw),min(1920,ih),-2)',scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                   "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"], out, step, i)
+        if os.path.getsize(out) >= os.path.getsize(f) and ext_of(f) == "mp4":
+            shutil.copyfile(f, out)
+        say("OUT " + out)
+        step(i + 1)
+
+
+def video_mute(files, step):
+    for i, f in enumerate(files):
+        out = target(f, ext_of(f), "no sound")
+        ffmpeg(f, ["-map", "0", "-map", "-0:a", "-c", "copy"], out, step, i)
+        say("OUT " + out)
+        step(i + 1)
+
+
+def video_frame(files, step):
+    for i, f in enumerate(files):
+        out = target(f, "png", "frame")
+        at = duration(f) * 0.25
+        run(["ffmpeg", "-hide_banner", "-nostdin", "-y", "-v", "error", "-ss", "%.2f" % at, "-i", f, "-frames:v", "1", out])
+        say("OUT " + out)
+        step(i + 1)
+
+
+AUDIO_ARGS = {
+    "mp3": ["-c:a", "libmp3lame", "-q:a", "2"],
+    "m4a": ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"],
+    "ogg": ["-c:a", "libopus", "-b:a", "128k"],
+    "wav": ["-c:a", "pcm_s16le"],
+    "flac": ["-c:a", "flac"],
+}
+
+
+def audio_to(fmt):
+    def go(files, step):
+        for i, f in enumerate(files):
+            out = target(f, fmt)
+            ffmpeg(f, ["-vn", "-map_metadata", "0"] + AUDIO_ARGS[fmt], out, step, i)
+            say("OUT " + out)
+            step(i + 1)
+    return go
+
+
+# ---- archives ----------------------------------------------------------------
+
+def sevenzip():
+    return which("7z", "7zz", "7za") or "7z"
+
+
+def percent_of(step, i, n=1):
+    def line(l):
+        m = re.match(r"\s*(\d+)%", l)
+        if m:
+            step(i + int(m.group(1)) / 100 * n)
+    return line
+
+
+def make_zip(files, step):
+    first = files[0]
+    name = stem_of(first) if len(files) == 1 else "Archive"
+    out = unique(out_dir(first), name, "zip")
+    # Paths inside the zip start at each item's own name.
+    by_dir = {}
+    for f in files:
+        by_dir.setdefault(os.path.dirname(os.path.abspath(f)), []).append(os.path.basename(f))
+    for d, names in by_dir.items():
+        run_in(d, [sevenzip(), "a", "-tzip", "-bsp1", "-bso0", "-mx=5", out, "--"] + names, percent_of(step, 0, len(files)))
+    say("OUT " + out)
+    step(len(files))
+
+
+def run_in(d, cmd, on_line):
+    here = os.getcwd()
+    os.chdir(d)
+    try:
+        run(cmd, on_line)
+    finally:
+        os.chdir(here)
+
+
+def extract(files, step):
+    for i, f in enumerate(files):
+        d = unique(out_dir(f), stem_of(f), "")
+        os.makedirs(d)
+        run([sevenzip(), "x", "-bsp1", "-bso0", "-y", "-o" + d, f], percent_of(step, i))
+        # A .tar.gz comes out of 7-Zip as a .tar: open that too.
+        inner = [x for x in os.listdir(d)]
+        if len(inner) == 1 and inner[0].lower().endswith(".tar"):
+            t = os.path.join(d, inner[0])
+            run([sevenzip(), "x", "-bsp1", "-bso0", "-y", "-o" + d, t])
+            os.unlink(t)
+        # One folder inside: that folder, not a folder in a folder.
+        inner = os.listdir(d)
+        if len(inner) == 1 and os.path.isdir(os.path.join(d, inner[0])):
+            only = os.path.join(d, inner[0])
+            tmp = d + ".memora-tmp"
+            os.rename(only, tmp)
+            os.rmdir(d)
+            made.remove(d)
+            final = unique(out_dir(f), inner[0], "")
+            os.rename(tmp, final)
+            d = final
+        say("OUT " + d)
+        step(i + 1)
+
+
+ACTIONS = {
+    "img-png": image_to("png"), "img-jpg": image_to("jpg"), "img-webp": image_to("webp"), "img-avif": image_to("avif"), "img-heic": image_to("heic"),
+    "img-compress": image_compress, "img-half": image_resize("50%", "50%"), "img-1920": image_resize("1920x1920>", "1920"),
+    "img-rotate": image_rotate, "img-strip": image_strip, "img-text": image_text, "img-clip": image_clipboard,
+    "pdf": combine_pdf, "pdf-compress": pdf_compress, "pdf-images": pdf_images, "pdf-text": pdf_text,
+    "vid-mp4": video_to("mp4"), "vid-webm": video_to("webm"), "vid-mov": video_to("mov"), "vid-gif": video_gif,
+    "vid-compress": video_compress, "vid-mute": video_mute, "vid-frame": video_frame, "vid-mp3": audio_to("mp3"),
+    "aud-mp3": audio_to("mp3"), "aud-m4a": audio_to("m4a"), "aud-ogg": audio_to("ogg"), "aud-wav": audio_to("wav"), "aud-flac": audio_to("flac"),
+    "zip": make_zip, "extract": extract,
+}
+
+
+def stopped(*_):
+    if child and child.poll() is None:
+        child.kill()
+    cleanup()
+    sys.exit(143)
+
+
+def cleanup():
+    for p in made:
+        try:
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+            elif os.path.exists(p):
+                os.unlink(p)
+        except OSError:
+            pass
+
+
+def main():
+    a = sys.argv[1:]
+    if len(a) >= 2 and a[0] == "info":
+        for p in a[1:]:
+            say(json.dumps(info(p)))
+        return
+    if len(a) >= 3 and a[0] == "run":
+        action, files = a[1], [f for f in a[2:] if os.path.exists(f)]
+        if action not in ACTIONS:
+            say("ERROR Unknown action: " + action)
+            sys.exit(2)
+        if not files:
+            say("ERROR The file isn't there any more.")
+            sys.exit(1)
+        signal.signal(signal.SIGTERM, stopped)
+        signal.signal(signal.SIGINT, stopped)
+        n = len(files)
+        progress(0)
+        try:
+            ACTIONS[action](files, lambda done: progress(done / n))
+        except Exception as e:
+            cleanup()
+            say("ERROR " + (str(e) or "Something went wrong.").splitlines()[0])
+            sys.exit(1)
+        say("DONE")
+        return
+    print(__doc__.strip())
+    sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

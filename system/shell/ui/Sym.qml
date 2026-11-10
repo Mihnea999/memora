@@ -4,7 +4,8 @@ import qs.core
 // Memora's line symbols, drawn in code so they stay sharp at any scale and take
 // the current ink. name: wifi, wifi-off, battery, control, search, moon, sound,
 // sound-off, bluetooth, sun, ai, power, restart, sleep, lock, cup, logout, chevron,
-// check, plus, close, gear, user, arrow.
+// check, plus, close, gear, user, arrow, folder, archive, compress, resize, rotate,
+// text, film, convert (and the others in the switch below).
 Canvas {
   id: c
   property string name: "wifi"
@@ -205,6 +206,61 @@ Canvas {
       ctx.beginPath(); ctx.moveTo(9.5, 1.8); ctx.lineTo(4.2, 1.8); ctx.quadraticCurveTo(3, 1.8, 3, 3); ctx.lineTo(3, 13)
       ctx.quadraticCurveTo(3, 14.2, 4.2, 14.2); ctx.lineTo(11.8, 14.2); ctx.quadraticCurveTo(13, 14.2, 13, 13); ctx.lineTo(13, 5.3); ctx.closePath(); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(9.5, 1.8); ctx.lineTo(9.5, 5.3); ctx.lineTo(13, 5.3); ctx.stroke()
+      break
+    }
+    case "folder": {
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(1.8, 4); ctx.quadraticCurveTo(1.8, 2.6, 3.2, 2.6); ctx.lineTo(5.8, 2.6); ctx.lineTo(7.4, 4.2); ctx.lineTo(12.8, 4.2)
+      ctx.quadraticCurveTo(14.2, 4.2, 14.2, 5.6); ctx.lineTo(14.2, 12); ctx.quadraticCurveTo(14.2, 13.4, 12.8, 13.4); ctx.lineTo(3.2, 13.4)
+      ctx.quadraticCurveTo(1.8, 13.4, 1.8, 12); ctx.closePath(); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(1.8, 6.4); ctx.lineTo(14.2, 6.4); ctx.stroke()
+      break
+    }
+    case "archive": {   // a box with a lid and a handle
+      ctx.lineWidth = 1.5
+      rr(ctx, 1.6, 2.4, 12.8, 3.4, 1); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(2.6, 5.8); ctx.lineTo(2.6, 12.4); ctx.quadraticCurveTo(2.6, 13.6, 3.8, 13.6); ctx.lineTo(12.2, 13.6)
+      ctx.quadraticCurveTo(13.4, 13.6, 13.4, 12.4); ctx.lineTo(13.4, 5.8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(6.4, 8.6); ctx.lineTo(9.6, 8.6); ctx.stroke()
+      break
+    }
+    case "compress": {   // two arrows meeting in the middle
+      ctx.lineWidth = 1.6
+      ctx.beginPath(); ctx.moveTo(2, 2); ctx.lineTo(6.6, 6.6); ctx.moveTo(6.6, 3.2); ctx.lineTo(6.6, 6.6); ctx.lineTo(3.2, 6.6)
+      ctx.moveTo(14, 14); ctx.lineTo(9.4, 9.4); ctx.moveTo(9.4, 12.8); ctx.lineTo(9.4, 9.4); ctx.lineTo(12.8, 9.4); ctx.stroke()
+      break
+    }
+    case "resize": {   // two arrows going out to the corners
+      ctx.lineWidth = 1.6
+      ctx.beginPath(); ctx.moveTo(6.4, 9.6); ctx.lineTo(2.2, 13.8); ctx.moveTo(2.2, 9.8); ctx.lineTo(2.2, 13.8); ctx.lineTo(6.2, 13.8)
+      ctx.moveTo(9.6, 6.4); ctx.lineTo(13.8, 2.2); ctx.moveTo(9.8, 2.2); ctx.lineTo(13.8, 2.2); ctx.lineTo(13.8, 6.2); ctx.stroke()
+      break
+    }
+    case "rotate": {   // an arc with an arrow head, turning right
+      ctx.lineWidth = 1.6
+      ctx.beginPath(); ctx.arc(8, 8.6, 5.4, Math.PI * 1.15, Math.PI * 2.75); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(1.8, 3.2); ctx.lineTo(3.4, 6.4); ctx.lineTo(6.6, 5); ctx.stroke()
+      break
+    }
+    case "text": {   // a page of lines
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(2.4, 3); ctx.lineTo(13.6, 3); ctx.moveTo(2.4, 6.4); ctx.lineTo(13.6, 6.4)
+      ctx.moveTo(2.4, 9.8); ctx.lineTo(13.6, 9.8); ctx.moveTo(2.4, 13.2); ctx.lineTo(9, 13.2); ctx.stroke()
+      break
+    }
+    case "film": {
+      ctx.lineWidth = 1.4
+      rr(ctx, 1.6, 2.4, 12.8, 11.2, 1.8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(4.6, 2.4); ctx.lineTo(4.6, 13.6); ctx.moveTo(11.4, 2.4); ctx.lineTo(11.4, 13.6)
+      ctx.moveTo(1.6, 8); ctx.lineTo(4.6, 8); ctx.moveTo(11.4, 8); ctx.lineTo(14.4, 8)
+      ctx.moveTo(1.6, 5.2); ctx.lineTo(4.6, 5.2); ctx.moveTo(11.4, 5.2); ctx.lineTo(14.4, 5.2)
+      ctx.moveTo(1.6, 10.8); ctx.lineTo(4.6, 10.8); ctx.moveTo(11.4, 10.8); ctx.lineTo(14.4, 10.8); ctx.stroke()
+      break
+    }
+    case "convert": {   // two arrows, one over the other, going opposite ways
+      ctx.lineWidth = 1.6
+      ctx.beginPath(); ctx.moveTo(2, 5); ctx.lineTo(13.4, 5); ctx.moveTo(10.6, 2.2); ctx.lineTo(13.4, 5); ctx.lineTo(10.6, 7.8)
+      ctx.moveTo(14, 11); ctx.lineTo(2.6, 11); ctx.moveTo(5.4, 8.2); ctx.lineTo(2.6, 11); ctx.lineTo(5.4, 13.8); ctx.stroke()
       break
     }
     case "plus": {
