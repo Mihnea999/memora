@@ -7,6 +7,29 @@ themes="$MEMORA_PATH/themes"
 state="$HOME/.config/memora/theme"
 
 current() { cat "$state" 2>/dev/null || echo dark; }
+
+# The system typeface (System Settings > Appearance), kept in ~/.config/memora/font
+# for everything outside the shell: GTK apps and the title bars Memora draws.
+fontfile="$HOME/.config/memora/font"
+font_now() {
+  local f=""
+  [[ -r $fontfile ]] && IFS= read -r f < "$fontfile" || true
+  [[ $f =~ ^[[:alnum:]][[:alnum:]\ ._-]{0,63}$ ]] || f="Inter"
+  printf '%s' "$f"
+}
+font_apply() {
+  local f; f="$(font_now)"
+  for ini in "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
+    [[ -f $ini ]] && sed -i "s/^gtk-font-name=.*/gtk-font-name=$f 10/" "$ini"
+  done
+  command -v gsettings >/dev/null && gsettings set org.gnome.desktop.interface font-name "$f 10" 2>/dev/null || true
+}
+font_set() {
+  [[ $1 =~ ^[[:alnum:]][[:alnum:]\ ._-]{0,63}$ ]] || { echo "Not a font name: $1" >&2; exit 1; }
+  mkdir -p "$(dirname "$fontfile")"
+  printf '%s\n' "$1" > "$fontfile"
+  font_apply
+}
 list() { for d in "$themes"/*/; do basename "$d"; done; }
 
 apply() {
@@ -19,6 +42,7 @@ apply() {
   done
   ln -sfn "$dir/wallpaper.jpg" "$HOME/.config/memora/current/wallpaper.jpg"
   ln -sfn "$dir/logo.png" "$HOME/.config/memora/current/logo.png"
+  font_apply   # the templates carry the default typeface
 
   # shellcheck disable=SC1091
   source "$dir/colors"
@@ -37,7 +61,7 @@ desktop_settings() {
     $gs color-scheme "$scheme" 2>/dev/null || true
     $gs gtk-theme "$gtk" 2>/dev/null || true
     $gs icon-theme "$icons" 2>/dev/null || true
-    $gs font-name "JetBrainsMono Nerd Font 10" 2>/dev/null || true
+    $gs font-name "$(font_now) 10" 2>/dev/null || true
     $gs monospace-font-name "JetBrainsMono Nerd Font 10" 2>/dev/null || true
     $gs cursor-theme Adwaita 2>/dev/null || true
     gsettings set org.gnome.desktop.wm.preferences button-layout "close,minimize,maximize:" 2>/dev/null || true
@@ -56,6 +80,7 @@ case "${1:-current}" in
   list) list ;;
   desktop-settings) desktop_settings ;;
   current) current ;;
+  font) if [[ -n ${2:-} ]]; then font_set "$2"; else font_now; echo; fi ;;
   set) apply "${2:?usage: memora-theme set NAME}" ;;
   next)
     mapfile -t all < <(list)
@@ -64,5 +89,5 @@ case "${1:-current}" in
     apply "$next"
     ;;
 
-  *) echo "usage: memora-theme [list|current|set NAME|next]"; exit 1 ;;
+  *) echo "usage: memora-theme [list|current|set NAME|next|font [NAME]]"; exit 1 ;;
 esac

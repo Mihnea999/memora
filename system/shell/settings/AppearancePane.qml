@@ -7,6 +7,7 @@ import qs.ui
 import qs.settings
 
 Kit.Page {
+  id: p
   title: "Appearance"
   Kit.Group {
     Item {
@@ -34,6 +35,25 @@ Kit.Page {
           }
         }
       }
+    }
+  }
+  // The typeface of menus, windows and apps. A short list of faces that suit an
+  // interface, then others installed on this computer (not symbol sets, not the
+  // per-script and fixed-width families).
+  readonly property var fonts: {
+    const have = Qt.fontFamilies()
+    const known = [["Inter", "Inter"], ["Noto Sans", "Noto Sans"], ["Adwaita Sans", "Adwaita Sans"], ["Cantarell", "Cantarell"], ["JetBrains Mono", "JetBrainsMono Nerd Font"]]
+    const list = known.filter(f => have.indexOf(f[1]) >= 0).map(f => ({ text: f[0], value: f[1] }))
+    const skip = /^Noto |Nerd Font|Emoji|Symbol|Icons?\b|Awesome|Math|Mono\b|Dingbats|^\.|^Adwaita|Variable|Display|\bNF[MP]?$|^(Monospace|Sans Serif|Serif|Sans|Cursive|Fantasy|System-ui)$|^(C059|D050000L|P052|Z003|Nimbus|URW|Standard Symbols)|\b(Thin|Hairline|Extra ?Light|Ultra ?Light|Light|Medium|Semi ?Bold|Demi ?Bold|Extra ?Bold|Ultra ?Bold|Bold|Black|Heavy|Condensed|Narrow|Italic|Oblique)$/i
+    have.filter(f => !skip.test(f) && !list.some(o => o.value === f)).slice(0, 10).forEach(f => list.push({ text: f, value: f }))
+    if (!list.some(o => o.value === Prefs.font)) list.unshift({ text: Prefs.font, value: Prefs.font })
+    return list
+  }
+  Kit.Group {
+    header: "Text"
+    Kit.Row {
+      label: "Font"; last: true
+      Kit.Select { value: Prefs.font; options: p.fonts; onPicked: v => Prefs.set("font", v) }
     }
   }
   Kit.Group {
@@ -73,12 +93,11 @@ Kit.Page {
           anchors.fill: under
           radius: 16
           fill: Theme.glassStrong
-          shadowSize: 18
           RowLayout {
             anchors { fill: parent; margins: 16 }
             spacing: 12
             Rectangle { Layout.preferredWidth: 44; Layout.preferredHeight: 44; radius: 11; color: Theme.accent
-              Sym { anchors.centerIn: parent; name: "sparkle"; width: 22; height: 22; color: "#ffffff" } }
+              Sym { anchors.centerIn: parent; name: "palette"; width: 22; height: 22; color: "#ffffff" } }
             ColumnLayout {
               spacing: 2
               Txt { text: "Memora"; font.weight: Font.Bold }
@@ -110,7 +129,7 @@ Kit.Page {
     }
     Kit.Row {
       label: "Edge light"
-      Slider { implicitWidth: 200; sym: "sparkle"; value: Prefs.shine; onMoved: v => Prefs.set("shine", Math.round(v * 20) / 20) }
+      Slider { implicitWidth: 200; sym: "sun"; value: Prefs.shine; onMoved: v => Prefs.set("shine", Math.round(v * 20) / 20) }
     }
     Kit.Row { label: "Transparent menu bar"; Kit.Switch { checked: Prefs.menuBarTransparent; onToggled: on => Prefs.set("menuBarTransparent", on) } }
     Kit.Row {

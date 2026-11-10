@@ -38,6 +38,7 @@ mpv-mpris
 imv
 papers
 ttf-jetbrains-mono-nerd
+inter-font
 noto-fonts
 noto-fonts-emoji
 noto-fonts-cjk

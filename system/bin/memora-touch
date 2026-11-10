@@ -38,7 +38,7 @@ osk_style() {
     bg="rgba(22,22,26,0.97)"; key="#3a3a40"; alt="#2a2a2f"; ink="#f5f5f7"
   fi
   cat > "$d/gtk.css" <<CSS
-sq_view { background-color: $bg; color: $ink; font-family: "JetBrainsMono Nerd Font"; padding: 6px; }
+sq_view { background-color: $bg; color: $ink; font-family: "Inter", "Noto Sans", sans-serif; padding: 6px; }
 sq_button { background: $key; color: $ink; border: none; border-radius: 9px; margin: 3px; box-shadow: 0 1px 0 rgba(0,0,0,0.25); font-size: 17px; }
 sq_button.altline, sq_button.special, sq_button.wide { background: $alt; }
 sq_button:active, sq_button.latched, sq_button.locked { background: #3d8bff; color: #ffffff; }
