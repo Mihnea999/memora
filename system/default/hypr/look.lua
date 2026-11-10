@@ -48,7 +48,7 @@ hl.config({
     -- use the system keyring), so Hyprland needn't warn about it.
     disable_xdg_env_checks = true,
   },
-  cursor = { hide_on_key_press = true },
+  cursor = { hide_on_key_press = true, no_hardware_cursors = true },
   ecosystem = { no_update_news = true, no_donation_nag = true },
 })
 
