@@ -89,7 +89,14 @@ ShellRoot {
   }
   Variants { model: Quickshell.screens; Wallpaper {} }
   Variants { model: Quickshell.screens; MenuBar {} }
-  Variants { model: Quickshell.screens; Dock {} }
+  // The Dock is built again when it moves to another edge: a layer that changes
+  // its anchors in place kept the size of the old edge (a tall, half-empty Dock).
+  property string dockAt: Prefs.dockPosition
+  property bool dockUp: true
+  onDockAtChanged: dockDown.restart()   // not from inside the Dock's own menu
+  Timer { id: dockDown; interval: 1; onTriggered: { root.dockUp = false; dockBack.restart() } }
+  Timer { id: dockBack; interval: 60; onTriggered: root.dockUp = true }
+  Variants { model: root.dockUp ? Quickshell.screens : []; Dock {} }
   Variants { model: Quickshell.screens; Launchpad {} }
   Variants { model: Quickshell.screens; Spotlight {} }
   Variants { model: Quickshell.screens; ControlCenter {} }

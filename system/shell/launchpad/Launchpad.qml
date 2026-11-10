@@ -38,7 +38,7 @@ PanelWindow {
     { id: "creativity", name: "Creativity", sym: "palette", cats: ["Graphics", "2DGraphics", "3DGraphics", "VectorGraphics", "RasterGraphics", "Photography", "AudioVideoEditing", "Publishing"] },
     { id: "development", name: "Development", sym: "keyboard", cats: ["Development", "IDE", "Debugger", "RevisionControl", "WebDevelopment", "Building"] },
     { id: "media", name: "Media", sym: "play", cats: ["AudioVideo", "Audio", "Video", "Player", "Music", "Recorder", "TV"] },
-    { id: "games", name: "Games", sym: "sparkle", cats: ["Game"] },
+    { id: "games", name: "Games", sym: "gamepad", cats: ["Game"] },
     { id: "utilities", name: "Utilities", sym: "gear", cats: ["Utility", "Accessories", "System", "Settings", "Monitor", "FileManager", "Archiving", "Calculator", "TerminalEmulator", "Security"] }
   ]
   function groupOf(e) {
@@ -87,6 +87,13 @@ PanelWindow {
   property int sel: 0
   readonly property int cols: Math.max(1, Math.floor(grid.width / 116))
   onShownAppsChanged: sel = 0
+  // The selected app stays in view while the arrow keys move through the grid.
+  onSelChanged: {
+    const top = grid.y + Math.floor(sel / cols) * 122
+    if (sel < cols) flick.contentY = 0
+    else if (top < flick.contentY) flick.contentY = top
+    else if (top + 122 > flick.contentY + flick.height) flick.contentY = Math.min(top + 122 - flick.height, Math.max(0, flick.contentHeight - flick.height))
+  }
   onOpenChanged: if (open) { query = ""; search.text = ""; group = "all"; sel = 0; menuApp = ""; launchFile.reload(); search.forceActiveFocus() }
 
   property string dragApp: ""
@@ -136,9 +143,6 @@ PanelWindow {
     // Thicker glass than the menus: it opens over windows full of text, and
     // names and icons must read clearly over them (frosted or not).
     fill: Theme.dark ? Qt.rgba(0.10, 0.10, 0.12, Theme.see(0.74)) : Qt.rgba(0.98, 0.98, 0.99, Theme.see(0.78))
-    // No shadow: over the veil it would pass Hyprland's blur threshold and
-    // show as a blurred halo around the panel.
-    shadow: false
     TapHandler { onTapped: lp.menuApp = "" }   // taps inside don't close
 
     // Search

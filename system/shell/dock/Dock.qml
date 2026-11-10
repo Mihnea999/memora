@@ -182,7 +182,6 @@ PanelWindow {
       anchors.fill: parent
       radius: 26
       fill: Theme.glass
-      shadowSize: 30
     }
 
     HoverHandler {
@@ -346,6 +345,7 @@ PanelWindow {
     color: "transparent"
     MenuPanel {
       id: ctxPanel
+      solid: false
       width: implicitWidth; height: implicitHeight
       items: dock.menuFor ? dock.menuItems(dock.menuFor) : []
       onPicked: item => { const run = item.action; dock.menuFor = null; if (run) Qt.callLater(run) }
@@ -359,7 +359,7 @@ PanelWindow {
 
   function menuItems(e) {
     if (e.kind === "trash") return [
-      { text: "Open", action: () => Apps.run("nautilus --new-window trash:///") },
+      { text: "Open", action: () => Apps.run("memora-files trash:///") },
       { separator: true },
       { text: "Empty Trash", enabled: dock.trashFull, action: () => Shell.power("trash") }
     ]
@@ -374,7 +374,7 @@ PanelWindow {
       { text: "Dock Settings…", action: () => Apps.run("memora-settings dock") }
     ]
     if (e.kind === "folder") return [
-      { text: "Open Downloads", action: () => Apps.run("nautilus --new-window ~/Downloads") }
+      { text: "Open Downloads", action: () => Apps.run("memora-files ~/Downloads") }
     ]
     const ws = Apps.windowsOf(e.id)
     const pinned = Apps.pinned.indexOf(e.id) >= 0

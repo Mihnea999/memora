@@ -32,7 +32,12 @@ ShellRoot {
     onFileChanged: reload()
     onLoaded: {
       if (app.loaded && text() === app.lastSaved) return
-      try { const j = JSON.parse(text()); app.notes = j.notes || []; app.folders = j.folders && j.folders.length ? j.folders : ["Notes"] } catch (e) {}
+      try {
+        // A damaged file (the power went mid-save): the copy from the save before.
+        let j
+        try { j = JSON.parse(text()); app.lastSaved = text() } catch (e) { j = JSON.parse(backup.text()) }
+        app.notes = j.notes || []; app.folders = j.folders && j.folders.length ? j.folders : ["Notes"]
+      } catch (e) {}
       const again = app.loaded
       app.loaded = true
       if (!app.notes.length) app.welcome()
@@ -40,12 +45,15 @@ ShellRoot {
     }
     onLoadFailed: { app.loaded = true; app.welcome(); app.pickFirst() }
   }
-  FileView { id: backup; path: app.store + ".bak"; printErrors: false }
+  // The backup holds the save before the last one, so one bad write never takes both.
+  FileView { id: backup; path: app.store + ".bak"; printErrors: false; blockLoading: true }
   Timer { id: saveLater; interval: 600; onTriggered: app.saveNow() }
   function saveNow() {
     const t = JSON.stringify({ version: 1, folders: folders, notes: notes })
+    if (t === lastSaved) return
+    if (lastSaved) backup.setText(lastSaved)
     lastSaved = t
-    file.setText(t); backup.setText(t)
+    file.setText(t)
   }
   property string lastSaved: ""
   function changed() { notes = notes.slice(); saveLater.restart() }
@@ -428,7 +436,7 @@ ShellRoot {
         z: 10
         x: 12; y: 48
         width: 190; height: fcol.implicitHeight + 12
-        radius: 12; fill: Theme.glassStrong; shadowSize: 22
+        radius: 12; fill: Theme.popover
         visible: opacity > 0
         opacity: open ? 1 : 0
         scale: open ? 1 : 0.9

@@ -22,7 +22,6 @@ FloatingWindow {
   readonly property bool compact: width < 700
   property bool sideOpen: false
   onCompactChanged: sideOpen = false
-  onPathChanged: sideOpen = false
   color: "transparent"
 
   // ---- where we are
@@ -139,15 +138,22 @@ FloatingWindow {
   function emptyTrash() {
     confirm.ask({
       title: "Empty the Trash?", message: "Everything in the Trash will be deleted. You can't undo this action.", action: "Empty Trash",
-      onAccept: () => sh("[ -n \"$(ls -A ~/.local/share/Trash/files 2>/dev/null)\" ] && gio trash --empty && setsid -f memora-sound trash >/dev/null 2>&1")
+      onAccept: () => sh("[ -z \"$(ls -A ~/.local/share/Trash/files 2>/dev/null)\" ] || { gio trash --empty && setsid -f memora-sound trash >/dev/null 2>&1; }")
     })
   }
   function copy(cut) { app.clip = selection.slice(); app.clipCut = cut }
   function paste() {
     if (!app.clip.length) return
-    sh((app.clipCut ? "mv -n -- " : "cp -an -- ") + app.clip.map(q).join(" ") + " " + q(path + "/"))
+    // A name already taken in this folder: the pasted item becomes "name copy".
+    sh(freeName + "for f in " + app.clip.map(q).join(" ") + "; do [ -e \"$f\" ] || continue; " +
+      (app.clipCut ? "[ \"$(dirname -- \"$f\")\" = " + q(path) + " ] && continue; " : "") +
+      "t=$(free " + q(path) + " \"$(basename -- \"$f\")\"); " + (app.clipCut ? "mv -n" : "cp -a") + " -- \"$f\" \"$t\" || bad=1; done; [ -z \"$bad\" ]")
     if (app.clipCut) app.clip = []
   }
+  // free DIR NAME: NAME's path in DIR, or "NAME copy", "NAME copy 2"… when taken.
+  readonly property string freeName: "free() { local d=\"$1\" b=\"$2\" n e c i=2; [ -e \"$d/$b\" ] || { printf %s \"$d/$b\"; return; }; " +
+    "if [[ $b == ?*.* && ! -d \"$d/$b\" ]]; then n=\"${b%.*}\"; e=\".${b##*.}\"; else n=\"$b\"; e=\"\"; fi; " +
+    "c=\"$d/$n copy$e\"; while [ -e \"$c\" ]; do c=\"$d/$n copy $i$e\"; i=$((i+1)); done; printf %s \"$c\"; }; "
   function rename(p, name) {
     renaming = ""
     if (!name || name === p.split("/").pop() || name.indexOf("/") >= 0) return
@@ -165,7 +171,16 @@ FloatingWindow {
     signal done()
     command: ["bash", "-c", cmd]
     running: true
-    onExited: { done(); destroy() }
+    stderr: StdioCollector { id: runErr }
+    // What went wrong (no permission, disk full…) is said, not swallowed.
+    onExited: code => {
+      if (code !== 0) {
+        const line = runErr.text.trim().split("\n").pop() || ""
+        win.driveError = line ? line.replace(/^[a-z]+: /, "").replace(/^.*: (?=[^:]+$)/, "") : "Couldn't do that."
+        driveErrorTimer.restart()
+      }
+      done(); destroy()
+    }
   } }
 
   // How many entries the folder really has. Qt's FolderListModel keeps the
@@ -198,7 +213,7 @@ FloatingWindow {
   // Free space for the status bar.
   property string free: ""
   Process { id: df; command: ["bash", "-c", "df -h --output=avail \"$1\" | tail -1", "_", win.path]; stdout: StdioCollector { onStreamFinished: win.free = text.trim() } }
-  onPathChanged: df.running = true
+  onPathChanged: { sideOpen = false; df.running = true }
 
   // ---- icons for files
   readonly property var kinds: ({
@@ -488,7 +503,8 @@ FloatingWindow {
       return win.view === "icons" ? grid.itemAt(x - grid.x + grid.contentX, y - grid.y + grid.contentY)
                                   : list.itemAt(x - list.x + list.contentX, y - list.parent.y - list.y + list.contentY)
     }
-    TapHandler { onTapped: ev => { if (!content.hitAt(ev.position.x, ev.position.y)) win.selected = ({}); content.forceActiveFocus() } }
+    // (not while a menu is open: a click on its buttons passes through to here)
+    TapHandler { enabled: !menu.visible; onTapped: ev => { if (!content.hitAt(ev.position.x, ev.position.y)) win.selected = ({}); content.forceActiveFocus() } }
     // Only on empty space: a file under the pointer opens its own menu.
     TapHandler {
       acceptedButtons: Qt.RightButton
@@ -558,6 +574,7 @@ FloatingWindow {
           width: cell.width - 14
           horizontalAlignment: Text.AlignHCenter
           text: cell.f.name
+          textFormat: Text.PlainText
           wrapMode: Text.WrapAnywhere
           maximumLineCount: 2
           elide: Text.ElideMiddle
@@ -566,11 +583,12 @@ FloatingWindow {
         }
         RenameField { visible: win.renaming === cell.f.path; anchors { horizontalCenter: parent.horizontalCenter; top: ib.bottom; topMargin: 2 } width: cell.width - 8; target: cell.f.path }
 
-        TapHandler { id: tap; onTapped: ev => { win.select(cell.f.path, ev.modifiers); content.forceActiveFocus() }
+        TapHandler { id: tap; enabled: !menu.visible; onTapped: ev => { win.select(cell.f.path, ev.modifiers); content.forceActiveFocus() }
                      onDoubleTapped: win.openItem(cell.f.path, cell.f.dir) }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: ev => { if (!cell.sel) win.select(cell.f.path, 0); const p = cell.mapToItem(content, ev.position.x, ev.position.y); menu.show(p.x, p.y, cell.f) } }
         DragHandler {
           id: dh
+          enabled: !menu.visible
           target: null
           grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
           onActiveChanged: {
@@ -639,12 +657,13 @@ FloatingWindow {
             Txt { width: listHead.w * 0.12; text: lrow.f.dir ? "--" : win.sizeText(lrow.f.size); color: lrow.sel ? Qt.rgba(1, 1, 1, 0.85) : Theme.textDim; font.pixelSize: Theme.small }
             Txt { width: listHead.w * 0.13; text: lrow.f.dir ? "Folder" : win.kindOf(lrow.f.name, false).replace(/^./, c => c.toUpperCase()); color: lrow.sel ? Qt.rgba(1, 1, 1, 0.85) : Theme.textDim; font.pixelSize: Theme.small }
           }
-          TapHandler { onTapped: ev => { win.select(lrow.f.path, ev.modifiers); content.forceActiveFocus() } onDoubleTapped: win.openItem(lrow.f.path, lrow.f.dir) }
+          TapHandler { enabled: !menu.visible; onTapped: ev => { win.select(lrow.f.path, ev.modifiers); content.forceActiveFocus() } onDoubleTapped: win.openItem(lrow.f.path, lrow.f.dir) }
           property bool hot: false
           function dropHere() { if (lrow.f.dir) win.moveInto(lrow.f.path) }
           border.color: hot && f.dir ? Theme.accent : "transparent"
           border.width: 2
           DragHandler {
+            enabled: !menu.visible
             target: null
             grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
             onActiveChanged: {
@@ -764,7 +783,7 @@ FloatingWindow {
     z: 40
     anchors.centerIn: parent
     width: 380; height: icol.implicitHeight + 40
-    radius: 18; fill: Theme.glassStrong; shadowSize: 40
+    radius: 18; fill: Theme.popover
     function show(p) {
       path = p; d = ({})
       infoProc.command = ["bash", "-c",
@@ -844,7 +863,7 @@ FloatingWindow {
     visible: false
     anchors.centerIn: parent
     width: 460; height: 92
-    radius: 16; fill: Theme.glassStrong
+    radius: 16; fill: Theme.popover
     Txt { x: 16; y: 12; text: "Go to Folder"; font.weight: Font.Bold }
     Rectangle {
       x: 16; y: 40; width: parent.width - 32; height: 32; radius: 8; color: Theme.field; border.color: Theme.accent
@@ -870,10 +889,14 @@ FloatingWindow {
     property var items: []
     property bool chooser: false
     // A click outside the menu closes it; clicks inside belong to the menu.
+    // Closed a moment later, so the handlers under it (that see the same click) still find it open.
+    property int stamp: 0
+    function close() { const t = ++stamp; Qt.callLater(() => { if (t === stamp) visible = false }) }
     function outside(ev) { const p = panel.mapFromItem(menu, ev.position.x, ev.position.y); return !panel.contains(p) }
-    TapHandler { onTapped: ev => { if (menu.outside(ev)) menu.visible = false } }
-    TapHandler { acceptedButtons: Qt.RightButton; onTapped: ev => { if (menu.outside(ev)) menu.visible = false } }
+    TapHandler { onTapped: ev => { if (menu.outside(ev)) menu.close() } }
+    TapHandler { acceptedButtons: Qt.RightButton; onTapped: ev => { if (menu.outside(ev)) menu.close() } }
     function show(x, y, f) {
+      stamp++
       target = f
       chooser = false
       const p = content.mapToItem(menu, x, y)
@@ -884,6 +907,7 @@ FloatingWindow {
       if (f && !f.dir) openWith.load(f.path)
     }
     function showItems(item, x, y, list) {
+      stamp++
       target = null
       chooser = false
       const p = item.mapToItem(menu, x, y)
@@ -895,7 +919,7 @@ FloatingWindow {
     function folderMenu() {
       return [
         { text: "New Folder", keys: "Ctrl Shift N", action: () => win.newFolder() },
-        { text: "New Text File", action: () => win.sh("touch " + win.q(win.path + "/Untitled.txt")) },
+        { text: "New Text File", action: () => win.sh(win.freeName + "t=$(free " + win.q(win.path) + " Untitled.txt); : >> \"$t\"") },
         { separator: true },
         { text: "Paste", keys: "Ctrl V", enabled: app.clip.length > 0, action: () => win.paste() },
         { text: "Select All", keys: "Ctrl A", action: () => win.selectAll() },
@@ -922,8 +946,8 @@ FloatingWindow {
         { text: "Rename", keys: "F2", enabled: !many, action: () => win.renaming = f.path },
         { text: "Copy", keys: "Ctrl C", action: () => win.copy(false) },
         { text: "Cut", keys: "Ctrl X", action: () => win.copy(true) },
-        { text: "Duplicate", action: () => win.sh(win.selection.map(p => "cp -an " + win.q(p) + " " + win.q(p.replace(/(\.[^./]+)?$/, " copy$1"))).join("; ")) },
-        { text: "Compress", action: () => win.sh("cd " + win.q(win.path) + " && zip -rq " + win.q((many ? "Archive" : f.name) + ".zip") + " " + win.selection.map(p => win.q(p.split("/").pop())).join(" ")) },
+        { text: "Duplicate", action: () => win.sh(win.freeName + "for f in " + win.selection.map(win.q).join(" ") + "; do cp -a -- \"$f\" \"$(free \"$(dirname -- \"$f\")\" \"$(basename -- \"$f\")\")\"; done") },
+        { text: "Compress", action: () => win.sh("cd " + win.q(win.path) + " && zip -rq " + win.q((many ? "Archive" : f.name) + ".zip") + " -- " + win.selection.map(p => win.q(p.split("/").pop())).join(" ")) },
         { separator: true },
         { text: "Copy Path", action: () => Quickshell.execDetached(["bash", "-c", "printf %s \"$1\" | wl-copy", "_", win.selection.join("\n")]) },
         { text: "Ask Memora AI About This", action: () => Quickshell.execDetached(["memora-ai", "window", "Look at " + f.path + " and tell me briefly what it is."]) },
@@ -937,8 +961,7 @@ FloatingWindow {
       width: menu.chooser ? 280 : 250
       height: (menu.chooser ? chooserCol.implicitHeight : itemsCol.implicitHeight) + 12
       radius: 12
-      fill: Theme.glassStrong
-      shadowSize: 24
+      fill: Theme.popover
       scale: menu.visible ? 1 : 0.92
       opacity: menu.visible ? 1 : 0
       transformOrigin: Item.TopLeft
@@ -966,7 +989,7 @@ FloatingWindow {
               enabled: !parent.modelData.separator && parent.on
               onTapped: {
                 if (parent.modelData.submenu) { menu.chooser = true; return }
-                const run = parent.modelData.action; menu.visible = false; if (run) Qt.callLater(run)
+                const run = parent.modelData.action; menu.close(); if (run) Qt.callLater(run)
               }
             }
           }
@@ -995,7 +1018,7 @@ FloatingWindow {
             Txt { anchors { left: oi.right; leftMargin: 10; verticalCenter: parent.verticalCenter; right: dflt.left; rightMargin: 6 } text: modelData.name; color: ah.hovered ? "#fff" : Theme.text }
             Txt { id: dflt; visible: modelData.isDefault; anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter } text: "Default"; color: ah.hovered ? Qt.rgba(1, 1, 1, 0.8) : Theme.textDim; font.pixelSize: Theme.small - 1 }
             HoverHandler { id: ah }
-            TapHandler { onTapped: { menu.visible = false; Quickshell.execDetached(["gio", "launch", modelData.file, menu.target.path]); if (openWith.always) Quickshell.execDetached(["gio", "mime", openWith.mime, modelData.id + ".desktop"]) } }
+            TapHandler { onTapped: { menu.close(); Quickshell.execDetached(["gio", "launch", modelData.file, menu.target.path]); if (openWith.always) Quickshell.execDetached(["gio", "mime", openWith.mime, modelData.id + ".desktop"]) } }
           }
         }
         Txt { visible: openWith.apps.length === 0; x: 10; height: 30; verticalAlignment: Text.AlignVCenter; text: "No app opens this kind of file"; color: Theme.textDim }

@@ -143,7 +143,7 @@ Kit.Page {
         required property int index
         label: modelData.name
         detail: modelData.old ? modelData.old + "  →  " + modelData["new"] : (modelData["new"] ? "Version " + modelData["new"] : "")
-        badge: modelData.source === "app" ? "dock" : (modelData.source === "memora" ? "sparkle" : "gear")
+        badge: modelData.source === "app" ? "dock" : (modelData.source === "memora" ? "laptop" : "gear")
         badgeColor: modelData.source === "app" ? "#2fb6d9" : (modelData.source === "memora" ? Theme.accent : "#8a8d96")
         last: index === Math.min(p.items.length, 40) - 1
         Kit.Value { text: modelData.source === "app" ? "App" : (modelData.source === "memora" ? "Memora" : (modelData.source === "firmware" ? "Firmware" : "System")) }

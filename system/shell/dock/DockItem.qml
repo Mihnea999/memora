@@ -112,7 +112,6 @@ Item {
     // Nearly solid: it sits over windows and the desktop, outside the Dock's
     // frosted area, where see-through glass makes the name hard to read.
     fill: Theme.dark ? Qt.rgba(0.14, 0.14, 0.16, 0.94) : Qt.rgba(0.98, 0.98, 0.99, 0.95)
-    shadowSize: 12
     width: tipText.implicitWidth + 22
     height: 26
     // Above the icon, or beside it on a Dock at the side.
@@ -136,8 +135,8 @@ Item {
   function openMenu() { it.dockRoot.menuX = it.dockRoot.hitX + it.centerX; it.dockRoot.menuFor = it.entry }
 
   function activate() {
-    if (kind === "trash") return Apps.run("nautilus --new-window trash:///")
-    if (kind === "folder") return Apps.run("nautilus --new-window ~/Downloads")
+    if (kind === "trash") return Apps.run("memora-files trash:///")
+    if (kind === "folder") return Apps.run("memora-files ~/Downloads")
     if (kind === "window") return Apps.restore(entry.win)
     if (Prefs.dockBounce && Prefs.animations && !running && appId !== "memora-launchpad") bounce.restart()
     Apps.activate(appId)

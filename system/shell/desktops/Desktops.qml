@@ -51,8 +51,9 @@ Scope {
   // Removing a desktop moves its windows to the one before it.
   function remove(n) {
     if (count <= 1) return
-    const to = n > 1 ? n - 1 : 2
-    windowsOn(n).forEach(w => Hyprland.dispatch('hl.dsp.window.move({ workspace = "' + to + '", window = "address:0x' + String(w.address).replace(/^0x/, "") + '", follow = false })'))
+    // (the first desktop's windows stay: the second one slides onto it)
+    const to = n - 1
+    if (n > 1) windowsOn(n).forEach(w => Hyprland.dispatch('hl.dsp.window.move({ workspace = "' + to + '", window = "address:0x' + String(w.address).replace(/^0x/, "") + '", follow = false })'))
     // Desktops after it slide down by one.
     for (let i = n + 1; i <= count; i++)
       windowsOn(i).forEach(w => Hyprland.dispatch('hl.dsp.window.move({ workspace = "' + (i - 1) + '", window = "address:0x' + String(w.address).replace(/^0x/, "") + '", follow = false })'))
@@ -104,7 +105,6 @@ Scope {
         width: dots.implicitWidth + 32 + (pillName.visible ? pillName.implicitWidth + 12 : 0); height: 34
         radius: 17
         fill: Theme.glassStrong
-        shadowSize: 18
         opacity: dk.showPill ? 1 : 0
         scale: dk.showPill ? 1 : 0.9
         Behavior on opacity { NumberAnimation { id: pillFade; duration: Theme.normal } }
@@ -314,7 +314,7 @@ Scope {
       // ---- this desktop's windows, spread out
       Item {
         id: field
-        anchors { left: parent.left; right: parent.right; top: strip.bottom; bottom: parent.bottom; margins: 60; topMargin: 50; bottomMargin: 120 }
+        anchors { left: parent.left; right: parent.right; top: strip.bottom; bottom: parent.bottom; margins: 60; topMargin: 50; bottomMargin: Math.max(120, Shell.bottomInset + 70) }
         readonly property var wins: dk.shownWindows
         readonly property int n: wins.length
         readonly property var list: dk.spatial(wins, cols)
@@ -433,7 +433,7 @@ Scope {
       }
       // App Exposé: the app's minimized windows, along the bottom.
       Row {
-        anchors { bottom: parent.bottom; bottomMargin: 66; horizontalCenter: parent.horizontalCenter }
+        anchors { bottom: parent.bottom; bottomMargin: Math.max(66, Shell.bottomInset + 44); horizontalCenter: parent.horizontalCenter }
         spacing: 14
         opacity: ov.shown
         Repeater {
@@ -460,7 +460,7 @@ Scope {
         Txt { id: qt; anchors.centerIn: parent; anchors.horizontalCenterOffset: 8; text: dk.query; color: "#ffffff" }
       }
       Txt {
-        anchors { bottom: parent.bottom; bottomMargin: 40; horizontalCenter: parent.horizontalCenter }
+        anchors { bottom: parent.bottom; bottomMargin: Math.max(40, Shell.bottomInset + 16); horizontalCenter: parent.horizontalCenter }   // above the Dock, not across it
         opacity: ov.shown * 0.75
         text: dk.app ? Apps.nameFor(dk.app) + " · click a window to go to it · Esc to close"
           : "Type to find a window · click one to go to it · drag it onto a desktop, or onto + for a new one · Esc to close"

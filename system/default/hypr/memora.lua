@@ -6,7 +6,7 @@ local base = (os.getenv("MEMORA_PATH") or "/usr/share/memora") .. "/default/hypr
 memora = memora or {}
 memora.terminal = "ghostty"
 memora.browser = "chromium"
-memora.files = "nautilus --new-window"
+memora.files = "memora-files"
 
 for _, part in ipairs({ "env", "look", "input", "rules", "binds", "autostart" }) do
   dofile(base .. part .. ".lua")
