@@ -117,7 +117,7 @@ Singleton {
       { text: "Log Out " + Quickshell.env("USER") + "…", action: () => Shell.power("logout") }
     ]
     case "app": return hasWin ? [
-      { text: "About " + appName, action: () => Apps.run("memora-ai ask 'What is the app " + appName.replace(/'/g, "") + " on Memora and what can it do?'") },
+      { text: "About " + appName, action: () => Quickshell.execDetached(["memora-ai", "window", "What is the app " + appName + " and what can it do?"]) },
       sep(),
       k("Settings…", "ctrl+comma"),
       sep(),

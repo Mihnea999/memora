@@ -34,7 +34,9 @@ Kit.Page {
     cfgFile.setText(JSON.stringify(c, null, 2) + "\n")
   }
   function saveKey(name, value) {
-    saver.exec(["bash", "-c", "umask 077; mkdir -p \"$1\"; f=\"$1/ai.secret\"; touch \"$f\"; grep -v \"^$2=\" \"$f\" > \"$f.tmp\"; printf '%s=%s\\n' \"$2\" \"$3\" >> \"$f.tmp\"; mv \"$f.tmp\" \"$f\"", "_", dir, name, value])
+    const key = value.replace(/\s/g, "")
+    if (!key) return
+    saver.execWith(["bash", "-c", "umask 077; mkdir -p \"$1\"; f=\"$1/ai.secret\"; touch \"$f\"; grep -v \"^$2=\" \"$f\" > \"$f.tmp\"; printf '%s=' \"$2\" >> \"$f.tmp\"; head -n1 >> \"$f.tmp\"; mv \"$f.tmp\" \"$f\"", "_", dir, name], key + "\n")
   }
 
   Kit.Group {
@@ -92,7 +94,7 @@ Kit.Page {
       Kit.Choice {
         value: p.cfg.model || (p.cfg.provider === "claude-code" ? "" : "claude-opus-5-5")
         options: (p.cfg.provider === "claude-code" ? [{ text: "Default", value: "" }] : []).concat([
-          { text: "Fable 5.1", value: "claude-fable-5-1" }, { text: "Opus 5.5", value: "claude-opus-5-5" },
+          { text: "Fable 5.2", value: "claude-fable-5-2" }, { text: "Opus 5.5", value: "claude-opus-5-5" },
           { text: "Sonnet 5.5", value: "claude-sonnet-5-5" }, { text: "Haiku 5.5", value: "claude-haiku-5-5" }])
         onPicked: v => p.save("model", v)
       }

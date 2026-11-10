@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# sudo, as the commands Memora AI runs see it (this folder is first in their
+# PATH): the command after it runs as administrator through polkit, which shows
+# Memora's own password dialog. Only that command is raised, in the folder it
+# was started from; the rest of the line stays yours.
+who=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -u|--user) who=(--user "${2:?sudo: -u needs a user}"); shift 2 ;;
+    -g|-p|-C|-D|-R|-T|-h) shift 2 ;;
+    --) shift; break ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+[[ $# -gt 0 ]] || { echo "sudo: give it a command to run" >&2; exit 1; }
+# sudo VAR=value command
+[[ $1 == [A-Za-z_]*=* ]] && set -- env "$@"
+exec pkexec "${who[@]}" --keep-cwd "$@"

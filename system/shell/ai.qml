@@ -175,13 +175,13 @@ ShellRoot {
           id: answerText
           visible: d.kind === "assistant"
           x: 24; width: d.width - 60
-          text: d.kind === "assistant" ? d.text : ""
+          text: (d.kind === "assistant" ? d.text : "").replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<img\b[^>]*>/gi, "")
           textFormat: Text.MarkdownText
           wrapMode: Text.Wrap
           color: Theme.text
           font.family: Theme.font; font.pixelSize: Theme.fontSize
           linkColor: Theme.accent
-          onLinkActivated: link => Qt.openUrlExternally(link)
+          onLinkActivated: link => { if (/^(https?|mailto):/i.test(link)) Qt.openUrlExternally(link) }
         }
 
         // What it is doing

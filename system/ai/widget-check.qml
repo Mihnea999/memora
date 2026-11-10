@@ -6,20 +6,21 @@ import Quickshell
 // described in words (every text, where it is, what overlaps, what spills out
 // of the card or is cut off, pictures that didn't load) and saved as a picture.
 // Run by agent.py (widget tool) with QT_QPA_PLATFORM=offscreen and
-//   W=widget.qml SIZE=small|medium DARK=1|0 ACCENT=#rrggbb OUT=picture.png WAIT=ms
+//   W=widget.qml SIZE=small|medium|large DARK=1|0 ACCENT=#rrggbb OUT=picture.png WAIT=ms
 // Lines starting with "@" are the report.
 ShellRoot {
   id: r
-  readonly property bool medium: Quickshell.env("SIZE") === "medium"
+  readonly property bool medium: Quickshell.env("SIZE") === "medium" || Quickshell.env("SIZE") === "large"
+  readonly property bool tall: Quickshell.env("SIZE") === "large"
   readonly property bool dark: Quickshell.env("DARK") !== "0"
   readonly property real cw: medium ? 320 : 136
-  readonly property real ch: 136
+  readonly property real ch: tall ? 320 : 136
   readonly property var memora: ({
     dark: dark,
     text: dark ? "#f5f5f7" : "#1c1c1e",
     dim: dark ? Qt.rgba(0.96, 0.96, 0.97, 0.58) : Qt.rgba(0.11, 0.11, 0.12, 0.55),
     accent: Quickshell.env("ACCENT") || "#0a84ff",
-    font: "JetBrainsMono Nerd Font", small: 11.5, large: 15, medium: medium
+    font: "Inter", small: 11.5, large: 15, medium: medium, tall: tall, width: cw, height: ch
   })
 
   FloatingWindow {

@@ -366,7 +366,7 @@ Scope {
                   Txt { x: 10; anchors.verticalCenter: parent.verticalCenter; text: modelData.name; color: win.ink }
                   Txt {
                     anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                    text: ({ "claude-fable-5-1": "most capable", "claude-opus-5-5": "deep work", "claude-sonnet-5-5": "fast and smart", "claude-haiku-5-5": "fastest" })[modelData.id] || ""
+                    text: ({ "claude-fable-5-2": "most capable", "claude-opus-5-5": "deep work", "claude-sonnet-5-5": "fast and smart", "claude-haiku-5-5": "fastest" })[modelData.id] || ""
                     color: win.faint; font.pixelSize: Theme.small
                   }
                   Sym { visible: ai.modelId === modelData.id; anchors { right: parent.right; rightMargin: 110; verticalCenter: parent.verticalCenter } name: "check"; width: 12; height: 12; color: Theme.accent }
@@ -472,13 +472,13 @@ Scope {
                 id: at
                 visible: d.kind === "assistant"
                 width: d.width - 20
-                text: d.kind === "assistant" ? d.text : ""
+                text: (d.kind === "assistant" ? d.text : "").replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<img\b[^>]*>/gi, "")
                 textFormat: TextEdit.MarkdownText; wrapMode: TextEdit.Wrap
                 readOnly: true; selectByMouse: true; persistentSelection: false
                 selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45); selectedTextColor: "#ffffff"
                 color: win.ink
                 font.family: Theme.font; font.pixelSize: Theme.fontSize
-                onLinkActivated: link => Qt.openUrlExternally(link)
+                onLinkActivated: link => { if (/^(https?|mailto):/i.test(link)) Qt.openUrlExternally(link) }
                 HoverHandler { cursorShape: at.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor }
               }
               Row {
