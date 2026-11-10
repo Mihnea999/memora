@@ -16,7 +16,11 @@ declare -A DESC=(
 )
 ORDER=(node python claude docker flutter android ollama rust go)
 
-pkgs() { [[ -n ${MEMORA_SKIP_PKGS:-} ]] && return 0; sudo pacman -S --needed --noconfirm "$@"; }
+# In a terminal sudo asks there; from the App Store (no terminal) Memora's password dialog does.
+pkgs() {
+  [[ -n ${MEMORA_SKIP_PKGS:-} ]] && return 0
+  if [[ -t 0 ]]; then sudo pacman -S --needed --noconfirm "$@"; else pkexec pacman -S --needed --noconfirm "$@"; fi
+}
 
 gpu_ollama() {
   if lspci | grep -qi 'vga.*nvidia\|3d.*nvidia'; then echo ollama-cuda

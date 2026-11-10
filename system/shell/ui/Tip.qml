@@ -37,6 +37,7 @@ Item {
       id: label
       anchors.centerIn: parent
       text: tip.text
+      textFormat: Text.PlainText
       color: Theme.text
       font.family: Theme.font; font.pixelSize: Theme.small
     }

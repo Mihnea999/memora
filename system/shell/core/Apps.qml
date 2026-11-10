@@ -35,7 +35,7 @@ Singleton {
   }
 
   // Icons drawn for Memora (tools/icons.py); others are shown on a tile.
-  readonly property var nativeIcons: ["memora-store", "memora-photos", "memora-player", "com.mitchellh.ghostty", "memora-files", "memora-notes", "memora-calendar", "org.gnome.Nautilus", "memora-launchpad", "chromium", "org.gnome.Ptyxis",
+  readonly property var nativeIcons: ["memora-store", "memora-photos", "memora-player", "com.mitchellh.ghostty", "memora-files", "memora-notes", "memora-calendar", "memora-welcome", "org.gnome.Nautilus", "memora-launchpad", "chromium", "org.gnome.Ptyxis",
     "kitty", "memora-ai", "org.gnome.TextEditor", "org.gnome.Calculator", "org.gnome.Loupe", "org.gnome.Papers",
     "mpv", "memora-settings", "memora-activity", "folder", "folder-download", "user-trash", "user-trash-full"]
 
@@ -60,7 +60,7 @@ Singleton {
 
   // ---- visible applications (Launchpad, Spotlight) --------------------------
   // Apps Memora has its own version of: kept installed (files open in them, the
-  // Trash uses Nautilus) but not listed twice in Launchpad and Spotlight.
+  // file pickers use Nautilus) but not listed twice in Launchpad and Spotlight.
   readonly property var duplicates: ["org.gnome.Nautilus", "org.gnome.Loupe", "mpv", "org.gnome.Ptyxis"]
   // The name an app goes by in Memora (Ghostty is "Terminal").
   function displayName(e) { return !e.id.startsWith("memora-") && names[e.id] ? names[e.id] : e.name }
@@ -253,7 +253,7 @@ Singleton {
       message: name + " will be removed from this computer. Your documents stay, and so do its settings, in case you get it again from the App Store.",
       onAccept: () => {
         quit(appId)
-        run("if flatpak uninstall --user -y --noninteractive '" + id + "' || pkexec flatpak uninstall --system -y --noninteractive '" + id + "'; then notify-send -a 'App Store' '" + name.replace(/'/g, "") + " was uninstalled'; else notify-send -a 'App Store' 'Couldn'\\''t uninstall " + name.replace(/'/g, "") + "'; fi")
+        Quickshell.execDetached(["bash", "-c", "if flatpak uninstall --user -y --noninteractive \"$1\" || pkexec flatpak uninstall --system -y --noninteractive \"$1\"; then notify-send -a 'App Store' -- \"$2 was uninstalled\"; else notify-send -a 'App Store' -- \"Couldn't uninstall $2\"; fi", "_", id, name])
         unpin(appId)
       } })
   }
@@ -267,7 +267,7 @@ Singleton {
     parts.forEach(m => { args.push("-M"); args.push(m) })
     args.push("-k"); args.push(key)
     parts.reverse().forEach(m => { args.push("-m"); args.push(m) })
-    keysProc.command = ["bash", "-c", "sleep 0.12; " + args.map(a => "'" + a + "'").join(" ")]
+    keysProc.command = ["bash", "-c", "sleep 0.12; exec \"$@\"", "_"].concat(args)
     keysProc.running = true
   }
   property Process keysProc: Process {}

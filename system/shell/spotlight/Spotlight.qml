@@ -37,7 +37,7 @@ PanelWindow {
   Process {
     id: clipProc
     command: ["cliphist", "list"]
-    stdout: StdioCollector { onStreamFinished: sp.clips = text.split("\n").filter(l => l).slice(0, 200).map(l => { const t = l.indexOf("\t"); return { id: l.slice(0, t), text: l.slice(t + 1) } }) }
+    stdout: StdioCollector { onStreamFinished: sp.clips = text.split("\n").filter(l => l).slice(0, 200).map(l => { const t = l.indexOf("\t"); return { id: l.slice(0, t), text: l.slice(t + 1) } }).filter(c => /^\d+$/.test(c.id)) }
   }
   Process {
     id: keysProc
@@ -169,7 +169,6 @@ PanelWindow {
     opacity: sp.shown
     radius: 22
     fill: Theme.glassStrong
-    shadowSize: 40
     Behavior on height { NumberAnimation { duration: Theme.fast; easing.type: Theme.easing } }
 
     TapHandler {}   // keep clicks on the card from closing it

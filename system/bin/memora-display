@@ -81,6 +81,16 @@ apply() {
 
 set_key() { # KEY VALUE
   local k=$1 v=$2 tmp
+  case "$k" in
+    scale.*) [[ $v == default || $v =~ ^[0-9]+(\.[0-9]+)?$ ]] ;;
+    res.*) [[ $v =~ ^(preferred|[0-9]+x[0-9]+(@[0-9]+(\.[0-9]+)?)?)$ ]] ;;
+    transform.*) [[ $v =~ ^[0-7]$ ]] ;;
+    main) [[ $v =~ ^[A-Za-z0-9_.-]*$ ]] ;;
+    arrange) [[ $v =~ ^(right|left|above|below)$ ]] ;;
+    mode) [[ $v =~ ^(extend|mirror|main|second)$ ]] ;;
+    *) echo "unknown setting $k"; exit 2 ;;
+  esac || { echo "$k can't be $v"; exit 2; }
+  [[ ${k#*.} =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "unknown screen ${k#*.}"; exit 2; }
   tmp="$(mktemp)"
   case "$k" in
     scale.*) if [[ $v == default ]]; then jq --arg n "${k#scale.}" 'del(.scale[$n])' "$cfg" > "$tmp"

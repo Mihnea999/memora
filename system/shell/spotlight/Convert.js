@@ -174,7 +174,7 @@ function convert(q, rates) {
     const tos = ct ? [ct] : ["EUR", "USD", "RON", "GBP"].filter(x => x !== cf)
     return tos.filter(t => r[t]).map(t => {
       const v = a.v / r[cf] * r[t]
-      return { title: fmt(Math.round(v * 100) / 100) + " " + t, sub: fmt(a.v) + " " + cf + " =  ·  rate of " + rates.date, copy: plain(Math.round(v * 100) / 100) }
+      return { title: fmt(Math.round(v * 100) / 100) + " " + t, sub: fmt(a.v) + " " + cf + "  ·  rate of " + rates.date, copy: plain(Math.round(v * 100) / 100) }
     })
   }
   // units

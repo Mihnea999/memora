@@ -20,7 +20,7 @@ Kit.Page {
       label: "Full name"; last: true
       RowLayout { spacing: 8
         Kit.Field { id: nameField; text: Host.fullName; width: 200 }
-        Kit.Button { text: "Save"; onClicked: run.exec(["pkexec", "chfn", "-f", nameField.text, Host.user]) }
+        Kit.Button { text: "Save"; onClicked: { const n = nameField.text.replace(/[:,=\n\r]/g, " ").trim(); if (n) run.exec(["pkexec", "chfn", "-f", n, Host.user]) } }
       }
     }
   }
@@ -34,9 +34,10 @@ Kit.Page {
       Kit.Button {
         text: "Change Password"; primary: true
         onClicked: {
-          if (pw1.text.length < 4) { p.status = "Use at least 4 characters."; return }
+          if (pw1.text.length < 8) { p.status = "Use at least 8 characters."; return }
+          if (/[\n\r]/.test(pw1.text)) { p.status = "A password can't hold a line break."; return }
           if (pw1.text !== pw2.text) { p.status = "The passwords do not match."; return }
-          run.exec(["bash", "-c", "printf '%s:%s\\n' \"$1\" \"$2\" | pkexec chpasswd && echo 'Password changed.'", "_", Host.user, pw1.text])
+          run.execWith(["bash", "-c", "pkexec chpasswd && echo 'Password changed.' || echo 'The password was not changed.'"], Host.user + ":" + pw1.text + "\n")
           pw1.text = ""; pw2.text = ""
         }
       }

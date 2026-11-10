@@ -43,6 +43,7 @@ on_error() {
 trap 'on_error $LINENO' ERR
 
 cleanup() {
+  rm -f "$TARGET/root/memora.env" 2>/dev/null || true
   swapoff -a 2>/dev/null || true
   umount -R "$TARGET" 2>/dev/null || true
   cryptsetup close cryptroot 2>/dev/null || true
@@ -146,6 +147,7 @@ questions() {
     MODE=${MODE:-erase}; SIZE=${SIZE:-0}
     [[ $USERNAME =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { fail "Invalid username."; exit 1; }
     [[ $HOSTNAME_ =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$ ]] || HOSTNAME_=memora
+    [[ -n $PASSWORD ]] || { fail "A password is needed."; exit 1; }
     loadkeys "$KEYMAP" 2>/dev/null || true
     return
   fi
@@ -414,9 +416,11 @@ configure() {
   cp -a "$PAYLOAD" "$TARGET/usr/share/memora"
   chmod 755 "$TARGET"/usr/share/memora/{bin/*,install/*.sh,lib/*.sh}
   install -m600 /dev/null "$TARGET/root/memora.env"
+  # Only the password's hash is written to the new disk, never the password.
+  local hash; hash="$(printf '%s' "$PASSWORD" | openssl passwd -6 -stdin)"
   {
     printf 'MEMORA_%s=%q\n' \
-      USER "$USERNAME" FULLNAME "$FULLNAME" PASSWORD "$PASSWORD" HOSTNAME "$HOSTNAME_" \
+      USER "$USERNAME" FULLNAME "$FULLNAME" PASSWORD_HASH "$hash" HOSTNAME "$HOSTNAME_" \
       TIMEZONE "$TIMEZONE" LOCALE "$LOCALE" KEYMAP "$KEYMAP" XKB "$XKB" THEME "$THEME" \
       TOOLKITS "$TOOLKITS" ENCRYPT "$ENCRYPT" LUKS_UUID "${LUKS_UUID:-}" ROOT_UUID "$ROOT_UUID"
   } > "$TARGET/root/memora.env"
@@ -446,12 +450,26 @@ finish() {
   if gum confirm "Restart now?"; then reboot; fi
 }
 
+# The answers end up in system files (passwd, locale.conf, a Lua file): keep
+# them to what those files can hold, whoever typed them.
+check_answers() {
+  FULLNAME="$(printf '%s' "$FULLNAME" | tr -d '\000-\037' | tr ':,' '  ')"; FULLNAME="${FULLNAME:0:80}"
+  [[ $TIMEZONE =~ ^[A-Za-z0-9_+/-]+$ && -f /usr/share/zoneinfo/$TIMEZONE ]] || TIMEZONE=UTC
+  [[ $LOCALE =~ ^[a-z]{2,3}_[A-Z]{2}\.UTF-8$ ]] || LOCALE=en_US.UTF-8
+  [[ $KEYMAP =~ ^[A-Za-z0-9_-]+$ ]] || KEYMAP=us
+  [[ $XKB =~ ^[a-z0-9_,-]+$ ]] || XKB=us
+  [[ $THEME == light ]] || THEME=dark
+  [[ $TOOLKITS =~ ^[a-z\ ]*$ ]] || TOOLKITS=""
+  [[ $ENCRYPT == 1 ]] || ENCRYPT=0
+}
+
 main() {
   preflight
   banner
   network
   timedatectl set-ntp true 2>/dev/null || true
   questions
+  check_answers
   confirm
   prepare_disk
   install_base

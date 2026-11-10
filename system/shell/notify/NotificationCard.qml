@@ -14,7 +14,6 @@ Glass {
 
   radius: 18
   fill: Theme.glassStrong
-  shadowSize: banner ? 26 : 10
   width: 360
   implicitHeight: col.implicitHeight + 24
 
@@ -46,8 +45,10 @@ Glass {
       Txt {
         Layout.fillWidth: true
         visible: text !== ""
-        text: card.notif.body
+        text: (card.notif.body || "").replace(/<img\b[^>]*>/gi, "")
         textFormat: Text.StyledText
+        linkColor: Theme.accent
+        onLinkActivated: link => { if (/^(https?|mailto):/i.test(link)) Qt.openUrlExternally(link) }
         wrapMode: Text.Wrap
         maximumLineCount: card.banner ? 3 : 6
         color: Theme.text

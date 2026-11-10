@@ -13,8 +13,8 @@
 # only when the download is signed by the key in /usr/share/memora/keys.
 set -uo pipefail
 MEMORA_PATH="${MEMORA_PATH:-/usr/share/memora}"
-cache="${XDG_CACHE_HOME:-$HOME/.cache}/memora"
-mkdir -p "$cache"
+cache="${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/memora"
+[[ ${1:-} == --root-part ]] || mkdir -p "$cache"
 
 pacman_updates() {
   # checkupdates syncs into a private database, so it never half-updates the system.
@@ -75,7 +75,8 @@ notify() {
 
 # Memora's own files: download, check the signature, swap in atomically.
 apply_memora() { # url version (as root)
-  local url=$1 ver=$2 tmp
+  local url=$1 ver=$2 tmp cur
+  [[ $url == https://* && $ver =~ ^[0-9]+(\.[0-9]+)*$ ]] || { echo "The update address must start with https://"; return 1; }
   tmp="$(mktemp -d)"
   curl -fsSL --max-time 300 -o "$tmp/memora.tar.zst" "$url/memora-$ver.tar.zst" &&
     curl -fsSL --max-time 30 -o "$tmp/memora.tar.zst.sig" "$url/memora-$ver.tar.zst.sig" || { echo "Download failed"; return 1; }
@@ -83,7 +84,13 @@ apply_memora() { # url version (as root)
   gpg --batch --quiet --import "$MEMORA_PATH"/keys/*.asc 2>/dev/null
   gpg --batch --verify "$tmp/memora.tar.zst.sig" "$tmp/memora.tar.zst" 2>/dev/null || { echo "Signature check failed: not installing"; rm -rf "$tmp"; return 1; }
   mkdir "$tmp/new" && tar --zstd -xf "$tmp/memora.tar.zst" -C "$tmp/new" || { echo "Archive is damaged"; return 1; }
-  [[ -f $tmp/new/version && -d $tmp/new/shell ]] || { echo "Archive is not Memora"; return 1; }
+  [[ -f $tmp/new/version && -d $tmp/new/shell ]] || { echo "Archive is not Memora"; rm -rf "$tmp"; return 1; }
+  # The signature covers the files, not the name it was served under: an older
+  # (signed) Memora must not come back as "the latest".
+  cur="$(cat "$MEMORA_PATH/version" 2>/dev/null)"
+  [[ "$(cat "$tmp/new/version")" == "$ver" && $ver != "$cur" && "$(printf '%s\n%s\n' "$cur" "$ver" | sort -V | tail -1)" == "$ver" ]] ||
+    { echo "The download is not Memora $ver"; rm -rf "$tmp"; return 1; }
+  chown -R root:root "$tmp/new"; chmod -R go-w "$tmp/new"
   command -v snapper >/dev/null && snapper -c root create -d "before Memora $ver" -c number 2>/dev/null
   rm -rf "$MEMORA_PATH.new" && cp -a "$tmp/new" "$MEMORA_PATH.new" &&
     mv "$MEMORA_PATH" "$MEMORA_PATH.old" && mv "$MEMORA_PATH.new" "$MEMORA_PATH" && rm -rf "$MEMORA_PATH.old"
@@ -91,17 +98,23 @@ apply_memora() { # url version (as root)
   # New commands and apps that came with this version.
   for f in "$MEMORA_PATH"/bin/*; do ln -sf "$f" "/usr/local/bin/$(basename "$f")"; done
   install -Dm644 -t /usr/share/applications "$MEMORA_PATH"/applications/*.desktop
+  # What the password dialog says for each kind of change (new kinds come with new versions).
+  install -Dm644 "$MEMORA_PATH/polkit/org.memora.admin.policy" /usr/share/polkit-1/actions/org.memora.admin.policy
   rm -rf "$tmp"
 }
 
 # Everything that needs the administrator, in one password prompt.
-root_part() { # memora-url memora-version
+root_part() {
   set -o pipefail
   echo "@step 1 3 Updating the system"
-  pacman -Syu --noconfirm --noprogressbar 2>&1 || { echo "@error The system update did not finish. Open Terminal and run memora-update to see why."; exit 1; }
-  if [[ -n ${1:-} && -n ${2:-} ]]; then
+  pacman -Syu --noconfirm --noprogressbar 2>&1 || { echo "@error The system update did not finish. Check the internet connection and try again."; exit 1; }
+  # Memora itself: the address comes from /etc/memora/update.conf (root's), never from whoever asked.
+  local line url ver
+  line="$(memora_update)" || true
+  if [[ -n $line ]]; then
+    url="$(sed -n 's/^URL=//p' /etc/memora/update.conf | head -1)"; ver="$(cut -f4 <<<"$line")"
     echo "@step 2 3 Updating Memora"
-    apply_memora "$1" "$2" || echo "@warn Memora itself could not be updated this time."
+    apply_memora "$url" "$ver" || echo "@warn Memora itself could not be updated this time."
   fi
   # Packages a newer Memora needs that this computer doesn't have yet.
   local missing
@@ -119,13 +132,9 @@ root_part() { # memora-url memora-version
 }
 
 apply() {
-  local url="" ver=""
-  if line="$(memora_update)" && [[ -n $line ]]; then
-    url="$(sed -n 's/^URL=//p' /etc/memora/update.conf | head -1)"; ver="$(cut -f4 <<<"$line")"
-  fi
   echo "@step 0 3 Preparing"
   # The root part runs this same script, so it is the installed copy that runs as root.
-  pkexec /usr/share/memora/bin/memora-admin update "$url" "$ver" || { echo "@error Update cancelled or failed."; exit 1; }
+  pkexec /usr/share/memora/bin/memora-admin update || { echo "@error Update cancelled or failed."; exit 1; }
   if command -v flatpak >/dev/null; then
     echo "@step 2 3 Updating apps"
     flatpak update --user -y --noninteractive 2>&1 | grep -v '^\s*$' || true
@@ -153,7 +162,7 @@ case "${1:-}" in
   check) check ;;
   notify) notify ;;
   apply) apply ;;
-  --root-part) [[ $EUID -eq 0 ]] || exit 1; shift; root_part "$@" ;;
+  --root-part) [[ $EUID -eq 0 ]] || exit 1; MEMORA_PATH=/usr/share/memora; root_part ;;
   "") interactive ;;
   *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

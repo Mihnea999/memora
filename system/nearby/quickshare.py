@@ -233,7 +233,7 @@ class Conn:
         self.wlock = threading.Lock()
         self.seq_out = self.seq_in = 0
         self.keys = None
-        self.events = queue.Queue()
+        self.events = queue.Queue(maxsize=64)   # a sender waits for us, instead of filling memory
         self.closed = threading.Event()
         self.pin = ""
 
@@ -332,6 +332,13 @@ class Conn:
             except OSError:
                 return
 
+    def _emit(self, ev):
+        while not self.closed.is_set():
+            try:
+                return self.events.put(ev, timeout=1)
+            except queue.Full:
+                pass
+
     def _reader(self):
         buffers = {}
         try:
@@ -342,7 +349,7 @@ class Conn:
                     if not v1.sub(6).int(1):
                         self.send(keep_alive(True))
                 elif t == 6:                                 # they hung up
-                    self.events.put(("disconnect",))
+                    self._emit(("disconnect",))
                     return
                 elif t == 3:
                     pt = v1.sub(4)
@@ -351,21 +358,26 @@ class Conn:
                     off, flags, body = c.int(2), c.int(1), c.bytes(3)
                     if pt.int(1) != 1:                       # control packets (cancel, errors)
                         if pt.sub(4).int(1) in (1, 2):
-                            self.events.put(("cancel",))
+                            self._emit(("cancel",))
                         continue
                     if ptype == 1:
                         if total > MAX_FRAME:
                             raise ValueError("payload too large")
+                        if pid not in buffers and len(buffers) >= 8:
+                            raise ValueError("too many payloads")
                         buf = buffers.setdefault(pid, bytearray())
-                        if off != len(buf):
+                        if off != len(buf) or len(buf) + len(body) > MAX_FRAME:
                             raise ValueError("bad offset")
                         buf += body
                         if flags & 1:
-                            self.events.put(("bytes", pid, bytes(buffers.pop(pid))))
+                            self._emit(("bytes", pid, bytes(buffers.pop(pid))))
                     elif ptype == 2:
-                        self.events.put(("file", pid, off, body, bool(flags & 1)))
+                        self._emit(("file", pid, off, body, bool(flags & 1)))
         except Exception as e:   # closed, or garbage
-            self.events.put(("closed", str(e)))
+            try:
+                self.events.put_nowait(("closed", str(e)))
+            except queue.Full:
+                pass
         finally:
             self.closed.set()
 
@@ -376,7 +388,12 @@ class Conn:
             left = deadline - time.time()
             if left <= 0:
                 raise TimeoutError("no answer")
-            ev = self.events.get(timeout=left)
+            try:
+                ev = self.events.get(timeout=min(left, 1))
+            except queue.Empty:
+                if self.closed.is_set():
+                    raise ConnectionError("closed")
+                continue
             if ev[0] in ("closed", "disconnect", "cancel"):
                 raise ConnectionError(ev[0])
             if ev[0] == "bytes":
@@ -413,8 +430,10 @@ def alert(conn, kind):
 
 # ------------------------------------------------------------------ receive ---
 def sanitize(name):
-    name = os.path.basename(name.replace("\\", "/")).strip() or "file"
-    return "".join("_" if ch in '/\\?%*:|"<>\0' else ch for ch in name)[:200]
+    name = os.path.basename(name.replace("\\", "/")).strip()
+    name = "".join("_" if ch in '/\\?%*:|"<>' or ord(ch) < 32 else ch for ch in name)[:200]
+    name = name.lstrip(".")           # never a hidden file: it has to show in Downloads
+    return name or "file"
 
 
 def receive(sock, ask, received, unique, folder):
@@ -428,7 +447,7 @@ def receive(sock, ask, received, unique, folder):
         if v1.int(1) != 1:
             return
         who, _ = read_endpoint_info(v1.sub(2).bytes(6))
-        who = who or v1.sub(2).str(2) or "A device nearby"
+        who = " ".join((who or v1.sub(2).str(2) or "A device nearby").split())[:60] or "A device nearby"
 
         # UKEY2: their ClientInit, our ServerInit, their ClientFinish.
         raw_ci = conn.recv_raw()
@@ -472,7 +491,7 @@ def receive(sock, ask, received, unique, folder):
         if v1.int(1) != INTRO:
             return
         intro = v1.sub(2)
-        files = [{"name": sanitize(f.str(1)), "pid": f.int(3), "size": max(0, f.int(4)), "mime": f.str(5)} for f in intro.subs(1)]
+        files = [{"name": sanitize(f.str(1)), "pid": f.int(3), "size": max(0, f.int(4)), "mime": f.str(5)} for f in intro.subs(1)[:500]]
         texts = [{"title": t.str(2), "kind": t.int(3), "pid": t.int(4), "size": t.int(5)} for t in intro.subs(2)]
         if not files and not texts:
             conn.send_bytes(RESPONSE(4))   # unsupported (Wi-Fi passwords, apps)
@@ -484,15 +503,24 @@ def receive(sock, ask, received, unique, folder):
 
         # Take it.
         folder.mkdir(parents=True, exist_ok=True)
-        open_files, paths, got_texts = {}, [], []
+        open_files, paths, got_texts, idle = {}, [], [], 0
         for f in files:
+            if f["pid"] in open_files:
+                continue
             dest = unique(folder / f["name"])
             part = dest.with_name(dest.name + ".part")
             open_files[f["pid"]] = {"meta": f, "dest": dest, "part": part, "fh": open(part, "wb"), "n": 0}
         text_ids = {t["pid"]: t for t in texts}
         try:
             while open_files or text_ids:
-                ev = conn.events.get(timeout=120)
+                try:
+                    ev = conn.events.get(timeout=1)
+                    idle = 0
+                except queue.Empty:
+                    idle += 1
+                    if conn.closed.is_set() or idle > 120:
+                        raise ConnectionError("closed")
+                    continue
                 if ev[0] == "file" and ev[1] in open_files:
                     o = open_files[ev[1]]
                     if ev[2] != o["n"] or o["n"] + len(ev[3]) > o["meta"]["size"]:
@@ -590,9 +618,12 @@ def send(ip, port, files, my_id, my_name, say, mime):
             off = 0
             with open(f, "rb") as fh:
                 while off < size:
-                    if conn.closed.is_set() and not conn.events.empty():
+                    if not conn.events.empty():       # they cancelled or hung up meanwhile
                         ev = conn.events.get()
-                        raise ConnectionError(ev[0])
+                        if ev[0] in ("closed", "disconnect", "cancel"):
+                            raise ConnectionError(ev[0])
+                    elif conn.closed.is_set():
+                        raise ConnectionError("closed")
                     body = fh.read(min(CHUNK, size - off))
                     if not body:
                         raise OSError("file changed")

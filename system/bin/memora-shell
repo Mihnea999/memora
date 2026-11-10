@@ -9,7 +9,7 @@ dir="${MEMORA_PATH:-/usr/share/memora}/shell"
 mkdir -p "$HOME/.local/share/flatpak/exports/share/applications" 2>/dev/null
 case "${1:-}" in
   "") exec qs -p "$dir" ;;
-  restart) pkill -f "qs -p $dir" ; sleep 0.3; exec uwsm app -- qs -p "$dir" ;;
+  restart) pkill -f "qs -p $dir\$" ; sleep 0.3; exec uwsm app -- qs -p "$dir" ;;
   switch) exec qs -p "$dir" ipc call switcher "${2:-next}" ;;
   osd) exec qs -p "$dir" ipc call osd "$2" "${3:-up}" ;;
   lock) exec qs -p "$dir" ipc call lock lock ;;

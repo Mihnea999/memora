@@ -23,10 +23,12 @@ Settings: ~/.config/memora/share.json. State for the desktop:
 $XDG_RUNTIME_DIR/memora-share/devices.json.
 """
 import hashlib
+import hmac
 import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import ssl
 import struct
@@ -95,20 +97,63 @@ def trust(key, name, kind):
     save_config(c)
 
 
-def consent(key, name, kind, question):
-    """Whether to take what `name` sends: by the mode, the trusted list, or by asking."""
+ASKING = threading.Lock()     # one question on screen at a time
+
+
+def consent(key, name, kind, question, proven=True):
+    """Whether to take what `name` sends: by the mode, the trusted list, or by
+    asking. `proven` is False when a device only claims to be a trusted one
+    (see proves_identity): then it is asked about like any other.
+    Returns True, False, or None when another question is already on screen."""
     c = config()
     m = mode(c)
     if m == "off":
         return False
-    if trusted(key) and c.get("autoAccept", True):
+    known = trusted(key)
+    if known and proven and c.get("autoAccept", True):
         return True
-    if m == "trusted" and not trusted(key):
+    if m == "trusted" and not known:
         return False                       # not asked: strangers don't get to pop up anything
-    choice = notify(name, question, [("accept", "Accept"), ("always", "Always Accept"), ("decline", "Decline")], wait=60)
+    if not ASKING.acquire(blocking=False):
+        return None
+    try:
+        choice = notify(name, question, [("accept", "Accept"), ("always", "Always Accept"), ("decline", "Decline")], wait=60)
+    finally:
+        ASKING.release()
     if choice == "always":
         trust(key, name, kind)
     return choice in ("accept", "always")
+
+
+def peer_fingerprint(ip, port, timeout=4):
+    """The id (certificate hash) of the LocalSend device answering at ip:port, or ""."""
+    try:
+        with socket.create_connection((ip, port), timeout=timeout) as raw:
+            with unverified().wrap_socket(raw) as tls:
+                return hashlib.sha256(tls.getpeercert(binary_form=True)).hexdigest().upper()
+    except (OSError, ValueError):
+        return ""
+
+
+def proves_identity(info, ip):
+    """A LocalSend sender names its own id, and ids are announced to the whole
+    network, so anyone could claim a trusted one. The device itself answers on
+    its port with the certificate that id is the hash of: ask it."""
+    try:
+        port = int(info.get("port") or PORT)
+    except (TypeError, ValueError):
+        return False
+    if info.get("protocol", "https") != "https" or not 0 < port < 65536:
+        return False
+    return peer_fingerprint(ip, port) == str(info.get("fingerprint", "")).upper()
+
+
+def clean_name(name):
+    """A file name from another device, safe to create in Downloads."""
+    name = os.path.basename(str(name or "").replace("\\", "/")).strip()
+    name = "".join("_" if ch in '/\\?%*:|"<>' or ord(ch) < 32 else ch for ch in name)[:200]
+    name = name.lstrip(".")           # never a hidden file: it has to show in Downloads
+    return name or "file"
 
 
 def alias():
@@ -162,11 +207,14 @@ def post(url, body, timeout=10, data=None, headers=None):
 
 def notify(title, body, actions=(), wait=0):
     """A notification; with actions, waits (up to `wait` s) and returns the one chosen."""
-    args = ["notify-send", "-a", "Nearby Share", "-i", "folder-download", title, body]
+    # Names and file names come from other devices: never an option, never markup.
+    esc = lambda t: str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    args = ["notify-send", "-a", "Nearby Share", "-i", "folder-download"]
     if wait:
-        args[1:1] = ["-t", str(wait * 1000)]   # gone when the question is
+        args += ["-t", str(wait * 1000)]   # gone when the question is
     for name, label in actions:
         args += ["-A", f"{name}={label}"]
+    args += ["--", " ".join(str(title).split())[:120], esc(body)[:600]]
     if actions:
         try:
             return subprocess.run(["timeout", str(wait)] + args, capture_output=True, text=True).stdout.strip()
@@ -184,6 +232,7 @@ class Service:
         self.sessions = {}         # id -> {files: {id: {...}}, tokens: {id: token}, sender}
         self.lock = threading.Lock()
         self.qs = self.beacon = None
+        self.qs_slots = threading.BoundedSemaphore(8)
         RUN.mkdir(parents=True, exist_ok=True)
         if quickshare:
             try:
@@ -195,13 +244,26 @@ class Service:
 
     # -- devices
     def seen(self, info, ip):
-        fp = info.get("fingerprint")
-        if not fp or fp == self.fp:
+        # Anything on the network can send this: garbage must not stop the service.
+        if not isinstance(info, dict):
             return
+        fp = info.get("fingerprint")
+        if not isinstance(fp, str) or not fp or len(fp) > 128 or fp == self.fp:
+            return
+        try:
+            port = int(info.get("port") or PORT)
+        except (TypeError, ValueError):
+            return
+        proto = info.get("protocol") or "https"
+        if not 0 < port < 65536 or proto not in ("http", "https"):
+            return
+        text = lambda v, d: " ".join(str(v or d).split())[:60]
         with self.lock:
-            self.devices[fp] = {"id": fp, "alias": info.get("alias") or "Device", "type": info.get("deviceType") or "mobile",
-                                "model": info.get("deviceModel") or "", "ip": ip, "port": int(info.get("port") or PORT),
-                                "protocol": info.get("protocol") or "https", "seen": time.time()}
+            if fp not in self.devices and len(self.devices) >= 64:
+                return
+            self.devices[fp] = {"id": fp, "alias": text(info.get("alias"), "Device"), "type": text(info.get("deviceType"), "mobile"),
+                                "model": text(info.get("deviceModel"), ""), "ip": ip, "port": port,
+                                "protocol": proto, "seen": time.time()}
         self.publish()
 
     def publish(self):
@@ -236,22 +298,32 @@ class Service:
             pass
         s.bind(("", PORT))
         s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, struct.pack("4sl", socket.inet_aton(GROUP), socket.INADDR_ANY))
+        answered = {}
         while True:
             try:
                 data, (ip, _) = s.recvfrom(65536)
                 info = json.loads(data)
             except (OSError, ValueError):
                 continue
-            if info.get("fingerprint") == self.fp:
+            if not isinstance(info, dict) or info.get("fingerprint") == self.fp:
                 continue
             self.seen(info, ip)
             if info.get("announce") or info.get("announcement"):
-                # Answer so it sees us too: over HTTP, else back on the group.
+                # Answer so it sees us too: over HTTP, else back on the group
+                # (each address once every few seconds, however often it calls).
+                now = time.time()
+                answered = {k: t for k, t in answered.items() if now - t < 5}
+                if ip in answered or len(answered) > 32:
+                    continue
+                answered[ip] = now
                 threading.Thread(target=self.answer, args=(info, ip), daemon=True).start()
 
     def answer(self, info, ip):
         try:
-            post(f"{info.get('protocol', 'https')}://{ip}:{info.get('port', PORT)}{API}/register", me(self.fp), timeout=4)
+            proto, port = info.get("protocol", "https"), int(info.get("port") or PORT)
+            if proto not in ("http", "https") or not 0 < port < 65536:
+                return
+            post(f"{proto}://{ip}:{port}{API}/register", me(self.fp), timeout=4)
         except Exception:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -285,8 +357,16 @@ class Service:
                 sock, _ = srv.accept()
             except OSError:
                 continue
-            threading.Thread(target=quickshare.receive, daemon=True,
-                             args=(sock, self.qs_ask, self.qs_received, unique, HOME / "Downloads")).start()
+            if not self.qs_slots.acquire(blocking=False):
+                sock.close()
+                continue
+
+            def one(sock=sock):
+                try:
+                    quickshare.receive(sock, self.qs_ask, self.qs_received, unique, HOME / "Downloads")
+                finally:
+                    self.qs_slots.release()
+            threading.Thread(target=one, daemon=True).start()
 
     def qs_ask(self, who, files, texts, pin):
         if files:
@@ -294,7 +374,7 @@ class Service:
             what += f" ({human(sum(f['size'] for f in files))})"
         else:
             what = "a link" if texts[0]["kind"] == 2 else "some text"
-        return consent("qs:" + who, who, "Quick Share", f"wants to send you {what}\nPIN {pin}")
+        return bool(consent("qs:" + who, who, "Quick Share", f"wants to send you {what}\nPIN {pin}"))
 
     def qs_received(self, who, paths, texts):
         if paths:
@@ -304,7 +384,7 @@ class Service:
             text = t["text"].strip()
             if t["kind"] == 2:      # a link: offer to open it
                 subprocess.Popen(["memora-sound", "done"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                if notify(f"Link from {who}", text, [("open", "Open")], wait=300) == "open":
+                if re.match(r"^https?://\S+$", text) and notify(f"Link from {who}", text, [("open", "Open")], wait=300) == "open":
                     subprocess.Popen(["xdg-open", text])
             else:                   # text: it goes to the clipboard
                 try:
@@ -316,48 +396,95 @@ class Service:
 
     # -- receiving
     def prepare(self, body, ip):
-        info, files = body.get("info") or {}, body.get("files") or {}
+        info, raw = body.get("info"), body.get("files")
+        info = info if isinstance(info, dict) else {}
         self.seen(info, ip)
         if mode() == "off":
             return 403, {"message": "Not receiving"}
-        if not files:
+        # What was offered is what may arrive: each file's name and exact size.
+        files = {}
+        for fid, f in (raw.items() if isinstance(raw, dict) else []):
+            try:
+                size = int(f.get("size"))
+            except (AttributeError, TypeError, ValueError):
+                return 400, {"message": "Every file needs a size"}
+            if size < 0 or len(str(fid)) > 128:
+                return 400, {"message": "Bad file"}
+            files[str(fid)] = {"name": clean_name(f.get("fileName")), "size": size}
+        if not files or len(files) > 500:
             return 400, {"message": "No files"}
-        who = info.get("alias") or "Someone"
-        names = [f.get("fileName", "file") for f in files.values()]
-        size = sum(int(f.get("size") or 0) for f in files.values())
-        what = names[0] if len(names) == 1 else f"{len(names)} files"
-        if not info.get("fingerprint") or not consent("ls:" + info["fingerprint"], who, "LocalSend", f"wants to send you {what} ({human(size)})"):
+        fp = info.get("fingerprint")
+        if not isinstance(fp, str) or not fp:
             return 403, {"message": "Declined"}
+        who = " ".join(str(info.get("alias") or "Someone").split())[:60]
+        names = [f["name"] for f in files.values()]
+        size = sum(f["size"] for f in files.values())
+        what = names[0] if len(names) == 1 else f"{len(names)} files"
+        key = "ls:" + fp
+        ok = consent(key, who, "LocalSend", f"wants to send you {what} ({human(size)})",
+                     proven=not trusted(key) or proves_identity(info, ip))
+        if ok is None:
+            return 409, {"message": "Busy"}
+        if not ok:
+            return 403, {"message": "Declined"}
+        try:
+            if shutil.disk_usage(HOME).free < size + 200_000_000:
+                notify("Not enough space", f"{who} wanted to send {human(size)}.")
+                return 507, {"message": "Not enough space"}
+        except OSError:
+            pass
         sid = str(uuid.uuid4())
         tokens = {fid: secrets.token_hex(16) for fid in files}
         with self.lock:
-            self.sessions[sid] = {"files": files, "tokens": tokens, "who": who, "done": set(), "paths": []}
+            now = time.time()
+            self.sessions = {k: v for k, v in self.sessions.items() if now - v["at"] < 3600}
+            self.sessions[sid] = {"files": files, "tokens": tokens, "who": who, "done": set(), "paths": [], "at": now, "ip": ip}
         return 200, {"sessionId": sid, "files": tokens}
 
     def upload(self, q, handler):
         sid, fid, token = q.get("sessionId", [""])[0], q.get("fileId", [""])[0], q.get("token", [""])[0]
-        s = self.sessions.get(sid)
-        if not s or s["tokens"].get(fid) != token:
-            return 403, {"message": "Invalid token"}
+        with self.lock:
+            s = self.sessions.get(sid)
+            # Each accepted file once, from the device that offered it.
+            if not s or not token or not hmac.compare_digest(str(s["tokens"].get(fid, "")), token) \
+                    or handler.client_address[0] != s["ip"] or fid in s["done"] or fid in s.get("busy", set()):
+                handler.close_connection = True
+                return 403, {"message": "Invalid token"}
+            s.setdefault("busy", set()).add(fid)
         meta = s["files"][fid]
-        name = os.path.basename(meta.get("fileName") or "file").replace("/", "_") or "file"
-        folder = HOME / "Downloads"
-        folder.mkdir(parents=True, exist_ok=True)
-        dest = unique(folder / name)
-        length = int(handler.headers.get("Content-Length") or 0)
-        part = dest.with_name(dest.name + ".part")
-        with open(part, "wb") as f:
-            left = length
-            while left > 0:
-                chunk = handler.rfile.read(min(1 << 20, left))
-                if not chunk:
-                    break
-                f.write(chunk)
-                left -= len(chunk)
-        if length and part.stat().st_size != length:
-            part.unlink(missing_ok=True)
-            return 400, {"message": "Incomplete"}
-        part.replace(dest)
+        part = None
+        try:
+            try:
+                length = int(handler.headers.get("Content-Length") or -1)
+            except ValueError:
+                length = -1
+            if length != meta["size"]:          # not the file that was accepted
+                handler.close_connection = True
+                return 400, {"message": "Size differs from what was offered"}
+            folder = HOME / "Downloads"
+            folder.mkdir(parents=True, exist_ok=True)
+            dest = unique(folder / meta["name"])
+            part = dest.with_name(dest.name + ".part")
+            with open(part, "wb") as f:
+                left = length
+                while left > 0:
+                    chunk = handler.rfile.read(min(1 << 20, left))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    left -= len(chunk)
+            if left:
+                handler.close_connection = True
+                return 400, {"message": "Incomplete"}
+            part.replace(dest)
+            part = None
+        except OSError:
+            handler.close_connection = True
+            return 500, {"message": "Couldn't save it"}
+        finally:
+            s["busy"].discard(fid)
+            if part:
+                part.unlink(missing_ok=True)
         s["done"].add(fid)
         s["paths"].append(str(dest))
         if s["done"] == set(s["files"]):
@@ -379,6 +506,7 @@ class Service:
 
         class H(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
+            timeout = 60
 
             def log_message(self, *a):
                 pass
@@ -392,11 +520,12 @@ class Service:
                 self.wfile.write(raw)
 
             def body(self):
-                n = int(self.headers.get("Content-Length") or 0)
                 try:
-                    return json.loads(self.rfile.read(n) or b"{}")
+                    n = int(self.headers.get("Content-Length") or 0)
+                    j = json.loads(self.rfile.read(n) or b"{}") if 0 <= n <= 1 << 20 else {}
                 except ValueError:
                     return {}
+                return j if isinstance(j, dict) else {}
 
             def do_GET(self):
                 if self.path.startswith(f"{API}/info") or self.path.startswith("/api/localsend/v1/info"):
@@ -422,7 +551,8 @@ class Service:
         httpd = ThreadingHTTPServer(("", PORT), H)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(self.cert, self.key)
-        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        httpd.daemon_threads = True
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True, do_handshake_on_connect=False)
         httpd.serve_forever()
 
     def run(self):
@@ -484,6 +614,9 @@ def send(dev_id, files):
         fid = uuid.uuid4().hex
         meta[fid] = {"id": fid, "fileName": os.path.basename(f), "size": os.path.getsize(f), "fileType": mime(f)}
     base = f"{d['protocol']}://{d['ip']}:{d['port']}{API}"
+    if d["protocol"] == "https" and re.fullmatch(r"[0-9A-Fa-f]{64}", d["id"]) and peer_fingerprint(d["ip"], d["port"]) not in ("", d["id"].upper()):
+        print(f"ERROR {d['alias']} didn't answer as itself. Look for it again.", flush=True)
+        return 1
     print("WAITING", flush=True)   # the other side has to accept
     try:
         r = post(f"{base}/prepare-upload", {"info": me(fp), "files": meta}, timeout=120)

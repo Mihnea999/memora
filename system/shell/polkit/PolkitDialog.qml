@@ -42,7 +42,6 @@ Scope {
         height: body.implicitHeight + 44
         radius: 22
         fill: Theme.glassStrong
-        shadowSize: 50
         opacity: win.shown
         scale: 0.96 + 0.04 * win.shown
         transform: Translate { id: shake; x: 0 }
@@ -133,7 +132,7 @@ Scope {
       Connections {
         target: root.flow
         ignoreUnknownSignals: true
-        function onAuthenticationFailed() { wobble.restart() }
+        function onAuthenticationFailed() { wobble.restart(); pass.text = ""; pass.forceActiveFocus() }
       }
     }
   }

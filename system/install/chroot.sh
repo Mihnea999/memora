@@ -73,11 +73,11 @@ step "User $MEMORA_USER"
 # Not in "input": that group can read every key typed, in any app.
 groupadd -f -r memora-input
 useradd -m -G wheel,video,audio,memora-input -s /bin/bash -c "$MEMORA_FULLNAME" "$MEMORA_USER"
-printf '%s:%s\n' "$MEMORA_USER" "$MEMORA_PASSWORD" | chpasswd
-printf 'root:%s\n' "$MEMORA_PASSWORD" | chpasswd
+printf '%s:%s\n' "$MEMORA_USER" "$MEMORA_PASSWORD_HASH" | chpasswd -e
+# No root password at all: administrator work goes through your own (sudo, polkit).
 passwd -l root >/dev/null
 echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/10-wheel
-echo 'Defaults passwd_timeout=0, timestamp_type=global, lecture=never' > /etc/sudoers.d/20-memora
+echo 'Defaults passwd_timeout=0, lecture=never' > /etc/sudoers.d/20-memora
 chmod 440 /etc/sudoers.d/*
 
 step "Graphics"

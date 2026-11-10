@@ -119,7 +119,7 @@ ShellRoot {
   onQueryChanged: { found = []; searching = query.length >= 2 && ready; searchLater.restart() }
   Process {
     id: searcher
-    command: ["flatpak", "search", "--columns=application,name,description,remotes", app.query]
+    command: ["flatpak", "search", "--columns=application,name,description,remotes", "--", app.query]
     stdout: StdioCollector { onStreamFinished: {
       const x = Object.assign({}, app.extra), ids = []
       text.split("\n").forEach(l => {
@@ -218,6 +218,16 @@ ShellRoot {
     minimumSize: Qt.size(520, 420)
     // Narrow (docked beside another app): the sidebar tucks away and slides in when wanted.
     readonly property bool compact: width < 760
+    // Closing ends what is still downloading: say so first.
+    function leave() {
+      const n = Object.keys(app.jobs).length
+      if (!n) return Qt.quit()
+      confirm.ask({ title: n === 1 ? "An app is still being installed or updated" : n + " apps are still being installed or updated",
+        message: "Closing the App Store stops the download. You can start it again later.", action: "Close Anyway", onAccept: () => Qt.quit() })
+    }
+    Shortcut { sequence: "Ctrl+F"; onActivated: { if (win.compact) win.sideOpen = true; sf.forceActiveFocus() } }
+    Shortcut { sequence: "Ctrl+W"; onActivated: win.leave() }
+    Shortcut { sequence: "Escape"; enabled: !confirm.shown && app.bigShot < 0 && !sf.activeFocus && app.detail !== ""; onActivated: app.detail = "" }
     property bool sideOpen: false
     onCompactChanged: sideOpen = false
     Connections { target: app; function onSectionChanged() { win.sideOpen = false } }
@@ -235,7 +245,7 @@ ShellRoot {
       radius: 12
       color: win.compact ? Theme.glassSolid : Theme.sidebar
       border.color: Theme.separator
-      WindowControls { x: 14; y: 14; window: win; onCloseRequested: Qt.quit() }
+      WindowControls { x: 14; y: 14; window: win; onCloseRequested: win.leave() }
       Item { anchors { left: parent.left; right: parent.right; top: parent.top } height: 40; DragHandler { target: null; onActiveChanged: if (active) win.startSystemMove() }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: Quickshell.execDetached(["memora-shell", "window-menu"]) } }
 
@@ -278,7 +288,7 @@ ShellRoot {
               color: parent.here ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.35 : 0.18) : (nh.hovered ? Theme.hover : "transparent")
               Behavior on color { ColorAnimation { duration: Theme.fast } }
               Sym { id: ns; x: 10; anchors.verticalCenter: parent.verticalCenter; width: 14; height: 14; color: parent.parent.here ? Theme.accent : Theme.textDim
-                    name: ({ Discover: "sparkle", AI: "ai", Electronics: "gear", "Virtual Machines": "display", ArtCraft: "palette", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "mouse", Utilities: "gear", Installed: "arrow", Updates: "download" })[modelData] || "plus" }
+                    name: ({ Discover: "star", AI: "ai", Electronics: "gear", "Virtual Machines": "display", ArtCraft: "palette", Productivity: "check", Internet: "globe", Creativity: "photo", Development: "keyboard", Media: "play", Games: "gamepad", Utilities: "gear", Installed: "arrow", Updates: "download" })[modelData] || "plus" }
               Txt { anchors { left: ns.right; leftMargin: 10; verticalCenter: parent.verticalCenter } text: modelData; font.weight: parent.parent.here ? Font.Bold : Font.Normal }
             }
             HoverHandler { id: nh }
@@ -288,13 +298,15 @@ ShellRoot {
       }
     }
 
+    ConfirmSheet { id: confirm }
+
     // ---- content
     CompactBar {
       x: 14; y: 12; z: 5
       visible: win.compact
       window: win; sideOpen: win.sideOpen
       onToggled: win.sideOpen = !win.sideOpen
-      onCloseRequested: Qt.quit()
+      onCloseRequested: win.leave()
     }
     MouseArea { anchors.fill: parent; z: 9; visible: win.compact && win.sideOpen; onClicked: win.sideOpen = false }
     Item {
