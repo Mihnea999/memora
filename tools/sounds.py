@@ -1,176 +1,239 @@
 #!/usr/bin/env python3
 """Synthesises Memora's system sounds into system/sounds/*.oga.
 
-Everything is made here from sine partials, filtered noise and a small room
-reverb (no samples), in the spirit of a Mac's sounds: short, soft, glassy.
-Run: python3 tools/sounds.py   (needs ffmpeg for the Ogg Vorbis files)
+No samples: every sound is built here from modelled instruments (a struck
+glass, a singing bowl, vibraphone and marimba bars, a kalimba tine, an electric
+piano, a plucked string, air) played in one key (D major), in stereo, in a
+smooth room. What keeps them from sounding like a synthesiser:
+  - partials at the ratios of the real object, the high ones dying first;
+  - a soft attack and the small knock of the mallet or finger;
+  - two copies of each partial a hair apart, so the tone shimmers instead of
+    standing still;
+  - a room made of decaying noise (dense, no metallic ring), darker as it fades;
+  - nothing above about 9 kHz, nothing shrill: the notes sit between D4 and E6.
+Run: python3 tools/sounds.py [alerts] [system]   (needs numpy and ffmpeg)
 """
-import math, os, random, struct, subprocess, sys, tempfile, wave
+import os, re, subprocess, sys, tempfile, wave
+import numpy as np
 
 SR = 48000
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "system", "sounds")
-random.seed(7)
+rng = np.random.default_rng(7)
+
+# D major, the notes used.
+D3, A3 = 146.83, 220.00
+D4, E4, FS4, A4, B4 = 293.66, 329.63, 369.99, 440.00, 493.88
+D5, E5, FS5, A5, B5 = 587.33, 659.25, 739.99, 880.00, 987.77
+D6, E6 = 1174.66, 1318.51
 
 
-def silence(sec):
-    return [0.0] * int(sec * SR)
+# ------------------------------------------------------------------ basics
+def t_(dur):
+    return np.arange(int(dur * SR)) / SR
 
 
-def mix(dst, src, at=0.0, gain=1.0):
-    o = int(at * SR)
-    if len(dst) < o + len(src):
-        dst.extend([0.0] * (o + len(src) - len(dst)))
-    for i, v in enumerate(src):
-        dst[o + i] += v * gain
-    return dst
+def rise(t, attack):
+    """A soft start: half a cosine over `attack` seconds (no click)."""
+    return np.where(t < attack, 0.5 - 0.5 * np.cos(np.pi * np.minimum(t / attack, 1.0)), 1.0)
 
 
-def bell(freq, dur, partials, attack=0.002, glide=0.0):
-    """Sum of decaying sine partials: (ratio, amplitude, decay seconds)."""
-    n = int(dur * SR)
-    out = [0.0] * n
-    for ratio, amp, decay in partials:
-        f = freq * ratio
-        if f > SR / 2.2:
+def shape(x, lo=None, hi=None, slope=2.0):
+    """Zero-phase filter: gently removes what is under lo and over hi (Hz)."""
+    X = np.fft.rfft(x, axis=0)
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    g = np.ones_like(f)
+    if lo:
+        g *= 1 / np.sqrt(1 + (lo / np.maximum(f, 1e-6)) ** (2 * slope))
+    if hi:
+        g *= 1 / np.sqrt(1 + (f / hi) ** (2 * slope))
+    if x.ndim == 2:
+        g = g[:, None]
+    return np.fft.irfft(X * g, n=len(x), axis=0)
+
+
+def noise(dur):
+    return rng.standard_normal(int(dur * SR))
+
+
+def stereo(x, pan=0.0):
+    """Mono to stereo, pan -1 (left) … 1 (right), equal power."""
+    a = (pan + 1) * np.pi / 4
+    return np.stack([x * np.cos(a), x * np.sin(a)], axis=1) * np.sqrt(2)
+
+
+def mix(*parts):
+    """mix((signal, at_seconds, gain, pan), …) -> stereo."""
+    n = max(int(at * SR) + len(x) for x, at, *_ in parts)
+    out = np.zeros((n, 2))
+    for x, at, *rest in parts:
+        gain = rest[0] if rest else 1.0
+        pan = rest[1] if len(rest) > 1 else 0.0
+        s = (x if x.ndim == 2 else stereo(x, pan)).copy()
+        k = min(int(0.08 * SR), len(s) // 2)       # every part ends in a fade, never a cut
+        s[-k:] *= (0.5 + 0.5 * np.cos(np.linspace(0, np.pi, k)))[:, None]
+        o = int(at * SR)
+        out[o:o + len(s)] += s * gain
+    return out
+
+
+# ------------------------------------------------------------- instruments
+def modal(f, dur, partials, attack=0.004, shimmer=0.0012):
+    """A struck object: partials (ratio, level, seconds to fade), each sounded
+    twice a hair apart (one copy quieter) so it shimmers, as real glass and
+    metal do, without ever pulsing down to silence."""
+    t = t_(dur)
+    out = np.zeros_like(t)
+    for k, (ratio, amp, decay) in enumerate(partials):
+        fp = f * ratio
+        if fp > 9500:
             continue
-        ph = 0.0
-        for i in range(n):
-            t = i / SR
-            ff = f * (1 + glide * math.exp(-t / 0.03)) if glide else f
-            ph += 2 * math.pi * ff / SR
-            env = min(1.0, t / attack) * math.exp(-t / decay)
-            out[i] += amp * env * math.sin(ph)
-    return out
+        ph = rng.uniform(0, 2 * np.pi)
+        d = shimmer * (1 + 0.3 * k)
+        out += amp * np.exp(-t / decay) * (0.74 * np.sin(2 * np.pi * fp * (1 - d) * t + ph) + 0.26 * np.sin(2 * np.pi * fp * (1 + d) * t + ph * 1.3))
+    return out * rise(t, attack)
 
 
-def sweep(f0, f1, dur, decay, attack=0.002, curve=0.02):
-    """A sine whose pitch slides from f0 to f1 (exponentially, time constant curve)."""
+def knock(f, level=0.3, length=0.012):
+    """The contact itself: a few milliseconds of soft noise around the note."""
+    n = noise(0.05)
+    t = t_(0.05)
+    return shape(n * np.exp(-t / length) * rise(t, 0.001), lo=f * 0.8, hi=min(f * 5, 7000)) * level
+
+
+def glass(f, dur=1.6, ring=0.7):
+    """A wine glass tapped with a fingernail."""
+    p = [(1, 1.0, ring), (2.32, 0.42, ring * 0.55), (4.25, 0.16, ring * 0.3), (6.63, 0.06, ring * 0.16)]
+    return mix((modal(f, dur, p, attack=0.003), 0), (knock(f * 2, 0.12, 0.004), 0))[:, 0]
+
+
+def bowl(f, dur=3.2, ring=1.6):
+    """A small singing bowl: wide slow beating, a long calm ring."""
+    p = [(1, 1.0, ring), (2.71, 0.5, ring * 0.6), (5.15, 0.2, ring * 0.33), (8.1, 0.06, ring * 0.18)]
+    return modal(f, dur, p, attack=0.006, shimmer=0.0022)
+
+
+def vibes(f, dur=2.0, ring=1.0):
+    """A vibraphone bar under a soft mallet."""
+    p = [(1, 1.0, ring), (4.0, 0.20, ring * 0.28), (10.0, 0.04, ring * 0.1)]
+    return mix((modal(f, dur, p, attack=0.005, shimmer=0.0006), 0), (knock(f, 0.10), 0))[:, 0]
+
+
+def marimba(f, dur=0.6, ring=0.16, hard=0.5):
+    """A rosewood bar: a round, short, woody note."""
+    p = [(1, 1.0, ring), (3.93, 0.22 * hard * 2, ring * 0.3), (9.2, 0.06 * hard * 2, ring * 0.12)]
+    return mix((modal(f, dur, p, attack=0.002, shimmer=0.0003), 0), (knock(f, 0.25 * hard * 2, 0.006), 0))[:, 0]
+
+
+def kalimba(f, dur=1.2, ring=0.45):
+    """A thumb piano tine: a clear note with a tiny metallic tick in front."""
+    p = [(1, 1.0, ring), (2.0, 0.10, ring * 0.5), (5.42, 0.22, 0.035), (8.93, 0.07, 0.018)]
+    return mix((modal(f, dur, p, attack=0.002, shimmer=0.0005), 0), (knock(f * 1.5, 0.14, 0.004), 0))[:, 0]
+
+
+def epiano(f, dur=2.2, ring=1.0):
+    """An electric piano tine: warm, slightly bell-like at the start (FM)."""
+    t = t_(dur)
+    index = 1.1 * np.exp(-t / 0.22) + 0.12
+    body = np.sin(2 * np.pi * f * t + index * np.sin(2 * np.pi * f * t))
+    tine = 0.07 * np.sin(2 * np.pi * f * 13.9 * t) * np.exp(-t / 0.02) if f * 13.9 < 9500 else 0
+    return (body * np.exp(-t / ring) + tine) * rise(t, 0.004)
+
+
+def pad(f, dur, attack=0.7, release=1.2):
+    """Held warmth: a few voices slightly apart, swelling in and letting go."""
+    t = t_(dur)
+    out = np.zeros_like(t)
+    for cents in (-7, -2, 3, 8):
+        ff = f * 2 ** (cents / 1200)
+        ph = rng.uniform(0, 2 * np.pi)
+        out += np.sin(2 * np.pi * ff * t + ph) + 0.28 * np.sin(2 * np.pi * 2 * ff * t + ph * 1.7) + 0.09 * np.sin(2 * np.pi * 3 * ff * t + ph * 0.6)
+    env = rise(t, attack) * np.where(t > dur - release, 0.5 + 0.5 * np.cos(np.pi * np.clip((t - (dur - release)) / release, 0, 1)), 1.0)
+    return out / 4 * env
+
+
+def string(f, dur=1.4, bright=0.45):
+    """A plucked nylon string (Karplus-Strong, the loop darkening as it rings)."""
+    p = int(round(SR / f))
+    buf = shape(rng.uniform(-1, 1, p * 8), hi=1500 + 6000 * bright)[p * 3:p * 4].copy()
+    buf -= buf.mean()
     n = int(dur * SR)
-    out, ph = [0.0] * n, 0.0
-    for i in range(n):
-        t = i / SR
-        f = f1 + (f0 - f1) * math.exp(-t / curve)
-        ph += 2 * math.pi * f / SR
-        out[i] = min(1.0, t / attack) * math.exp(-t / decay) * math.sin(ph)
+    out = np.empty(n)
+    keep = 0.9965
+    for i in range(0, n, p):
+        m = min(p, n - i)
+        out[i:i + m] = buf[:m]
+        buf = keep * (0.5 * buf + 0.5 * np.roll(buf, -1))
+    t = t_(dur)
+    return out * rise(t, 0.0015)
+
+
+def bubble(f, dur=0.16, ring=0.035, lift=5.0):
+    """A drop meeting water: a note that climbs as it fades."""
+    t = t_(dur)
+    ph = 2 * np.pi * f * (t + 0.5 * lift * t * t)
+    return np.sin(ph) * np.exp(-t / ring) * rise(t, 0.004)
+
+
+def air(dur, lo, hi):
+    """A breath: noise let through a window that opens and closes."""
+    t = t_(dur)
+    return shape(noise(dur), lo=lo, hi=hi) * np.sin(np.pi * np.clip(t / dur, 0, 1)) ** 2
+
+
+# -------------------------------------------------------------------- room
+def room(x, t60=1.3, wet=0.25, predelay=0.012, dark=3500.0):
+    """A smooth room: the sound convolved with stereo noise that fades out,
+    its highs fading soonest. Dense from the first instant, so nothing rings."""
+    x = x if x.ndim == 2 else stereo(x)
+    n = int((t60 * 1.15) * SR)
+    t = np.arange(n) / SR
+    ir = np.zeros((n, 2))
+    for ch in range(2):
+        w = rng.standard_normal(n)
+        low = shape(w, lo=180, hi=dark)                      # body: full length
+        high = w - shape(w, hi=dark)                         # air: gone in a third of the time
+        ir[:, ch] = low * 10 ** (-3 * t / t60) + 0.5 * high * 10 ** (-3 * t / (t60 * 0.35))
+    ir *= rise(t, 0.006)[:, None]
+    ir /= np.sqrt((ir ** 2).sum(axis=0)).mean()
+    pd = int(predelay * SR)
+    m = len(x) + n + pd
+    size = 1 << (m - 1).bit_length()
+    out = np.zeros((m, 2))
+    out[:len(x)] += x
+    for ch in range(2):
+        tail = np.fft.irfft(np.fft.rfft(x[:, ch], size) * np.fft.rfft(ir[:, ch], size), size)[:len(x) + n]
+        out[pd:pd + len(tail), ch] += tail * wet
     return out
 
 
-def noise(dur, decay, attack=0.001):
-    n = int(dur * SR)
-    return [min(1.0, (i / SR) / attack) * math.exp(-(i / SR) / decay) * (random.random() * 2 - 1) for i in range(n)]
-
-
-def lowpass(x, fc):
-    a = 1 - math.exp(-2 * math.pi * fc / SR)
-    y, s = [], 0.0
-    for v in x:
-        s += a * (v - s)
-        y.append(s)
-    return y
-
-
-def highpass(x, fc):
-    lp = lowpass(x, fc)
-    return [a - b for a, b in zip(x, lp)]
-
-
-def bandpass(x, lo, hi):
-    return lowpass(highpass(x, lo), hi)
-
-
-def pluck(freq, dur, bright=0.5):
-    """Karplus-Strong string."""
-    p = int(SR / freq)
-    buf = [random.random() * 2 - 1 for _ in range(p)]
-    buf = lowpass(buf, 2000 + 8000 * bright)
-    out = []
-    for i in range(int(dur * SR)):
-        v = buf[i % p]
-        nxt = buf[(i + 1) % p]
-        buf[i % p] = 0.996 * 0.5 * (v + nxt)
-        out.append(v)
-    return out
-
-
-def reverb(x, wet=0.25, room=0.82, tail=1.2):
-    """A small Schroeder room: four combs into two allpasses."""
-    x = x + [0.0] * int(tail * SR)
-    combs = [int(d * SR / 44100) for d in (1557, 1617, 1491, 1422)]
-    wetsig = [0.0] * len(x)
-    for d in combs:
-        buf = [0.0] * d
-        lp, j = 0.0, 0
-        for i, v in enumerate(x):
-            o = buf[j]
-            lp = o * 0.6 + lp * 0.4
-            buf[j] = v + lp * room
-            wetsig[i] += o
-            j = (j + 1) % d
-    for d in (int(556 * SR / 44100), int(225 * SR / 44100)):
-        buf = [0.0] * d
-        j = 0
-        for i, v in enumerate(wetsig):
-            o = buf[j]
-            buf[j] = v + o * 0.5
-            wetsig[i] = o - v
-            j = (j + 1) % d
-    return [a + b * wet / 4 for a, b in zip(x, wetsig)]
-
-
-def loudness(x):
-    """Loudest 100 ms (RMS, dB), with the low end weighted down as the ear hears it."""
-    w = highpass(x, 150)
-    n = int(0.1 * SR)
-    sq = [v * v for v in w]
-    acc = sum(sq[:n])
-    best = acc
-    for i in range(n, len(sq)):
-        acc += sq[i] - sq[i - n]
-        best = max(best, acc)
-    return 10 * math.log10(max(best / n, 1e-12))
-
-
-def finish(x, level=-17.0, ceiling=0.89, fade_in=0.0015, fade_out=0.02):
-    """Remove any DC, trim the silent tail, fade both ends (no clicks), then
-    bring every sound to the same loudness (level, dB) without peaks over -1 dBFS."""
-    x = highpass(x, 12)
-    m = max(abs(v) for v in x) or 1
-    end = len(x)
-    while end > 0 and abs(x[end - 1]) < m * 0.001:
-        end -= 1
-    x = x[:end]
-    ni, no = int(fade_in * SR), int(fade_out * SR)
-    for i in range(min(ni, len(x))):
-        x[i] *= i / ni
-    for i in range(min(no, len(x))):
-        x[len(x) - 1 - i] *= i / no
-    gain = 10 ** ((level - loudness(x)) / 20)
-    peak = max(abs(v) for v in x) * gain
-    if peak > ceiling:
-        gain *= ceiling / peak
-    return [v * gain for v in x]
-
-
+# ----------------------------------------------------------------- output
 def write_wav(path, x):
     with wave.open(path, "wb") as w:
-        w.setnchannels(1)
+        w.setnchannels(2)
         w.setsampwidth(2)
         w.setframerate(SR)
-        w.writeframes(b"".join(struct.pack("<h", int(round(max(-1, min(1, v)) * 32767))) for v in x))
+        w.writeframes((np.clip(x, -1, 1) * 32767).round().astype("<i2").tobytes())
 
 
 def momentary_max(path):
     """The loudest momentary loudness (EBU R128, 400 ms), as ffmpeg measures it."""
     r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-loglevel", "verbose", "-i", path,
                         "-af", "apad=pad_dur=0.5,ebur128", "-f", "null", "-"], capture_output=True, text=True)
-    vals = [float(v) for v in __import__("re").findall(r"\bM:\s*(-?[0-9.]+)", r.stderr)]
+    vals = [float(v) for v in re.findall(r"\bM:\s*(-?[0-9.]+)", r.stderr)]
     return max(vals) if vals else -70.0
 
 
-def save(name, x, level=-17.0, ceiling=0.89):
-    """Every sound at the same loudness: `level` is its loudest moment (LUFS).
-    Sharp sounds that would peak over -1 dBFS are rounded off gently (tanh)."""
-    x = finish(x, level)
+def save(name, x, level=-18.0, ceiling=0.84, top=9000.0):
+    """Tidy the ends, soften the very top, then bring the sound to its loudness
+    (`level`: its loudest moment, LUFS) without peaks over about -1.5 dBFS."""
+    x = shape(x, lo=45, hi=top, slope=1.5)
+    peak = np.abs(x).max()
+    live = np.nonzero(np.abs(x).max(axis=1) > peak * 0.0015)[0]
+    x = x[:live[-1] + 1]
+    fi, fo = int(0.002 * SR), min(int(0.12 * SR), len(x) // 3)
+    x[:fi] *= np.linspace(0, 1, fi)[:, None]
+    x[-fo:] *= (0.5 + 0.5 * np.cos(np.linspace(0, np.pi, fo)))[:, None]
+    x = x / np.abs(x).max() * 0.5
     os.makedirs(OUT, exist_ok=True)
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         tmp = f.name
@@ -179,95 +242,87 @@ def save(name, x, level=-17.0, ceiling=0.89):
         err = level - momentary_max(tmp)
         if abs(err) < 0.3:
             break
-        g = 10 ** (err / 20)
-        x = [v * g for v in x]
-        if max(abs(v) for v in x) > ceiling:
-            x = [ceiling * math.tanh(v / ceiling) for v in x]
+        x = x * 10 ** (err / 20)
+        if np.abs(x).max() > ceiling:      # a sharp sound: round its tips off, gently
+            x = ceiling * np.tanh(x / ceiling)
     write_wav(tmp, x)
     got = momentary_max(tmp)
     dst = os.path.join(OUT, name + ".oga")
-    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", tmp, "-c:a", "libvorbis", "-q:a", "6", dst], check=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", tmp, "-c:a", "libvorbis", "-q:a", "7", dst], check=True)
     os.unlink(tmp)
-    print(f"{name}.oga  {len(x) / SR:.2f}s  {got:.1f} LUFS (target {level})  peak {max(abs(v) for v in x):.2f}")
+    print(f"{name}.oga  {len(x) / SR:.2f}s  {got:.1f} LUFS (target {level})  peak {np.abs(x).max():.2f}")
 
 
-
-GLASS = [(1, 1, 0.5), (2.76, 0.35, 0.18), (5.40, 0.15, 0.08), (8.93, 0.06, 0.04)]
-BELL = [(0.5, 0.25, 1.4), (1, 1, 1.1), (2.0, 0.45, 0.6), (2.4, 0.3, 0.5), (3.0, 0.2, 0.35), (4.5, 0.12, 0.2), (5.33, 0.08, 0.15)]
-CHIME = [(1, 1, 0.7), (3.0, 0.25, 0.25), (4.1, 0.12, 0.12)]
-
-
+# ------------------------------------------------------------------ sounds
 def alerts():
-    # Glint: a struck glass, high and bright
-    save("alert-glint", reverb(bell(1568, 1.2, GLASS), 0.3))
-    # Drop: a drop of water
-    d = sweep(520, 1450, 0.25, 0.06, curve=0.025)
-    save("alert-drop", reverb(d, 0.35))
-    # Chime: two glassy notes going up a fifth
-    c = mix(bell(1318.5, 1.0, CHIME), bell(1975.5, 1.2, CHIME), 0.11, 0.8)
-    save("alert-chime", reverb(c, 0.3))
-    # Bell: a small bell, longer ring
-    save("alert-bell", reverb(bell(880, 2.2, BELL), 0.25, tail=1.5))
-    # Pebble: a short wooden tock
-    t = mix(bell(740, 0.25, [(1, 1, 0.045), (2.3, 0.4, 0.02), (4.1, 0.2, 0.01)]), bandpass(noise(0.03, 0.004), 1500, 6000), 0, 0.5)
-    save("alert-pebble", reverb(t, 0.18, tail=0.5))
-    # Bubble: two rising blips
-    b = mix(sweep(380, 760, 0.12, 0.04, curve=0.03), sweep(560, 1100, 0.14, 0.05, curve=0.03), 0.085, 0.8)
-    save("alert-bubble", reverb(b, 0.3))
-    # Breeze: a soft breath of air with a hint of tone
-    n = int(0.9 * SR)
-    air = bandpass([random.random() * 2 - 1 for _ in range(n)], 500, 2400)
-    for i in range(n):
-        t = i / SR
-        air[i] *= math.sin(math.pi * min(1.0, t / 0.9)) ** 2
-    air = mix(air, bell(660, 0.9, [(1, 0.25, 0.4)], attack=0.25))
-    save("alert-breeze", reverb(air, 0.3))
-    # Pluck: a plucked string
-    save("alert-pluck", reverb(pluck(784, 1.0, 0.6), 0.25))
+    # Glint: one tap on a glass, with the bar of a vibraphone under it for body.
+    save("alert-glint", room(mix((glass(E6, 1.4, 0.55), 0, 0.8, 0.15), (vibes(E5, 1.4, 0.7), 0, 0.5, -0.15)), 1.2, 0.26))
+    # Drop: a drop in still water, and its small echo.
+    save("alert-drop", room(mix((bubble(540, lift=5.5), 0, 1.0, -0.1), (bubble(790, 0.12, 0.025, 6.5), 0.11, 0.35, 0.25),
+                                (shape(marimba(D4, 0.3, 0.05, 0.2), hi=900), 0, 0.22)), 0.9, 0.3), top=6000)
+    # Chime: two vibraphone notes, up a fifth, left to ring together.
+    save("alert-chime", room(mix((vibes(D5, 2.0, 1.0), 0, 1.0, -0.25), (vibes(A5, 2.0, 1.1), 0.14, 0.85, 0.25)), 1.6, 0.28))
+    # Bell: a small singing bowl.
+    save("alert-bell", room(mix((bowl(A4), 0, 1.0), (knock(A4, 0.2, 0.01), 0, 1.0)), 1.8, 0.22))
+    # Pebble: a rosewood bar, one round knock.
+    save("alert-pebble", room(mix((marimba(A5, 0.4, 0.07, 0.7), 0, 1.0, 0.1), (marimba(A4, 0.4, 0.09, 0.3), 0, 0.5, -0.1)), 0.6, 0.2))
+    # Bubble: two bubbles, the second higher.
+    save("alert-bubble", room(mix((bubble(430, 0.15, 0.032, 6.0), 0, 1.0, -0.2), (bubble(640, 0.17, 0.038, 6.0), 0.095, 0.9, 0.2)), 0.8, 0.28), top=6000)
+    # Breeze: a breath of air carrying a soft fifth.
+    b = mix((air(0.9, 500, 2600), 0, 0.22, -0.3), (air(0.9, 900, 4200), 0.08, 0.14, 0.3),
+            (pad(D5, 1.0, 0.3, 0.6), 0.05, 0.5, -0.2), (pad(A5, 1.0, 0.35, 0.6), 0.1, 0.32, 0.2))
+    save("alert-breeze", room(b, 1.6, 0.35), top=7000)
+    # Pluck: a harp string, and the octave above answering quietly.
+    save("alert-pluck", room(mix((string(D5, 1.4, 0.5), 0, 1.0, -0.15), (string(D6, 1.0, 0.35), 0.006, 0.3, 0.2)), 1.3, 0.26))
 
 
 def system():
-    # Startup: a warm, wide major chord that swells and rings out
-    chord = [82.41, 123.47, 164.81, 207.65, 246.94, 329.63, 369.99, 415.30]  # E major add 9, spread
-    s = silence(4.5)
-    for k, f in enumerate(chord):
-        for det in (-0.6, 0.6):
-            harm = [(h, 1 / h ** 1.3, 3.6 / (1 + 0.35 * h)) for h in range(1, 9)]
-            mix(s, bell(f * (1 + det / 1200), 4.5, harm, attack=0.06), 0.004 * k, 0.5 / (1 + 0.15 * k))
-    s = lowpass(s, 3200)
-    save("startup", reverb(s, 0.35, room=0.86, tail=1.8), level=-18)
+    # Startup: a warm D major chord that swells, three electric-piano notes
+    # climbing through it, and a little glass on top as it opens up.
+    dur = 3.6
+    parts = []
+    for k, (f, g) in enumerate([(D3, 0.34), (A3, 0.44), (D4, 0.5), (FS4, 0.42), (A4, 0.36), (E5, 0.22)]):
+        parts.append((pad(f, dur, 0.5 + 0.08 * k, 1.8), 0, g, (-1) ** k * 0.35))
+    for f, at, g, pan in [(D4, 0.0, 0.5, -0.25), (A4, 0.17, 0.46, 0.0), (FS5, 0.34, 0.42, 0.25)]:
+        parts.append((epiano(f, 3.0, 1.3), at, g, pan))
+    parts.append((glass(A5, 2.0, 0.9), 0.52, 0.16, 0.3))
+    parts.append((glass(E6, 2.0, 0.8), 0.60, 0.10, -0.3))
+    save("startup", room(shape(mix(*parts), hi=5200), 2.4, 0.34, 0.02), level=-19, top=7000)
 
-    # Volume: a short, soft pop
-    v = mix(sweep(1500, 950, 0.07, 0.018, attack=0.0008, curve=0.008), bandpass(noise(0.01, 0.002), 2000, 8000), 0, 0.15)
-    save("volume", reverb(v, 0.12, tail=0.25), level=-21)
+    # Volume: the lightest tick of a wooden bar.
+    save("volume", room(marimba(A5, 0.2, 0.028, 0.35), 0.35, 0.1), level=-23, top=6500)
 
-    # Screenshot: a camera shutter (click, clack)
-    def click(lo, hi, dec):
-        return mix(bandpass(noise(0.05, dec), lo, hi), bell(lo * 1.6, 0.05, [(1, 0.4, dec)]))
-    sh = mix(click(1800, 7000, 0.006), click(1200, 5000, 0.009), 0.085, 0.8)
-    save("screenshot", reverb(sh, 0.15, tail=0.3), level=-19)
+    # Screenshot: a camera shutter, open and shut.
+    def blade(lo, hi, body, length):
+        t = t_(0.06)
+        return shape(noise(0.06) * np.exp(-t / length), lo=lo, hi=hi) + 0.12 * np.sin(2 * np.pi * body * t) * np.exp(-t / (length * 2.5)) * rise(t, 0.0008)
+    sh = mix((blade(1400, 6500, 310, 0.005), 0, 1.0, -0.1), (blade(900, 4800, 240, 0.008), 0.078, 0.85, 0.1))
+    save("screenshot", room(sh, 0.4, 0.12), level=-20, top=8000)
 
-    # Trash: paper being crumpled and dropped in
-    tr = silence(0.55)
-    t = 0.0
-    while t < 0.42:
-        dec = random.uniform(0.003, 0.012)
-        mix(tr, bandpass(noise(0.04, dec), random.uniform(800, 2500), random.uniform(4000, 9000)), t, random.uniform(0.3, 1.0) * (1 - t))
-        t += random.uniform(0.012, 0.04)
-    mix(tr, lowpass(noise(0.12, 0.03), 900), 0.42, 0.8)
-    save("trash", reverb(tr, 0.15, tail=0.4), level=-19)
+    # Trash: a soft sweep down, and something light landing.
+    n = int(0.34 * SR)
+    t = np.arange(n) / SR
+    w = noise(0.34)
+    sweep = np.zeros(n)
+    bands = [(2600, 5200), (1500, 3000), (800, 1700), (420, 950)]
+    for k, (lo, hi) in enumerate(bands):           # the window slides down band by band
+        c = (k + 0.5) / len(bands) * 0.30
+        sweep += shape(w, lo=lo, hi=hi) * np.exp(-((t - c) / 0.075) ** 2)
+    tt = t_(0.25)
+    thud = np.sin(2 * np.pi * (96 * tt + 40 * 0.05 * (1 - np.exp(-tt / 0.05)))) * np.exp(-tt / 0.06) * rise(tt, 0.004)
+    tr = mix((sweep, 0, 0.5, 0.0), (thud, 0.27, 1.0), (shape(marimba(D4, 0.2, 0.04, 0.3), hi=1200), 0.27, 0.5))
+    save("trash", room(tr, 0.5, 0.14), level=-20, top=7000)
 
-    # Power: plugged into a charger, a soft glassy rise
-    pw = mix(bell(1046.5, 0.8, CHIME, attack=0.004), bell(1568, 1.0, CHIME, attack=0.004), 0.09, 0.85)
-    save("power", reverb(pw, 0.3), level=-19)
+    # Power: two warm notes rising a fifth as the charger goes in.
+    save("power", room(mix((epiano(A4, 1.6, 0.7), 0, 1.0, -0.2), (epiano(E5, 1.8, 0.8), 0.12, 0.9, 0.2)), 1.3, 0.26), level=-20, top=7000)
 
-    # Error: a low, muted knock (wrong password, something not allowed)
-    e = mix(bell(196, 0.4, [(1, 1, 0.09), (1.5, 0.5, 0.06), (2.02, 0.3, 0.04)], attack=0.003), lowpass(noise(0.02, 0.004), 1200), 0, 0.3)
-    save("error", reverb(e, 0.15, tail=0.3), level=-19)
+    # Error: two low, muted knocks stepping down. Clear, never harsh.
+    e = mix((marimba(FS4, 0.35, 0.10, 0.25), 0, 1.0, -0.1), (marimba(D4, 0.4, 0.13, 0.25), 0.13, 1.0, 0.1))
+    save("error", room(shape(e, hi=2600), 0.5, 0.14), level=-20, top=5000)
 
-    # Done: something finished (a download, an update), two quick ascending notes
-    dn = mix(bell(1174.7, 0.6, CHIME), bell(1760, 0.8, CHIME), 0.07, 0.8)
-    save("done", reverb(dn, 0.25), level=-19)
+    # Done: three kalimba notes going up the chord, the last one left to ring.
+    dn = mix((kalimba(D5, 0.8, 0.28), 0, 0.85, -0.25), (kalimba(FS5, 0.8, 0.32), 0.085, 0.9, 0.0), (kalimba(A5, 1.3, 0.55), 0.17, 1.0, 0.25))
+    save("done", room(dn, 1.2, 0.26), level=-20)
 
 
 if __name__ == "__main__":
