@@ -17,6 +17,16 @@ QtObject {
     contentHeight: col.implicitHeight + 40
     clip: true
     boundsBehavior: Flickable.StopAtBounds
+    // The control Tab lands on is scrolled into view.
+    readonly property Item focused: Window.activeFocusItem
+    onFocusedChanged: {
+      let it = focused, inside = false
+      for (let q = it; q; q = q.parent) if (q === col) { inside = true; break }
+      if (!inside) return
+      const y = it.mapToItem(col, 0, 0).y + col.y
+      if (y < contentY + 12) contentY = Math.max(0, y - 12)
+      else if (y + it.height > contentY + height - 12) contentY = Math.min(Math.max(0, contentHeight - height), y + it.height - height + 12)
+    }
     ColumnLayout {
       id: col
       x: 28; y: 18
@@ -93,6 +103,10 @@ QtObject {
     }
     HoverHandler { id: rh }
     TapHandler { enabled: row.clickable; onTapped: row.clicked() }
+    activeFocusOnTab: clickable
+    Keys.onSpacePressed: if (clickable) clicked()
+    Keys.onReturnPressed: if (clickable) clicked()
+    Rectangle { anchors.fill: parent; anchors.margins: 2; radius: 10; color: "transparent"; border.width: 2; border.color: Theme.accent; visible: row.clickable && row.activeFocus }
   }
 
   component Switch: Item {
@@ -100,6 +114,11 @@ QtObject {
     property bool checked: false
     signal toggled(bool on)
     width: 38; height: 22
+    activeFocusOnTab: true
+    Keys.onSpacePressed: toggled(!checked)
+    Keys.onReturnPressed: toggled(!checked)
+    // Reached with Tab: a ring shows where the keyboard is.
+    Rectangle { anchors.fill: parent; anchors.margins: -3; radius: 14; color: "transparent"; border.width: 2; border.color: Theme.accent; visible: sw.activeFocus }
     Rectangle {
       anchors.fill: parent; radius: 11
       color: sw.checked ? Theme.accent : (Theme.dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.12))
@@ -121,6 +140,11 @@ QtObject {
     property bool danger: false
     signal clicked()
     width: bt.implicitWidth + 24; height: 26; radius: 7
+    activeFocusOnTab: true
+    Keys.onSpacePressed: clicked()
+    Keys.onReturnPressed: clicked()
+    // Reached with Tab: a ring shows where the keyboard is.
+    Rectangle { anchors.fill: parent; anchors.margins: -3; radius: 10; color: "transparent"; border.width: 2; border.color: Theme.accent; visible: b.activeFocus }
     color: primary ? Theme.accent : (bh.hovered ? Theme.pressed : Theme.hover)
     border.color: primary ? "transparent" : Theme.separator
     Txt { id: bt; anchors.centerIn: parent; text: b.text; color: b.primary ? "#ffffff" : (b.danger ? Theme.red : Theme.text); font.pixelSize: Theme.small + 0.5 }
@@ -136,6 +160,16 @@ QtObject {
     signal picked(var value)
     width: seg.implicitWidth + 4; height: 26; radius: 7
     color: Theme.field
+    activeFocusOnTab: true
+    // ← and → move the choice.
+    function move(d) {
+      const i = options.findIndex(o => o.value === value), n = Math.max(0, Math.min(options.length - 1, (i < 0 ? 0 : i) + d))
+      if (options.length && n !== i) picked(options[n].value)
+    }
+    Keys.onLeftPressed: move(-1)
+    Keys.onRightPressed: move(1)
+    // Reached with Tab: a ring shows where the keyboard is.
+    Rectangle { anchors.fill: parent; anchors.margins: -3; radius: 10; color: "transparent"; border.width: 2; border.color: Theme.accent; visible: ch.activeFocus }
     border.color: Theme.separator
     RowLayout {
       id: seg
@@ -169,6 +203,20 @@ QtObject {
     Sym { anchors { right: parent.right; rightMargin: 9; verticalCenter: parent.verticalCenter } name: "chevron"; width: 9; height: 9; rotation: 90; color: Theme.textDim }
     HoverHandler { id: sh; cursorShape: Qt.PointingHandCursor }
     TapHandler { onTapped: sel.open = !sel.open }
+    activeFocusOnTab: true
+    onActiveFocusChanged: if (!activeFocus) open = false
+    // Space opens the list; ↑ and ↓ change the choice; Esc closes.
+    function move(d) {
+      const i = options.findIndex(o => o.value === value), n = Math.max(0, Math.min(options.length - 1, (i < 0 ? 0 : i) + d))
+      if (options.length && n !== i) picked(options[n].value)
+    }
+    Keys.onSpacePressed: open = !open
+    Keys.onReturnPressed: open = !open
+    Keys.onUpPressed: move(-1)
+    Keys.onDownPressed: move(1)
+    Keys.onEscapePressed: ev => { if (open) open = false; else ev.accepted = false }
+    // Reached with Tab: a ring shows where the keyboard is.
+    Rectangle { anchors.fill: parent; anchors.margins: -3; radius: 10; color: "transparent"; border.width: 2; border.color: Theme.accent; visible: sel.activeFocus }
     readonly property Item host: sel.Window.contentItem
     // Over the whole window while open: a click outside closes it.
     MouseArea {
@@ -210,7 +258,9 @@ QtObject {
       passwordCharacter: "•"
       clip: true
       selectByMouse: true
+      activeFocusOnTab: true
       Keys.onReturnPressed: f.accepted()
+      Keys.onEnterPressed: f.accepted()
       Txt { visible: !input.text && !input.activeFocus; anchors.verticalCenter: parent.verticalCenter; text: f.placeholder; color: Theme.textFaint; font.pixelSize: Theme.small + 0.5 }
     }
   }
@@ -227,5 +277,9 @@ QtObject {
     signal done(string out)
     stdout: StdioCollector { onStreamFinished: { cmd.out = text; cmd.done(text) } }
     function exec(args) { command = args; running = true }
+    // The same, with `input` on the command's standard input (passwords, keys).
+    property var pending: null
+    function execWith(args, input) { pending = input; stdinEnabled = true; command = args; running = true }
+    onStarted: if (pending !== null) { write(pending); pending = null; stdinEnabled = false }
   }
 }

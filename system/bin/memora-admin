@@ -1,30 +1,146 @@
 #!/usr/bin/env bash
-# memora-admin — the few system changes System Settings makes, run as root
-# through pkexec. Each has its own polkit action (polkit/org.memora.admin.policy),
-# so the password dialog says in plain words what is about to happen.
+# memora-admin — the few system changes System Settings and the App Store make,
+# run as root through pkexec. Each has its own polkit action
+# (polkit/org.memora.admin.policy), so the password dialog says in plain words
+# what is about to happen. Nothing here runs text given by the caller: every
+# argument is a word from a fixed list.
 #   memora-admin firewall on|off
-#   memora-admin update URL VERSION
+#   memora-admin update                update the system (and Memora, from the
+#                                      address in /etc/memora/update.conf)
 #   memora-admin charge-limit on|off   stop charging at 80% (or Lenovo's Conservation
 #                                      Mode), kept across restarts
+#   memora-admin software install|remove NAME
+#                                      developer tools from the App Store that are
+#                                      system packages: ollama docker virt-manager
+#                                      distrobox arduino-cli ngspice rust
+#   memora-admin reset                 erase this computer (System Settings > Reset):
+#                                      your home folder, the apps you added, saved
+#                                      Wi-Fi and Bluetooth, then a new home and a
+#                                      restart. The account itself stays.
 set -euo pipefail
-[[ $EUID -eq 0 ]] || exec pkexec "$(readlink -f "$0")" "$@"
+[[ $EUID -eq 0 ]] || exec pkexec /usr/share/memora/bin/memora-admin "$@"
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin
+
+# The person who asked (pkexec says who), for groups such as docker.
+caller() { local u; u="$(id -nu "${PKEXEC_UID:-}" 2>/dev/null)" && [[ $u != root ]] && echo "$u"; }
+
+ollama_pkg() {
+  local gpu; gpu="$(lspci 2>/dev/null | grep -iE 'vga|3d|display' || true)"
+  if grep -qi nvidia <<<"$gpu" && [[ -f /etc/memora/nvidia ]]; then echo ollama-cuda
+  elif grep -qiE 'amd|radeon' <<<"$gpu"; then echo ollama-rocm
+  else echo ollama; fi
+}
+
+software() { # install|remove NAME
+  local op=$1 name=$2 u; u="$(caller || true)"
+  local add=(pacman -S --needed --noconfirm) del=(pacman -Rns --noconfirm)
+  case "$op:$name" in
+    install:ollama) "${add[@]}" "$(ollama_pkg)"; systemctl enable --now ollama ;;
+    remove:ollama) systemctl disable --now ollama 2>/dev/null || true
+      mapfile -t have < <(pacman -Qq ollama ollama-cuda ollama-rocm 2>/dev/null || true)
+      if ((${#have[@]})); then "${del[@]}" "${have[@]}"; fi ;;
+    install:docker) "${add[@]}" docker docker-compose docker-buildx; systemctl enable --now docker
+      if [[ -n $u ]]; then usermod -aG docker "$u"; fi ;;
+    remove:docker) systemctl disable --now docker 2>/dev/null || true; "${del[@]}" docker-buildx docker-compose docker ;;
+    install:virt-manager) "${add[@]}" qemu-desktop libvirt virt-manager dnsmasq swtpm edk2-ovmf; systemctl enable --now libvirtd.socket
+      if [[ -n $u ]]; then usermod -aG libvirt "$u"; fi ;;
+    remove:virt-manager) systemctl disable --now libvirtd.socket 2>/dev/null || true; "${del[@]}" virt-manager ;;
+    install:distrobox) "${add[@]}" distrobox podman ;;
+    remove:distrobox) "${del[@]}" distrobox ;;
+    install:arduino-cli|install:ngspice) "${add[@]}" "$name" ;;
+    remove:arduino-cli|remove:ngspice) "${del[@]}" "$name" ;;
+    install:rust) "${add[@]}" rustup ;;
+    remove:rust) "${del[@]}" rustup ;;
+    *) exit 2 ;;
+  esac
+}
+
+# Erase: the home folder of whoever asked becomes the one of a new install.
+# It runs as a service of its own (reset, below, starts it), so it outlives the
+# session it has to end first: nothing may still be writing into the home.
+reset_now() { # USER
+  local user=$1 uid home kb="" mode xkb encrypt=0 n
+  uid="$(id -u "$user" 2>/dev/null)" || exit 1
+  home="$(getent passwd "$user" | cut -d: -f6)"
+  # Only a person's home, never a system account's or a path outside /home.
+  [[ $uid -ge 1000 && $uid -lt 60000 && $home == /home/* && $home != */../* && -d $home && ! -L $home ]] || exit 1
+
+  systemctl stop greetd.service 2>/dev/null || true
+  loginctl terminate-user "$user" 2>/dev/null || true
+  for n in $(seq 20); do pgrep -u "$uid" >/dev/null || break; sleep 0.5; done
+  pkill -KILL -u "$uid" 2>/dev/null || true
+  systemctl stop "user@$uid.service" 2>/dev/null || true
+  sleep 1
+  chvt 1 2>/dev/null || true
+  printf '\033[2J\033[H\033[?25l\n\n   Erasing this computer.\n\n   It restarts by itself when it is done. Please leave it on.\n' > /dev/tty1 2>/dev/null || true
+
+  # What belongs to the computer, not to the person: keyboard language, light or dark.
+  [[ -f $home/.config/memora/keyboard.lua ]] && kb="$(cat "$home/.config/memora/keyboard.lua")"
+  mode="$(cat "$home/.config/memora/theme" 2>/dev/null || true)"; [[ $mode == light ]] || mode=dark
+  xkb="$(sed -n 's/.*layout *= *"\([a-z,_-]*\)".*/\1/p' <<<"$kb" | head -1)"
+  grep -q '^\[initial_session\]' /etc/greetd/config.toml 2>/dev/null && encrypt=1
+
+  # Everything in the home folder. Other disks mounted inside it are left alone.
+  find "$home" -xdev -mindepth 1 -maxdepth 1 -exec rm -rf --one-file-system -- {} + 2>/dev/null || true
+  cp -a /etc/skel/. "$home"/ 2>/dev/null || true
+  chown -R "$user": "$home"
+  # A new home, the way the installer makes it (Flathub is added while the network is still known).
+  runuser -u "$user" -- env -i HOME="$home" USER="$user" LOGNAME="$user" PATH=/usr/local/bin:/usr/bin LANG="${LANG:-C.UTF-8}" \
+    MEMORA_XKB="${xkb:-us}" MEMORA_THEME="$mode" MEMORA_ENCRYPT="$encrypt" MEMORA_SKIP_PKGS=1 \
+    bash -c 'cd; exec bash /usr/share/memora/install/user.sh' >/dev/null 2>&1 || true
+  if [[ -n $kb ]]; then
+    install -d -o "$user" -g "$(id -gn "$user")" "$home/.config/memora"
+    printf '%s\n' "$kb" > "$home/.config/memora/keyboard.lua"; chown "$user": "$home/.config/memora/keyboard.lua"
+  fi
+
+  # Apps added from the App Store that are system packages, and what they kept.
+  for n in ollama docker virt-manager distrobox arduino-cli ngspice rust; do
+    case $n in ollama) pacman -Qq ollama ollama-cuda ollama-rocm &>/dev/null || continue ;; rust) pacman -Qq rustup &>/dev/null || continue ;;
+      *) pacman -Qq "$n" &>/dev/null || continue ;; esac
+    (software remove "$n") >/dev/null 2>&1 || true
+  done
+  rm -rf /var/lib/docker /var/lib/containerd /var/lib/ollama /var/lib/libvirt/images/* 2>/dev/null || true
+  # Networks and devices this computer remembers.
+  rm -f /etc/NetworkManager/system-connections/* 2>/dev/null || true
+  rm -rf /var/lib/bluetooth/* /var/lib/iwd/* 2>/dev/null || true
+  crontab -r -u "$user" 2>/dev/null || true
+  rm -rf /var/lib/systemd/coredump/* 2>/dev/null || true
+  find /var/tmp /var/spool/mail -xdev -mindepth 1 -user "$user" -delete 2>/dev/null || true
+  sync
+  systemctl reboot
+}
+
 case "${1:-}" in
+  reset)
+    u="$(caller)" || exit 1
+    systemd-run --quiet --collect --no-block --unit=memora-reset --description="Erase this computer" \
+      /usr/share/memora/bin/memora-admin reset-now "$u" ;;
+  # Only as the service started above: never straight from a session.
+  reset-now) [[ -z ${PKEXEC_UID:-} && -n ${INVOCATION_ID:-} && ${3:-} == "" ]] || exit 2; reset_now "${2:?}" ;;
   firewall)
     case "${2:-}" in
       on) sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf; systemctl enable --now ufw >/dev/null 2>&1; ufw --force enable ;;
       off) ufw disable; sed -i 's/^ENABLED=.*/ENABLED=no/' /etc/ufw/ufw.conf ;;
       *) exit 2 ;;
     esac ;;
-  update) shift; exec /usr/share/memora/bin/memora-update --root-part "$@" ;;
+  update) exec /usr/share/memora/bin/memora-update --root-part ;;
   charge-limit)
     case "${2:-}" in on|off|apply) ;; *) exit 2 ;; esac
     mkdir -p /etc/memora
-    [[ $2 == apply ]] && set -- "$1" "$(cat /etc/memora/charge-limit 2>/dev/null || echo off)" || echo "$2" > /etc/memora/charge-limit
+    want=$2
+    if [[ $want == apply ]]; then
+      want="$(cat /etc/memora/charge-limit 2>/dev/null || echo off)"; [[ $want == on ]] || want=off
+    else
+      echo "$want" > /etc/memora/charge-limit
+    fi
     for f in /sys/class/power_supply/BAT*/charge_control_end_threshold; do
-      [[ -w $f ]] && echo "$([[ $2 == on ]] && echo 80 || echo 100)" > "$f" || true
+      [[ -w $f ]] && echo "$([[ $want == on ]] && echo 80 || echo 100)" > "$f" || true
     done
     for f in /sys/bus/platform/drivers/ideapad_acpi/*/conservation_mode; do
-      [[ -w $f ]] && echo "$([[ $2 == on ]] && echo 1 || echo 0)" > "$f" || true
+      [[ -w $f ]] && echo "$([[ $want == on ]] && echo 1 || echo 0)" > "$f" || true
     done ;;
-  *) echo "usage: memora-admin firewall on|off | update [URL VERSION] | charge-limit on|off"; exit 2 ;;
+  software)
+    case "${2:-}" in install|remove) ;; *) exit 2 ;; esac
+    software "$2" "${3:-}" ;;
+  *) echo "usage: memora-admin firewall on|off | update | charge-limit on|off | software install|remove NAME | reset"; exit 2 ;;
 esac

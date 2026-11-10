@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# memora-reset — System Settings > Reset.
+#   memora-reset settings   Memora's settings back to how a new install has them
+#                           (look, Dock, sound, widgets, keys, displays, Memora AI).
+#                           Files, apps and what apps hold stay. Light or dark and
+#                           the keyboard language stay too.
+#   memora-reset all        erase this computer: everything in your home folder,
+#                           the apps you added, saved Wi-Fi networks and Bluetooth
+#                           devices, then a home like on the first day. Asks for
+#                           the password, ends the session and restarts by itself.
+#                           The account (name and password) stays.
+set -euo pipefail
+MEMORA_PATH="${MEMORA_PATH:-/usr/share/memora}"
+
+settings() {
+  local cfg="$HOME/.config" mode keep
+  mode="$(cat "$cfg/memora/theme" 2>/dev/null || echo dark)"; [[ $mode == light ]] || mode=dark
+  keep="$(mktemp -d)"
+  [[ -f $cfg/memora/keyboard.lua ]] && cp "$cfg/memora/keyboard.lua" "$keep/"
+  rm -rf "$cfg/memora"
+  mkdir -p "$cfg/memora"
+  [[ -f $keep/keyboard.lua ]] && cp "$keep/keyboard.lua" "$cfg/memora/"
+  rm -rf "$keep"
+  # Window places and what was open, not what you made (notes, calendar, music).
+  rm -f "$HOME/.local/state/memora/"{launches.json,frames.json,frames.lua}
+  # Hyprland's own files (idle times, your additions, screens) as shipped.
+  mkdir -p "$cfg/hypr"
+  cp -r "$MEMORA_PATH/config/hypr/." "$cfg/hypr/"
+  "$MEMORA_PATH/bin/memora-theme" set "$mode" >/dev/null 2>&1 || true
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    hyprctl reload >/dev/null 2>&1 || true
+    pkill -x hypridle 2>/dev/null || true
+    (setsid uwsm app -- hypridle >/dev/null 2>&1 &)
+    (setsid -f "$MEMORA_PATH/bin/memora-shell" restart >/dev/null 2>&1) || true
+    # System Settings still holds the old values (and would write them back with
+    # the next switch flipped): it starts again, on the same pane.
+    if pgrep -f "qs -p $MEMORA_PATH/shell/settings.qml\$" >/dev/null; then
+      (setsid -f bash -c "sleep 0.6; pkill -f 'qs -p $MEMORA_PATH/shell/settings.qml\$'; sleep 0.5; exec '$MEMORA_PATH/bin/memora-settings' reset" >/dev/null 2>&1) || true
+    fi
+  fi
+  echo "Settings are back to how they came."
+}
+
+case "${1:-}" in
+  settings) settings ;;
+  all) exec pkexec "$MEMORA_PATH/bin/memora-admin" reset ;;
+  *) sed -n '2,12p' "$0"; exit 2 ;;
+esac

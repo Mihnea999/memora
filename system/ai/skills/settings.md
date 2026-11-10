@@ -10,7 +10,8 @@ Use `system_setting` first; it changes things directly:
   keep_awake (off, on, or minutes like "60"), dock_autohide (on/off), dock_size (36-72),
   settings_pane (opens System Settings: wifi, bluetooth, network, notifications, sound,
   appearance, wallpaper, dock, windows, animations, displays, keyboard, mouse, battery,
-  datetime, users, privacy, ai, update, about).
+  datetime, users, privacy, ai, update, reset, about). Reset holds "Reset Settings" and
+  "Erase All Content and Settings": open the pane and let the person press the button, never run it yourself.
 - Lock, sleep, restart, shut down: `power`. Restart and shut down ask the person on screen.
 - Keyboard layout, displays, users: open their pane and guide, or use the screen tools.
 - Where things live (for how-to questions): Control Center (top right) has Wi-Fi, Bluetooth,

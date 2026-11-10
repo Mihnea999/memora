@@ -14,6 +14,9 @@ import qs.settings
 ShellRoot {
   id: app
   property string pane: (Quickshell.env("MEMORA_SETTINGS_PANE") || "wifi")
+  // A computer without Wi-Fi has no Wi-Fi pane: it opens on Network.
+  readonly property bool noWifi: !Host.hasWifi
+  onNoWifiChanged: if (noWifi && pane === "wifi") pane = "network"
   property string search: ""
 
   // What this computer has decides what's listed (Host.qml): a desktop has no
@@ -39,15 +42,23 @@ ShellRoot {
     { id: "privacy", title: "Privacy & Security", sym: "shield", color: "#34c759", group: 5 },
     { id: "ai", title: "Memora AI", sym: "ai", color: "#8a5cff", group: 6 },
     { id: "update", title: "Software Update", sym: "download", color: "#2f7bff", group: 6 },
+    { id: "reset", title: "Reset", sym: "restart", color: "#8a8d96", group: 6 },
     { id: "about", title: "About", sym: "info", color: "#8a8d96", group: 6 }
   ]
   readonly property var visiblePanes: panes.filter(p => !p.hide && (!search || p.title.toLowerCase().indexOf(search.toLowerCase()) >= 0))
+  // The keyboard: ↑ and ↓ in the search field walk the list of panes.
+  function step(d) {
+    const l = visiblePanes
+    if (!l.length) return
+    const i = l.findIndex(p => p.id === pane)
+    pane = l[i < 0 ? (d > 0 ? 0 : l.length - 1) : Math.max(0, Math.min(l.length - 1, i + d))].id
+  }
 
   readonly property var paneFiles: ({
     wifi: "Wifi", bluetooth: "BluetoothPane", network: "NetworkPane", nearby: "NearbyPane", notifications: "NotificationsPane",
     sound: "SoundPane", appearance: "AppearancePane", animations: "AnimationsPane", windows: "WindowsPane", wallpaper: "WallpaperPane", dock: "DockPane",
     displays: "DisplaysPane", keyboard: "KeyboardPane", mouse: "MousePane", battery: "BatteryPane",
-    datetime: "DateTimePane", users: "UsersPane", privacy: "PrivacyPane", ai: "AiPane", update: "UpdatePane", about: "AboutPane"
+    datetime: "DateTimePane", users: "UsersPane", privacy: "PrivacyPane", ai: "AiPane", update: "UpdatePane", reset: "ResetPane", about: "AboutPane"
   })
 
   // A second `memora-settings pane` call switches the open window to that pane.
@@ -71,7 +82,15 @@ ShellRoot {
     readonly property bool compact: width < 720
     property bool sideOpen: false
     onCompactChanged: sideOpen = false
-    Connections { target: app; function onPaneChanged() { win.sideOpen = false } }
+    Connections {
+      target: app
+      function onPaneChanged() {
+        win.sideOpen = false
+        const i = app.visiblePanes.findIndex(p => p.id === app.pane)
+        if (i >= 0) nav.positionViewAtIndex(i, ListView.Contain)
+      }
+    }
+    Shortcut { sequence: "Ctrl+F"; onActivated: { if (win.compact) win.sideOpen = true; searchField.forceActiveFocus(); searchField.selectAll() } }
 
     Rectangle {
       anchors.fill: parent
@@ -105,7 +124,7 @@ ShellRoot {
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 42; leftMargin: 12; rightMargin: 12 }
         height: 28; radius: 8
         color: Theme.field
-        border.color: Theme.separator
+        border.color: searchField.activeFocus ? Theme.accent : Theme.separator
         Sym { name: "search"; width: 12; height: 12; color: Theme.textDim; anchors { left: parent.left; leftMargin: 9; verticalCenter: parent.verticalCenter } }
         TextInput {
           id: searchField
@@ -113,6 +132,15 @@ ShellRoot {
           anchors { left: parent.left; right: parent.right; leftMargin: 28; rightMargin: 8; verticalCenter: parent.verticalCenter }
           color: Theme.text; font.family: Theme.font; font.pixelSize: Theme.small + 0.5
           onTextChanged: app.search = text
+          // Typing searches straight away; ↑ ↓ pick a pane, Return takes the
+          // first match, Esc clears. Tab goes on to the pane's own controls.
+          focus: true
+          activeFocusOnTab: true
+          selectByMouse: true
+          Keys.onDownPressed: app.step(1)
+          Keys.onUpPressed: app.step(-1)
+          Keys.onReturnPressed: if (app.search && app.visiblePanes.length && !app.visiblePanes.some(p => p.id === app.pane)) app.pane = app.visiblePanes[0].id
+          Keys.onEscapePressed: text = ""
           Txt { visible: !searchField.text; text: "Search"; color: Theme.textFaint; font.pixelSize: Theme.small + 0.5; anchors.verticalCenter: parent.verticalCenter }
         }
       }
