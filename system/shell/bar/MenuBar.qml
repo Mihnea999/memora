@@ -22,9 +22,42 @@ PanelWindow {
   exclusiveZone: 30
   color: "transparent"
   WlrLayershell.namespace: "memora-bar"
-  WlrLayershell.layer: WlrLayer.Top
+  // Over a full-screen app it must be above it to show at all.
+  WlrLayershell.layer: fullscreen ? WlrLayer.Overlay : WlrLayer.Top
+  mask: Region { item: bar.tucked ? topEdge : whole }
 
-  readonly property var active: Hyprland.activeToplevel
+  // Full screen (the green button, F11), as on a Mac: the bar steps aside and
+  // slides down over the app when the pointer reaches the top edge; it goes
+  // again once the pointer moves away (not while one of its menus is open).
+  readonly property var monitor: Hyprland.monitors.values.find(m => m.name === modelData.name) || null
+  readonly property var fsWindow: {
+    const ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
+    return Apps.windows.find(w => w.lastIpcObject.fullscreen === 2 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws) || null
+  }
+  readonly property bool fullscreen: fsWindow !== null
+  property bool revealed: false
+  readonly property bool inUse: barHover.hovered || drop.visible || (Shell.open !== "" && Shell.menuScreen === modelData.name)
+  readonly property bool tucked: fullscreen && !revealed && !inUse
+  onFullscreenChanged: revealed = false
+  onInUseChanged: if (!inUse && revealed) leave.restart()
+  Timer { id: arrive; interval: 120; onTriggered: { bar.revealed = true; leave.restart() } }
+  Timer { id: leave; interval: 500; onTriggered: if (!bar.inUse && !edgeHover.hovered) bar.revealed = false; else if (!bar.inUse) restart() }
+  property real slide: tucked ? -height : 0
+  Behavior on slide { NumberAnimation { duration: Prefs.motion(220); easing.type: Easing.OutCubic } }
+  Translate { id: slideT; y: bar.slide }
+  Item { id: whole; anchors.fill: parent }
+  // On the bar itself, so the titles (which take hover too) don't hide it.
+  HoverHandler { id: barHover }
+  Item {
+    id: topEdge
+    anchors { top: parent.top; left: parent.left; right: parent.right }
+    height: 2
+    HoverHandler { id: edgeHover; onHoveredChanged: if (hovered && bar.tucked) arrive.restart(); else if (!hovered) arrive.stop() }
+  }
+
+  // (Over a full-screen app Hyprland.activeToplevel comes back empty: the
+  // menus act on the full-screen window then.)
+  readonly property var active: Hyprland.activeToplevel || fsWindow
   readonly property string cls: Apps.activeClass
   readonly property bool desktop: cls === ""
   readonly property string appName: desktop ? "Files" : Apps.nameFor(cls)
@@ -43,7 +76,8 @@ PanelWindow {
   // A frosted bar adds its own tint over the picture.
   readonly property real under: Prefs.reduceTransparency ? (Theme.dark ? 0.1 : 0.95)
     : Prefs.menuBarTransparent ? wallLum : wallLum * 0.66 + (Theme.dark ? 0.02 : 0.33)
-  readonly property bool onDark: under < 0.56
+  // Over a full-screen app the bar is solid, in the appearance's colours.
+  readonly property bool onDark: fullscreen ? Theme.dark : under < 0.56
   property color ink: onDark ? "#f5f5f7" : "#1c1c1e"
   Behavior on ink { ColorAnimation { duration: Theme.slow } }
   function plate(a) { return onDark ? Qt.rgba(1, 1, 1, a) : Qt.rgba(0, 0, 0, a * 0.7) }
@@ -70,7 +104,8 @@ PanelWindow {
 
   Rectangle {
     anchors.fill: parent
-    color: Theme.bar
+    transform: slideT
+    color: bar.fullscreen ? (Theme.dark ? Qt.rgba(0.11, 0.11, 0.13, 0.97) : Qt.rgba(0.97, 0.97, 0.98, 0.97)) : Theme.bar
     Behavior on color { ColorAnimation { duration: Theme.slow } }
   }
   // Transparent bar: nothing at all behind the text, as on a Mac (no veil, no
@@ -80,6 +115,7 @@ PanelWindow {
   // ---------------------------------------------------------------- left side
   RowLayout {
     id: left
+    transform: slideT
     anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
     spacing: 0
 
@@ -137,6 +173,7 @@ PanelWindow {
   readonly property bool dateFits: Prefs.showDate && (bar.width + notchW) / 2 + 14 + statusRow.implicitWidth + fm.advanceWidth(dateText + timeText) + 30 < bar.width
   RowLayout {
     id: statusRow
+    transform: slideT
     anchors { right: clock.left; rightMargin: 2; verticalCenter: parent.verticalCenter }
     spacing: 2
 
@@ -241,6 +278,7 @@ PanelWindow {
 
   BarButton {
     id: clock
+    transform: slideT
     anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
     tip: "Calendar and notifications"
     implicitWidth: clockText.implicitWidth + 16

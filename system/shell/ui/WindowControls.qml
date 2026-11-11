@@ -5,8 +5,8 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import qs.core
 
-// Close, minimize and zoom for Memora's own windows. Rest on the green button
-// and a panel of layouts appears: halves, quarters, thirds or the whole screen.
+// Close, minimize and full screen for Memora's own windows. Rest on the green
+// button and a panel of layouts appears: halves, quarters, thirds or the whole screen.
 Item {
   id: wc
   property var window                       // the FloatingWindow
@@ -48,13 +48,21 @@ Item {
             c.stroke()
           }
         }
+        // Green: full screen, as on a Mac (again to come back); Alt+click
+        // (Option on a Mac) fills the free area instead (Zoom).
         TapHandler {
           id: press
+          acceptedModifiers: Qt.NoModifier
           onTapped: {
             if (modelData[0] === "close") wc.closeRequested()
             else if (modelData[0] === "min") Quickshell.execDetached(["memora-shell", "minimize"])
-            else Quickshell.execDetached(["memora-window", "fill"])
+            else { wc.dismissLayouts(); Quickshell.execDetached(["memora-window", "full"]) }
           }
+        }
+        TapHandler {
+          enabled: modelData[0] === "zoom"
+          acceptedModifiers: Qt.AltModifier
+          onTapped: { wc.dismissLayouts(); Quickshell.execDetached(["memora-window", "fill"]) }
         }
         // No tooltip on the green button: resting there opens the layouts panel,
         // which explains itself (a tooltip would cover it).
@@ -70,6 +78,8 @@ Item {
   property point panelAt: Qt.point(0, 0)
   Timer { id: showLater; interval: 450; onTriggered: { wc.panelAt = wc.mapToItem(wc.host, 0, 0); layouts.open = true } }
   Timer { id: hideLater; interval: 500; onTriggered: if (!layouts.over && !wc.onGreen) layouts.open = false }
+  // A click on the green button: the panel isn't wanted any more.
+  function dismissLayouts(): void { showLater.stop(); hideLater.stop(); layouts.open = false }
 
   // Between the green button and the panel: the pointer passing through keeps it open.
   Item {

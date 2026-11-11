@@ -126,7 +126,16 @@ Singleton {
       return o && o.fullscreen === 2 && o.workspace && shown.indexOf(o.workspace.id) >= 0
     })
   }
-  readonly property bool inhibiting: keepAwake || (Prefs.awakeFullscreen && fullscreenApp)
+  // Staying awake is for the app's own full screen (a film, a game, F11), not
+  // for a window the green button made full screen (the app is told "maximized").
+  readonly property bool fullscreenMedia: {
+    const shown = Hyprland.monitors.values.map(m => m.activeWorkspace ? m.activeWorkspace.id : -1)
+    return Hyprland.toplevels.values.some(w => {
+      const o = w.lastIpcObject
+      return o && o.fullscreen === 2 && o.fullscreenClient === 2 && o.workspace && shown.indexOf(o.workspace.id) >= 0
+    })
+  }
+  readonly property bool inhibiting: keepAwake || (Prefs.awakeFullscreen && fullscreenMedia)
   property bool main: false        // set by the desktop shell (shell.qml); apps only read this singleton
   Process {
     running: s.main && s.inhibiting

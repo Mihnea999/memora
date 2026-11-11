@@ -179,6 +179,10 @@ Singleton {
       { text: "Trash", action: () => m.open("trash:///") }
     ]
     case "window": return [
+      // The green button's full screen, as on a Mac (Control+Command+F there).
+      { text: hasWin && win.lastIpcObject && win.lastIpcObject.fullscreen ? "Exit Full Screen" : "Enter Full Screen", keys: "Ctrl Super F", enabled: hasWin,
+        action: () => Apps.run("memora-window full 0x" + Apps.addrKey(win.address)) },
+      sep(),
       { text: "Minimize", keys: "Super M", enabled: hasWin, action: () => Apps.minimize(win.address) },
       { text: "Zoom", enabled: hasWin, action: () => Apps.zoom(win) },
       { text: "Fill Screen Without Dock", keys: "Shift F11", enabled: hasWin, action: () => Apps.semiFullscreen() },

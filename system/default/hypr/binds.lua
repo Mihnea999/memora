@@ -48,7 +48,9 @@ b(S .. " + H", shell("hide-app"), "Hide the app")
 b(S .. " + D", run("memora-shell show-desktop"), "Show desktop")
 b(S .. " + ALT + D", run("memora-shell toggleDockHiding"), "Turn Dock hiding on or off")
 b(S .. " + F3", run("memora-shell show-desktop"), "Show desktop")
-b("CTRL + " .. S .. " + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }), "Full screen")
+-- The green button's full screen, as Control+Command+F on a Mac: the window
+-- covers the screen and the app keeps its toolbar (memora-window full).
+b("CTRL + " .. S .. " + F", run("memora-window full"), "Full screen (the green button)")
 -- F11 belongs to the system, not the app as well: an app that also toggled its
 -- own full screen on the same key undid it half the time (Chromium ended up
 -- just maximized). Apps still follow: told they are full screen, they go full screen.

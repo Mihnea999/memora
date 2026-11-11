@@ -5,9 +5,10 @@
 // closed, minimized or moved with the mouse. These windows get a bar here:
 // red/yellow/green buttons on the left (symbols when the pointer is over them),
 // the title in the middle, drag to move, double-click to fill the screen.
+// The green button is full screen as on a Mac (Option, here Alt, + click: fill).
 // Apps that draw their own frame (GTK, Chromium, Memora's) are left alone, but
 // resting on the green button Chromium and GTK apps draw opens the same layouts
-// panel (ownInit below).
+// panel, and clicking it goes full screen the same way (ownInit below).
 // Built for Hyprland 0.57 together with minimize.cpp (build.sh).
 #define WLR_USE_UNSTABLE
 // The standard library first: it must not see the #define below.
@@ -57,6 +58,7 @@
 #include <hyprland/src/config/supplementary/executor/Executor.hpp>
 #include <hyprland/src/protocols/core/Compositor.hpp>
 #include <hyprland/src/protocols/LayerShell.hpp>
+#include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -106,6 +108,21 @@ namespace {
         }
         return val;
     }
+}
+
+// Full screen as on a Mac: the window covers the whole screen (the menu bar and
+// the Dock step aside and come back at the edges), but the app is only told it
+// is maximized, so it keeps its toolbar, tabs and buttons (Chromium told "full
+// screen" hides them all) and its own green button brings it back. Again, or
+// out of the app's own full screen (F11, a video): back as it was.
+static void macFullscreen(PHLWINDOW w) {
+    if (w)
+        Config::Supplementary::executor()->spawn(std::format("memora-window full 0x{:x}", (uintptr_t)w.get()));
+}
+
+// Option-click on a green button is Zoom on a Mac; Alt sits where Option does.
+static bool altHeld() {
+    return bool(g_pInputManager->getModsFromAllKBs() & Input::HL_MODIFIER_ALT);
 }
 
 class CMemoraBar;
@@ -402,7 +419,7 @@ class CMemoraBar : public IHyprWindowDecoration {
         const auto now = std::chrono::steady_clock::now();
         if (now - m_lastDown < std::chrono::milliseconds(400)) {
             m_lastDown = {};
-            act(2);   // double-click: fill the screen, like the green button
+            act(2, true);   // double-click: fill the screen (Zoom, as on a Mac)
             return;
         }
         m_lastDown    = now;
@@ -410,7 +427,7 @@ class CMemoraBar : public IHyprWindowDecoration {
         m_downAt      = g_pInputManager->getMouseCoordsInternal();
     }
 
-    void act(int which) {
+    void act(int which, bool zoom = false) {
         auto w = m_window.lock();
         if (!w)
             return;
@@ -418,8 +435,10 @@ class CMemoraBar : public IHyprWindowDecoration {
             w->backend().close();
         else if (which == 1)
             Config::Supplementary::executor()->spawn("memora-shell minimize");
-        else
+        else if (zoom || altHeld())
             Config::Supplementary::executor()->spawn("memora-window fill");
+        else
+            macFullscreen(w);
     }
 
     PHLWINDOWREF                          m_window;
@@ -633,6 +652,7 @@ static void forBar(PHLWINDOW w, auto&& fn) {
 namespace {
     CHyprSignalListener g_ownMove, g_ownButton;
     PHLWINDOWREF        g_ownGreen; // the window whose own green button the pointer rests on
+    bool                g_ownSwallowed = false; // its press was ours: so is the release
     constexpr double    OWN_R = 9;  // how near its centre counts
 
     std::optional<Vector2D> ownGreenOffset(PHLWINDOW w) {
@@ -659,12 +679,12 @@ namespace {
         if (g_pSeatManager->m_seatGrab && !g_pSeatManager->m_seatGrab->accepts(w->wlSurface()->resource()))
             return nullptr;
         const Vector2D pos  = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
-        const Vector2D size = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
         auto           mon  = Desktop::focusState()->monitor();
         if (!mon)
             return nullptr;
-        // Full screen: the app hides its buttons.
-        if (size.x >= mon->m_size.x - 1 && size.y >= mon->m_size.y - 1)
+        // In its own full screen (F11, a video) the app hides its buttons; in the
+        // green button's it is only told "maximized" and keeps them.
+        if (Fullscreen::controller()->getFullscreenModes(w).client == Fullscreen::FSMODE_FULLSCREEN)
             return nullptr;
         centre = pos + *off;
         if (std::hypot(MOUSE.x - centre.x, MOUSE.y - centre.y) > OWN_R)
@@ -693,12 +713,29 @@ namespace {
                 Config::Supplementary::executor()->spawn(
                     std::format("memora-shell layouts hover 0x{:x} {} {}", (uintptr_t)w.get(), (int)std::round(c.x - BTN / 2.0), (int)std::round(c.y + BTN / 2.0)));
         });
-        // A click on it is the app's (it fills the screen); the panel goes.
-        g_ownButton = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent e, Event::SCallbackInfo&) {
-            if (e.state == WL_POINTER_BUTTON_STATE_PRESSED && g_ownGreen.lock()) {
-                g_ownGreen.reset();
-                Config::Supplementary::executor()->spawn("memora-shell layouts close");
+        // A click on it: full screen as on Memora's own green buttons (the app
+        // never sees it); Alt+click is the app's (it maximizes). The panel goes.
+        g_ownButton = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent e, Event::SCallbackInfo& info) {
+            if (e.button != BTN_LEFT)
+                return;
+            if (e.state != WL_POINTER_BUTTON_STATE_PRESSED) {
+                if (g_ownSwallowed)
+                    info.cancelled = true;
+                g_ownSwallowed = false;
+                return;
             }
+            const auto w = g_ownGreen.lock();
+            if (!w)
+                return;
+            g_ownGreen.reset();
+            Config::Supplementary::executor()->spawn("memora-shell layouts close");
+            if (altHeld())
+                return;
+            info.cancelled = true;
+            g_ownSwallowed = true;
+            if (Desktop::focusState()->window() != w)
+                Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_CLICK);
+            macFullscreen(w);
         });
     }
 }

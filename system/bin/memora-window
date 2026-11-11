@@ -9,6 +9,7 @@ menu bar, above the Dock), remembering how big they were before.
   memora-window key DIR [ADDRESS] Super+arrow: halves, then two-thirds and
                                   thirds on repeat; combine for quarters
                                   (left then up = top-left); down restores
+  memora-window full [ADDRESS]    the green button: full screen as on a Mac, or back
   memora-window restore [ADDRESS] back to the size it had before docking
   memora-window unsnap ADDRESS X Y  being dragged away: back to its own size,
                                   under the pointer at X Y
@@ -217,6 +218,19 @@ def restore(w, st, at=None):
     rec.pop("group", None)   # it leaves its group of docked windows
 
 
+def full(w):
+    """Full screen as on a Mac: the window covers the whole screen, menu bar and
+    Dock step aside (they come back at the edges). The app itself is only told it
+    is maximized, so it keeps its own toolbar, tabs and buttons (Chromium told
+    "full screen" hides all of them); its green button brings it back. Again, or
+    out of the app's own full screen (F11, a video), it goes back as it was."""
+    sel = f'window = "address:{w["address"]}"'
+    if w.get("fullscreen"):
+        dispatch(f'hl.dsp.window.fullscreen_state({{ internal = 0, client = 0, {sel} }})')
+    else:
+        dispatch(f'hl.dsp.window.fullscreen_state({{ internal = 2, client = 1, {sel} }})')
+
+
 def monitors():
     return hypr("monitors") or []
 
@@ -410,6 +424,11 @@ def main():
         w = window()
         a = area(w) if w else (0, 0, 1920, 1080)
         print(json.dumps({"kind": kind(a), "layouts": zones()["layouts"].get(kind(a), [])}))
+        return 0
+    if cmd == "full":   # the green button, as on a Mac: full screen, or back
+        w = window(args[1] if len(args) > 1 else None)
+        if w:
+            full(w)
         return 0
     if cmd == "rect":
         w = window()

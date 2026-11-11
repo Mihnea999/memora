@@ -45,8 +45,7 @@ Scope {
     const desks = []
     for (let i = 1; i <= Math.max(Prefs.desktops, cur); i++)
       if (i !== cur) desks.push({ text: "Move to " + (((Prefs.desktopNames || [])[i - 1]) || "Desktop " + i), action: () => Apps.dispatch('hl.dsp.window.move({ workspace = "' + i + '", follow = false, window = "address:0x' + Apps.addrKey(win.address) + '" })') })
-    return [{ text: "Full Screen", keys: "F11", action: () => Apps.dispatch('hl.dsp.window.fullscreen({ mode = "fullscreen" })') }]
-      .concat(Menus.items("window", cls, Apps.nameFor(cls), win))
+    return Menus.items("window", cls, Apps.nameFor(cls), win)
       .concat(desks.length ? [{ separator: true }].concat(desks) : [])
   }
 
