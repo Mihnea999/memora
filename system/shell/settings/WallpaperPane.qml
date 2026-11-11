@@ -27,7 +27,7 @@ Kit.Page {
     onAccepted: Prefs.set("wallpaper", decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")))
   }
 
-  readonly property var sets: [["bloom", "Bloom"], ["ember", "Ember"], ["tide", "Tide"], ["horizon", "Horizon"], ["dunes", "Dunes"], ["silk", "Silk"]]
+  readonly property var sets: [["prism", "Prism"], ["ember", "Ember"], ["tide", "Tide"], ["horizon", "Horizon"], ["dunes", "Dunes"], ["silk", "Silk"]]
 
   Kit.Group {
     header: "Memora"

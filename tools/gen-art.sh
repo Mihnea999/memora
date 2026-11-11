@@ -15,7 +15,7 @@ render_wall() { # name mode script...
   rsvg-convert -w 7680 -h 4800 "$tmp/w.svg" -o "$tmp/w.png"
   magick "$tmp/w.png" -depth 16 -attenuate 0.10 +noise Gaussian -depth 8 -sampling-factor 4:4:4 -quality 94 "$out"
 }
-# Bloom, Ember and Tide are lit per pixel (tools/bloom.py and tools/flow.py need numpy
+# Prism, Ember and Tide are lit per pixel (tools/prism.py and tools/flow.py need numpy
 # and pillow; set PYTHON to an interpreter that has them).
 render_flow() { # name mode
   local name=$1 mode=$2 out="$root/system/wallpapers/$1-$2.jpg"
@@ -23,19 +23,19 @@ render_flow() { # name mode
   "${PYTHON:-python3}" "$root/tools/flow.py" "$name" "$mode" 7680 4800 "$tmp/f.png"
   magick "$tmp/f.png" -sampling-factor 4:4:4 -quality 94 "$out"
 }
-render_bloom() { # mode
-  local out="$root/system/wallpapers/bloom-$1.jpg"
-  [[ -f $out && $out -nt $root/tools/bloom.py ]] && return 0
-  "${PYTHON:-python3}" "$root/tools/bloom.py" "$1" 7680 4800 "$tmp/b.png"
+render_prism() { # mode
+  local out="$root/system/wallpapers/prism-$1.jpg"
+  [[ -f $out && $out -nt $root/tools/prism.py ]] && return 0
+  "${PYTHON:-python3}" "$root/tools/prism.py" "$1" 7680 4800 "$tmp/b.png"
   magick "$tmp/b.png" -sampling-factor 4:4:4 -quality 94 "$out"
-  magick "$out" -resize 540x338 -quality 88 "$root/system/wallpapers/thumbs/bloom-$1.jpg"
+  magick "$out" -resize 540x338 -quality 88 "$root/system/wallpapers/thumbs/prism-$1.jpg"
 }
 wallpaper() { # theme-dir mode
   local m=$2
-  render_bloom "$m"; render_flow ember "$m"; render_flow tide "$m"
+  render_prism "$m"; render_flow ember "$m"; render_flow tide "$m"
   render_wall silk "$m" "$root/tools/silk.py" "$m"
   for n in horizon dunes; do render_wall "$n" "$m" "$root/tools/walls.py" "$n" "$m"; done
-  ln -sf "../../wallpapers/bloom-$m.jpg" "$1/wallpaper.jpg"
+  ln -sf "../../wallpapers/prism-$m.jpg" "$1/wallpaper.jpg"
 }
 
 for theme in "$root"/system/themes/*/; do

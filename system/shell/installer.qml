@@ -273,7 +273,7 @@ ShellRoot {
       anchors.fill: parent
       Image {
         anchors.fill: parent
-        source: "file://" + Theme.share + "/wallpapers/bloom-" + app.look + ".jpg"
+        source: "file://" + Theme.share + "/wallpapers/prism-" + app.look + ".jpg"
         sourceSize: Qt.size(2560, 1600)
         fillMode: Image.PreserveAspectCrop
       }
@@ -760,7 +760,7 @@ ShellRoot {
                         border.width: app.look === modelData[0] ? 3 : 1
                         border.color: app.look === modelData[0] ? Theme.accent : Theme.separator
                         clip: true
-                        Image { anchors { fill: parent; margins: 3 } source: "file://" + Theme.share + "/wallpapers/bloom-" + modelData[0] + ".jpg"; sourceSize: Qt.size(460, 288); fillMode: Image.PreserveAspectCrop }
+                        Image { anchors { fill: parent; margins: 3 } source: "file://" + Theme.share + "/wallpapers/prism-" + modelData[0] + ".jpg"; sourceSize: Qt.size(460, 288); fillMode: Image.PreserveAspectCrop }
                         Rectangle { x: 22; y: 24; width: 116; height: 76; radius: 9; color: modelData[0] === "dark" ? "#2a2a2e" : "#ffffff"; opacity: 0.92 }
                         Ring { border.width: 3 }
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
