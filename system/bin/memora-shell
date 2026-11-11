@@ -15,6 +15,7 @@ case "${1:-}" in
   lock) exec qs -p "$dir" ipc call lock lock ;;
   snap) exec qs -p "$dir" ipc call snap "${2:-end}" ;;
   window-menu) exec qs -p "$dir" ipc call windowmenu show "${2:-0}" ;;
+  layouts) shift; exec qs -p "$dir" ipc call layouts "$@" ;;
   window-menu-keys) exec qs -p "$dir" ipc call windowmenu keys "${2:-0}" ;;
   minimize) exec qs -p "$dir" ipc call shell minimize ;;
   project) exec qs -p "$dir" ipc call display project ;;

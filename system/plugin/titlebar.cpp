@@ -134,6 +134,8 @@ class CMemoraBar : public IHyprWindowDecoration {
             m->m_scheduledRecalc = true;
     }
     ~CMemoraBar() override {
+        if (m_onGreen)
+            Config::Supplementary::executor()->spawn("memora-shell layouts leave");
         std::erase_if(g_bars, [this](const auto& b) { return !b || b.get() == this; });
         publishBars();
     }
@@ -321,6 +323,18 @@ class CMemoraBar : public IHyprWindowDecoration {
             m_hover = over;
             damageEntire();
         }
+        // Resting on the green button opens the layouts panel (the shell's
+        // snap/Layouts.qml, the same as on Memora's own windows).
+        const bool green = over && !m_dragging && m_pressed < 0 && buttonAt(rel()) == 2;
+        if (green != m_onGreen) {
+            m_onGreen = green;
+            if (green) {
+                const auto G = globalBox();
+                Config::Supplementary::executor()->spawn(std::format("memora-shell layouts hover 0x{:x} {} {}", (uintptr_t)m_window.lock().get(),
+                                                                     (int)std::round(G.x + PAD + 2 * (BTN + BTN_GAP)), (int)std::round(G.y + (BAR_H + BTN) / 2.0)));
+            } else
+                Config::Supplementary::executor()->spawn("memora-shell layouts leave");
+        }
         if (m_dragPending && !m_dragging && validMapped(m_window)) {
             const auto d = g_pInputManager->getMouseCoordsInternal() - m_downAt;
             if (std::abs(d.x) + std::abs(d.y) > 3) {
@@ -377,6 +391,10 @@ class CMemoraBar : public IHyprWindowDecoration {
             Desktop::windowState()->raise(w);
 
         m_pressed = buttonAt(rel());
+        if (m_pressed == 2 || m_onGreen) {
+            m_onGreen = false;
+            Config::Supplementary::executor()->spawn("memora-shell layouts close");
+        }
         if (m_pressed >= 0)
             return;
         const auto now = std::chrono::steady_clock::now();
@@ -405,6 +423,7 @@ class CMemoraBar : public IHyprWindowDecoration {
     PHLWINDOWREF                          m_window;
     CBox                                  m_assigned;
     CHyprSignalListener                   m_button, m_move;
+    bool                                  m_onGreen = false;
     bool                                  m_hover = false, m_dragging = false, m_dragPending = false, m_swallowed = false, m_rightSwallowed = false;
     int                                   m_pressed = -1;
     Vector2D                              m_downAt;

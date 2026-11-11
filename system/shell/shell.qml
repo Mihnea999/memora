@@ -110,6 +110,7 @@ ShellRoot {
   Snap {}
   Divider {}
   WindowMenu {}
+  Layouts {}
   Genie {}
   Alert {}
   ShareSheet {}
