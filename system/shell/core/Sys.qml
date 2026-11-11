@@ -39,6 +39,14 @@ Singleton {
     else Quickshell.execDetached(["memora-sound", "volume"])
   }
   property Timer popLater: Timer { interval: 60; onTriggered: sys.pop() }
+  // The shell's own process: its streams (the pop below) are system sounds, kept
+  // out of the mixer, which would list them as "Quickshell".
+  property int shellPid: 0
+  property Process pidRead: Process {
+    running: true
+    command: ["sh", "-c", "echo $PPID"]
+    stdout: StdioCollector { onStreamFinished: sys.shellPid = parseInt(text) || 0 }
+  }
   property MediaDevices devices: MediaDevices {}
   property SoundEffect popFx: SoundEffect {
     source: "file://" + Theme.share + "/sounds/volume.wav"

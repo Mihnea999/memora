@@ -13,7 +13,7 @@ prefs="$HOME/.config/memora/shell.json"
 # skip the full settings read (jq, awk) and only check its own switch.
 if [[ ${1:-} == volume ]]; then
   [[ -r $prefs ]] && [[ $(jq -r 'if has("volumeFeedback") then .volumeFeedback else true end' "$prefs" 2>/dev/null) == false ]] && exit 0
-  [[ -f $dir/volume.oga ]] && LC_ALL=C exec pw-play --volume 1 "$dir/volume.oga" 2>/dev/null
+  [[ -f $dir/volume.oga ]] && LC_ALL=C exec pw-play --media-role Event --volume 1 "$dir/volume.oga" 2>/dev/null
   exit 0
 fi
 
@@ -39,7 +39,7 @@ play() {
   [[ -f $file ]] || return 0
   # LC_ALL=C: pw-play reads "0.70" by the locale, and in Romanian (decimal comma)
   # it would be 0, silent.
-  LC_ALL=C exec pw-play --volume "$2" "$file" 2>/dev/null
+  LC_ALL=C exec pw-play --media-role Event --volume "$2" "$file" 2>/dev/null
 }
 alert_file() { [[ -f $dir/alert-$1.oga ]] && echo "alert-$1" || echo alert-glint; }
 

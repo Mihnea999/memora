@@ -228,11 +228,25 @@ PopupWindow {
   readonly property var sinks: Pipewire.nodes.values.filter(n => n.isSink && !n.isStream && n.audio)
   // Apps playing sound right now (their playback streams), for the mixer.
   // (not filtered on .audio: a node only has it once tracked, which is below)
-  readonly property var streams: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioOutStream)
+  // System sounds (the shell's volume pop, memora-sound's pw-play) are left out:
+  // they have their own slider above, and would show as "Quickshell" or "pw-play".
+  readonly property var streams: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioOutStream && !sm.systemSound(n))
   PwObjectTracker { objects: sm.sinks.concat(sm.streams) }
+  function systemSound(n) {
+    const p = n.properties || {}
+    const bin = p["application.process.binary"] || ""
+    return (Sys.shellPid > 0 && String(p["application.process.id"]) === String(Sys.shellPid))
+      || bin === "pw-play" || bin === "pw-cat" || p["media.role"] === "Event"
+  }
   function appName(n) {
     const p = n.properties || {}
-    return p["application.name"] || n.description || n.nickname || n.name || "App"
+    const name = p["application.name"] || n.description || n.nickname || n.name || "App"
+    // Memora's own apps (Photos, …) run on Quickshell too: name them by their window.
+    if (/^quickshell$/i.test(name) || p["application.process.binary"] === "qs") {
+      const w = Apps.windows.find(w => String(w.lastIpcObject.pid) === String(p["application.process.id"]))
+      return w && w.lastIpcObject.title ? w.lastIpcObject.title : "Memora"
+    }
+    return name
   }
   function appIcon(n) {
     const p = n.properties || {}
