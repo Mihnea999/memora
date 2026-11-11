@@ -140,11 +140,14 @@ ICONS["apps/memora-calendar"] = icon(
     <text x="512" y="700" text-anchor="middle" font-family="Inter, Adwaita Sans, sans-serif" font-weight="300"
             font-size="380" letter-spacing="-4" fill="#1d1d1f">17</text>''', light=True)
 
-# App Store: an "A" of three rounded strokes on blue.
+# App Store: a white shopping bag on blue.
 ICONS["apps/memora-store"] = icon(
     "store", lg("bg", "#45bfff", "#1660f2"), "url(#bg)",
-    '''<g filter="url(#lift)" stroke="url(#ink)" stroke-width="54" stroke-linecap="round" fill="none">
-      <path d="M512 286 L360 630"/><path d="M512 286 L664 630"/><path d="M338 560 H686"/>
+    '''<g filter="url(#lift)">
+      <path d="M432 418 v-46 a80 80 0 0 1 160 0 v46" fill="none" stroke="url(#ink)" stroke-width="36" stroke-linecap="round"/>
+      <path d="M322 418 q0 -34 34 -34 h312 q34 0 34 34 l-14 268 q-3 50 -52 50 h-248 q-49 0 -52 -50 Z" fill="url(#ink)"/>
+      <circle cx="432" cy="480" r="17" fill="#2f7cf5" fill-opacity="0.55"/>
+      <circle cx="592" cy="480" r="17" fill="#2f7cf5" fill-opacity="0.55"/>
     </g>''')
 
 # Launchpad: nine soft tiles, a colour each, on graphite.
