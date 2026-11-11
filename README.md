@@ -43,6 +43,9 @@ A change is finished only when it has been tried on the real desktop and handed 
    `test/vm.sh install` and `test/vm.sh run` (a window on the desktop, user `memora` / `memora`).
    Check once more there that the shell starts and the change works.
 4. **If everything passes, merge into `main` without asking** (a fast-forward; never force).
+   From a worktree: `git push . HEAD:main`. The repository is set up for it once with
+   `git config receive.denyCurrentBranch updateInstead`, so the checkout that has `main` gets the new
+   files too (git refuses if it has uncommitted changes).
    If a test fails, fix it and start again from 1: never hand over or merge something broken.
 
 ## The desktop
