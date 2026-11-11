@@ -21,8 +21,8 @@ Singleton {
 
   readonly property string share: Quickshell.env("MEMORA_PATH") || "/usr/share/memora"
   // The desktop picture for a mode (yours if you picked one, else the chosen set).
-  readonly property var wallpaperSets: ["prism", "ember", "tide", "horizon", "dunes", "silk"]
-  function wallpaperFor(m) { return Prefs.wallpaper !== "" ? Prefs.wallpaper : share + "/wallpapers/" + (wallpaperSets.indexOf(Prefs.wallpaperSet) >= 0 ? Prefs.wallpaperSet : "prism") + "-" + m + ".jpg" }
+  readonly property var wallpaperSets: ["orbs", "ember", "tide", "horizon", "dunes", "silk"]
+  function wallpaperFor(m) { return Prefs.wallpaper !== "" ? Prefs.wallpaper : share + "/wallpapers/" + (wallpaperSets.indexOf(Prefs.wallpaperSet) >= 0 ? Prefs.wallpaperSet : "orbs") + "-" + m + ".jpg" }
   readonly property string wallpaper: wallpaperFor(mode)
 
   // Type
