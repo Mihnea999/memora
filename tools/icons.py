@@ -150,13 +150,12 @@ ICONS["apps/memora-store"] = icon(
       <circle cx="592" cy="480" r="17" fill="#2f7cf5" fill-opacity="0.55"/>
     </g>''')
 
-# Launchpad: nine soft tiles, a colour each, on graphite.
-_tiles = ["#ff6b6b", "#ffa94d", "#ffd43b", "#51cf66", "#22c3c9", "#4dabf7", "#845ef7", "#e64980", "#adb5bd"]
+# Launchpad: a grid of nine white tiles on slate.
 ICONS["apps/memora-launchpad"] = icon(
-    "launchpad", lg("bg", "#4a4c55", "#1b1c20"), "url(#bg)",
+    "launchpad", lg("bg", "#7d8597", "#363b48"), "url(#bg)",
     '<g filter="url(#lift)">' + "".join(
-        f'<rect x="{302 + (i % 3) * 152}" y="{302 + (i // 3) * 152}" width="116" height="116" rx="34" fill="{c}"/>'
-        for i, c in enumerate(_tiles)) + '</g>', lift=0.16)
+        f'<rect x="{304 + (i % 3) * 152}" y="{304 + (i // 3) * 152}" width="112" height="112" rx="32" fill="url(#ink)"/>'
+        for i in range(9)) + '</g>')
 
 # Browser: a white globe on sea blue.
 ICONS["apps/chromium"] = icon(
