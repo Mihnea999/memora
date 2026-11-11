@@ -28,6 +28,23 @@ RES=1366x768 test/vm.sh run   # another screen size (2560x1080, 1080x1920…)
 VM=dev test/vm.sh install && VM=dev test/vm.sh dev   # second disk that runs system/ live from this checkout
 ```
 
+## Working on Memora (also for AI agents)
+
+A change is finished only when it has been tried on the real desktop and handed over as a new image:
+
+1. **Test it in the VM before anything else.** Log in, check the shell stays up (no Quickshell crash
+   dialog), and use the change for real: the keys, the pointer, the app. Linting QML or loading an app
+   off screen is not enough. Without a rebuild: boot `test/disk.qcow2` headless with the live `system/`
+   and `test/share` mounts and VNC, run commands through `/mnt/share/cmd`, and bind-mount a changed
+   `shell/` over `/usr/share/memora/shell`; plugin changes are built inside the VM with
+   `system/plugin/build.sh`.
+2. **Build the new image** from the branch: `./build.sh` (the ISO lands in `out/`).
+3. **Install it and hand over the normal VM**, not the dev one: stop any running VM, then
+   `test/vm.sh install` and `test/vm.sh run` (a window on the desktop, user `memora` / `memora`).
+   Check once more there that the shell starts and the change works.
+4. **If everything passes, merge into `main` without asking** (a fast-forward; never force).
+   If a test fails, fix it and start again from 1: never hand over or merge something broken.
+
 ## The desktop
 
 Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one design system:

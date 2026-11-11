@@ -5,7 +5,9 @@
 // closed, minimized or moved with the mouse. These windows get a bar here:
 // red/yellow/green buttons on the left (symbols when the pointer is over them),
 // the title in the middle, drag to move, double-click to fill the screen.
-// Apps that draw their own frame (GTK, Chromium, Memora's) are left alone.
+// Apps that draw their own frame (GTK, Chromium, Memora's) are left alone, but
+// resting on the green button Chromium and GTK apps draw opens the same layouts
+// panel (ownInit below).
 // Built for Hyprland 0.57 together with minimize.cpp (build.sh).
 #define WLR_USE_UNSTABLE
 // The standard library first: it must not see the #define below.
@@ -624,8 +626,86 @@ static void forBar(PHLWINDOW w, auto&& fn) {
                     fn(bar);
 }
 
+// Apps that draw their own frame (Chromium, GTK apps like Ghostty) have their
+// own green button, which knows nothing of Memora: resting on it opens the same
+// layouts panel as on the bars above. Where its centre is, from the window's
+// top-left (measured: Chromium's own frame, GTK headers in Memora's theme).
+namespace {
+    CHyprSignalListener g_ownMove, g_ownButton;
+    PHLWINDOWREF        g_ownGreen; // the window whose own green button the pointer rests on
+    constexpr double    OWN_R = 9;  // how near its centre counts
+
+    std::optional<Vector2D> ownGreenOffset(PHLWINDOW w) {
+        if (!w || wantsSystemBar(w))
+            return std::nullopt;
+        const auto& id = w->metadata().appID();
+        if (id == "chromium" || id.starts_with("google-chrome"))
+            return Vector2D(74.0, 19.5);
+        if (id == "com.mitchellh.ghostty" || id.starts_with("org.gnome."))
+            return Vector2D(73.5, 22.5);
+        return std::nullopt;
+    }
+
+    // The window whose own green button is under the pointer, with nothing on top.
+    PHLWINDOW ownGreenUnderPointer(Vector2D& centre) {
+        const auto              MOUSE = g_pInputManager->getMouseCoordsInternal();
+        Desktop::CViewHitTester hit{*Desktop::viewState()};
+        PHLWINDOW               w = hit.windowAt(MOUSE, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+        if (!w || !validMapped(w) || w->isHidden())
+            return nullptr;
+        const auto off = ownGreenOffset(w);
+        if (!off)
+            return nullptr;
+        if (g_pSeatManager->m_seatGrab && !g_pSeatManager->m_seatGrab->accepts(w->wlSurface()->resource()))
+            return nullptr;
+        const Vector2D pos  = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+        const Vector2D size = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+        auto           mon  = Desktop::focusState()->monitor();
+        if (!mon)
+            return nullptr;
+        // Full screen: the app hides its buttons.
+        if (size.x >= mon->m_size.x - 1 && size.y >= mon->m_size.y - 1)
+            return nullptr;
+        centre = pos + *off;
+        if (std::hypot(MOUSE.x - centre.x, MOUSE.y - centre.y) > OWN_R)
+            return nullptr;
+        PHLLS    ls;
+        Vector2D local;
+        for (auto layer : {ZWLR_LAYER_SHELL_V1_LAYER_TOP, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY}) {
+            hit.layerSurfaceAt(MOUSE, &mon->m_layerSurfaceLayers[layer], &local, &ls);
+            if (ls)
+                return nullptr;
+        }
+        return w;
+    }
+
+    void ownInit() {
+        g_ownMove = Event::bus()->m_events.input.mouse.move.listen([](Vector2D, Event::SCallbackInfo&) {
+            Vector2D   c;
+            const auto w   = ownGreenUnderPointer(c);
+            const auto cur = g_ownGreen.lock();
+            if (w == cur)
+                return;
+            if (cur)
+                Config::Supplementary::executor()->spawn("memora-shell layouts leave");
+            g_ownGreen = w;
+            if (w) // the panel opens under the button: its bottom-left corner
+                Config::Supplementary::executor()->spawn(
+                    std::format("memora-shell layouts hover 0x{:x} {} {}", (uintptr_t)w.get(), (int)std::round(c.x - BTN / 2.0), (int)std::round(c.y + BTN / 2.0)));
+        });
+        // A click on it is the app's (it fills the screen); the panel goes.
+        g_ownButton = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent e, Event::SCallbackInfo&) {
+            if (e.state == WL_POINTER_BUTTON_STATE_PRESSED && g_ownGreen.lock()) {
+                g_ownGreen.reset();
+                Config::Supplementary::executor()->spawn("memora-shell layouts close");
+            }
+        });
+    }
+}
+
 void memoraTitlebarInit(HANDLE handle) {
     g_handle = handle;
+    ownInit();
     touchInit();
     g_sizesCmd = HyprlandAPI::registerHyprCtlCommand(handle, IPC::Socket1::SCommand{.name = "memora-sizes", .match = IPC::Socket1::COMMAND_MATCH_EXACT, .handler = sizesJSON});
     g_open   = Event::bus()->m_events.window.open.listen([](PHLWINDOW w) { maybeAddBar(w); });
@@ -651,6 +731,8 @@ void memoraTitlebarExit() {
     g_tdown.reset();
     g_tmotion.reset();
     g_tup.reset();
+    g_ownMove.reset();
+    g_ownButton.reset();
     g_pHyprRenderer->context().m_pass.removeAllOfType("CMemoraBarPass");
     g_bars.clear();
     publishBars();

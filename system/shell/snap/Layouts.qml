@@ -67,7 +67,10 @@ Scope {
   PanelWindow {
     id: wl
     screen: ly.screen
-    visible: card.visible
+    // Shown as soon as the card opens, not once it is visible: the card fades in
+    // with an animation, and animations only run in a window that is drawing
+    // (otherwise it stayed at 0 and the panel never opened a second time).
+    visible: card.open || card.visible
     anchors { top: true; bottom: true; left: true; right: true }
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
