@@ -114,10 +114,19 @@ PanelWindow {
   }
   property point menuPos: Qt.point(0, 0)
 
-  // A soft veil over the desktop; click it to close.
+  // Click outside to close. With Tinted glass also a soft veil over the desktop.
   Rectangle {
     anchors.fill: parent
-    color: Qt.rgba(0, 0, 0, Theme.dark ? 0.36 : 0.18)
+    color: Theme.tinted ? Qt.rgba(0, 0, 0, Theme.dark ? 0.36 : 0.18) : "transparent"
+    opacity: lp.shown
+  }
+  // The whole desktop behind it heavily frosted, as on a Mac (the panel's own
+  // glass is drawn over it, bigger shapes first: system/plugin/glass.cpp).
+  Glass {
+    anchors.fill: parent
+    radius: 0; bevel: 1; frost: 1
+    fill: "transparent"
+    visible: !Theme.tinted && opacity > 0
     opacity: lp.shown
   }
   TapHandler {
@@ -140,9 +149,12 @@ PanelWindow {
     scale: 0.94 + 0.06 * lp.shown
     transformOrigin: Item.Bottom
     radius: 28
-    // Thicker glass than the menus: it opens over windows full of text, and
-    // names and icons must read clearly over them (frosted or not).
-    fill: Theme.dark ? Qt.rgba(0.10, 0.10, 0.12, Theme.see(0.74)) : Qt.rgba(0.98, 0.98, 0.99, Theme.see(0.78))
+    // Clear, as every other glass panel; Tinted gives it a thick sheet, for
+    // names and icons over windows full of text.
+    // A heavy frost behind it (what is under it can't be read under the names)
+    // and only a breath of grey.
+    frost: 1
+    fill: Theme.tinted ? (Theme.dark ? Qt.rgba(0.10, 0.10, 0.12, Theme.see(0.74)) : Qt.rgba(0.98, 0.98, 0.99, Theme.see(0.78))) : Qt.rgba(0.5, 0.5, 0.52, 0.07)
     TapHandler { onTapped: lp.menuApp = "" }   // taps inside don't close
 
     // Search

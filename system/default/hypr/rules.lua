@@ -98,12 +98,16 @@ hl.window_rule({ name = "memora-float-tool-size", match = { class = "^(memora-fl
 -- ignore_alpha: where a layer is fainter than this (its anti-aliased edge) nothing is
 -- blurred. It sits just under the thinnest glass fill (core/Theme.qml).
 local tf = io.open(os.getenv("HOME") .. "/.config/memora/theme")
-local glass_floor = (tf and (tf:read("*l") or ""):match("light")) and 0.13 or 0.16
+local glass_floor = 0.04
 if tf then tf:close() end
-for _, ns in ipairs({ "memora-bar", "memora-dock", "memora-panel", "memora-launchpad", "memora-spotlight", "memora-overview",
+for _, ns in ipairs({ "memora-dock", "memora-panel", "memora-launchpad", "memora-spotlight", "memora-overview",
   "memora-notifications", "memora-osd", "memora-dialog", "memora-switcher" }) do
   -- blur_popups: the menus that hang from the bar and the Dock are glass too
   -- (without it they are see-through and what is behind shows sharp through the text).
   hl.layer_rule({ name = "memora-glass-" .. ns, match = { namespace = "^(" .. ns .. ")$" }, blur = true, blur_popups = true, ignore_alpha = glass_floor })
 end
+-- The menu bar is see-through, text only, as on a Mac: never frosted (a faint
+-- edge of a letter or a hover plate was enough to frost the whole strip). Its
+-- menus are glass: the compositor plugin draws them, Hyprland's blur otherwise.
+hl.layer_rule({ name = "memora-glass-memora-bar", match = { namespace = "^(memora-bar)$" }, blur = false, blur_popups = true })
 hl.layer_rule({ name = "memora-no-anim-wallpaper", match = { namespace = "^(memora-wallpaper|memora-genie|memora-snap)$" }, no_anim = true })

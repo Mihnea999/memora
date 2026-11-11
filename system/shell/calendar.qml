@@ -1622,14 +1622,17 @@ ShellRoot {
       function pickDate(item, t, cb) { place(item); dateMode = true; dateVal = t; onPick = cb; open = true; popAnim.restart() }
       function close() { open = false }
       MouseArea { anchors.fill: parent; onClicked: pp.close() }
-      Rectangle {
+      // A little frosted window of its own above Calendar (ui/MenuPopup.qml).
+      MenuPopup {
+      item: pp
+      at: Qt.point(pp.at.x, Math.min(pp.at.y, pp.height - popBox.height - 8))
+      visible: pp.open
+      Glass {
         id: popBox
-        x: pp.at.x; y: Math.min(pp.at.y, pp.height - height - 8)
         width: pp.dateMode ? 250 : Math.max(180, lcol.implicitWidth + 12)
         height: pp.dateMode ? dm.implicitHeight + 20 : Math.min(pp.height - 16, lcol.implicitHeight + 12)
         radius: 12
-        color: Theme.popover
-        border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.1)
+        fill: Theme.menuGlass
         clip: true
         NumberAnimation { id: popAnim; target: popBox; property: "opacity"; from: 0; to: 1; duration: Theme.fast; easing.type: Easing.OutCubic }
         MouseArea { anchors.fill: parent }
@@ -1666,6 +1669,7 @@ ShellRoot {
           onPicked: d => { pp.close(); if (pp.onPick) pp.onPick(d) }
           Connections { target: pp; function onDateValChanged() { dm.shown = pp.dateVal } }
         }
+      }
       }
     }
   }

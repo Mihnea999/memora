@@ -15,6 +15,8 @@ PanelWindow {
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.layer: WlrLayer.Background
   WlrLayershell.namespace: "memora-wallpaper"
+  // Keys only while the desktop menu is open (Escape closes it).
+  WlrLayershell.keyboardFocus: menuOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
   color: "black"
 
   property string file: Theme.wallpaper
@@ -34,22 +36,31 @@ PanelWindow {
     visible: false
     source: pics
     blurEnabled: !Prefs.reduceTransparency
-    blur: 0.3 + Prefs.blur * 0.5; blurMax: 48
+    blur: Prefs.blur * 0.8; blurMax: 48
     saturation: Prefs.vibrancy * 0.5
-    brightness: Theme.dark ? -0.16 : 0.03
+    brightness: Theme.dark ? -0.04 : 0.0
   }
 
   // Widgets, and the desktop's own menu (right-click on empty space).
   Widgets { id: widgets; visible: w.modelData === Quickshell.screens[0]; backdrop: frosted }
   property point menuAt: Qt.point(-1, -1)
+  readonly property bool menuOpen: menuAt.x >= 0
+  function closeMenu() { menuAt = Qt.point(-1, -1) }
   TapHandler {
     acceptedButtons: Qt.RightButton
-    onTapped: ev => w.menuAt = ev.position
+    // One menu at a time: the bar's and the Dock's close first.
+    onTapped: ev => { if (Shell.open !== "") Shell.close(); else Shell.closing(); w.menuAt = ev.position }
   }
-  TapHandler { onTapped: w.menuAt = Qt.point(-1, -1) }
+  TapHandler { onTapped: w.closeMenu() }
+  // It goes away as soon as the desktop loses the focus: a click anywhere else
+  // (a window, the bar, the Dock), a window taking the focus, another desktop,
+  // another menu, Escape.
+  OutsideClick { when: w.menuOpen; windows: [w]; onOutside: w.closeMenu() }
+  Connections { target: Shell; function onClosing() { w.closeMenu() } function onOpenChanged() { if (Shell.open !== "") w.closeMenu() } }
+  Item { focus: w.menuOpen; Keys.onEscapePressed: w.closeMenu() }
   MenuPanel {
     id: deskMenu
-    visible: w.menuAt.x >= 0
+    visible: w.menuOpen
     // Glass over the frosted picture, like the widgets (the compositor has nothing to frost here).
     solid: false
     backdrop: frosted
@@ -62,7 +73,7 @@ PanelWindow {
       { text: "Change Wallpaper…", action: () => Apps.run("memora-settings wallpaper") },
       { text: "Display Settings…", action: () => Apps.run("memora-settings displays") }
     ]
-    onPicked: item => { const run = item.action; w.menuAt = Qt.point(-1, -1); Qt.callLater(run) }
+    onPicked: item => { const run = item.action; w.closeMenu(); Qt.callLater(run) }
   }
 
   Component.onCompleted: a.source = "file://" + file

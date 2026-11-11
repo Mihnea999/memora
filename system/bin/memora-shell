@@ -7,6 +7,10 @@ dir="${MEMORA_PATH:-/usr/share/memora}/shell"
 # App Store apps (Flatpak) appear in this folder; it must exist before the shell
 # starts, or the shell never sees apps installed later.
 mkdir -p "$HOME/.local/share/flatpak/exports/share/applications" 2>/dev/null
+# Animations on the real clock: Qt's default steps them 16.67 ms per frame, so
+# on a 120/165 Hz screen they run 2-3 times too fast until it notices (the
+# notch's drop icons hopped wildly for half a second when a file came over).
+export QSG_USE_SIMPLE_ANIMATION_DRIVER=1
 case "${1:-}" in
   "") exec qs -p "$dir" ;;
   restart) pkill -f "qs -p $dir\$" ; sleep 0.3; exec uwsm app -- qs -p "$dir" ;;

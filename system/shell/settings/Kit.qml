@@ -226,16 +226,17 @@ QtObject {
       z: 9998
       onClicked: sel.open = false
     }
-    MenuPanel {
-      parent: sel.host
+    // A little frosted window of its own under the button (ui/MenuPopup.qml).
+    MenuPopup {
+      item: sel
+      at: Qt.point(0, sel.height + 4)
       visible: sel.open
-      z: 9999
-      readonly property point at: sel.open && sel.host ? sel.mapToItem(sel.host, 0, sel.height + 4) : Qt.point(0, 0)
-      x: Math.min(at.x, (sel.host ? sel.host.width : 0) - width - 8)
-      y: at.y + height > (sel.host ? sel.host.height : 0) - 8 ? at.y - height - sel.height - 8 : at.y
-      width: implicitWidth; height: implicitHeight
-      items: sel.options.map(o => ({ text: o.text, checked: o.value === sel.value, value: o.value }))
-      onPicked: item => { sel.open = false; sel.picked(item.value) }
+      MenuPanel {
+        solid: false; fill: Theme.menuGlass
+        width: implicitWidth; height: implicitHeight
+        items: sel.options.map(o => ({ text: o.text, checked: o.value === sel.value, value: o.value }))
+        onPicked: item => { sel.open = false; sel.picked(item.value) }
+      }
     }
   }
 
@@ -261,7 +262,49 @@ QtObject {
       activeFocusOnTab: true
       Keys.onReturnPressed: f.accepted()
       Keys.onEnterPressed: f.accepted()
+      Keys.onEscapePressed: ev => { if (f.menuOpen) f.menuOpen = false; else ev.accepted = false }
+      // On the input itself, so it sees the click before the input takes it.
+      TapHandler {
+        acceptedButtons: Qt.RightButton
+        gesturePolicy: TapHandler.WithinBounds   // takes the press: the selection stays
+        onTapped: (pt, button) => {
+          input.forceActiveFocus()
+          f.menuAt = f.host ? input.mapToItem(f.host, pt.position.x, pt.position.y) : Qt.point(0, f.height)
+          f.menuOpen = true
+        }
+      }
       Txt { visible: !input.text && !input.activeFocus; anchors.verticalCenter: parent.verticalCenter; text: f.placeholder; color: Theme.textFaint; font.pixelSize: Theme.small + 0.5 }
+    }
+    // Right-click: Cut, Copy, Paste, Select All (Ctrl+X, C, V, A work too).
+    // A password can be pasted in, never copied out.
+    property bool menuOpen: false
+    property point menuAt: Qt.point(0, 0)
+    readonly property Item host: f.Window.contentItem
+    MouseArea {
+      parent: f.host
+      visible: f.menuOpen
+      anchors.fill: parent
+      z: 9998
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
+      onClicked: f.menuOpen = false
+    }
+    // A little frosted window of its own where it was clicked (ui/MenuPopup.qml).
+    MenuPopup {
+      item: f.host
+      at: f.menuAt
+      visible: f.menuOpen
+    MenuPanel {
+      solid: false; fill: Theme.menuGlass
+      width: implicitWidth; height: implicitHeight
+      items: f.menuOpen ? [
+        { text: "Cut", keys: "Ctrl X", enabled: !f.secret && input.selectedText.length > 0, act: "cut" },
+        { text: "Copy", keys: "Ctrl C", enabled: !f.secret && input.selectedText.length > 0, act: "copy" },
+        { text: "Paste", keys: "Ctrl V", enabled: input.canPaste, act: "paste" },
+        { separator: true },
+        { text: "Select All", keys: "Ctrl A", enabled: input.text.length > 0, act: "selectAll" }
+      ] : []
+      onPicked: item => { f.menuOpen = false; input[item.act](); input.forceActiveFocus() }
+    }
     }
   }
 

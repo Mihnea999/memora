@@ -430,13 +430,16 @@ ShellRoot {
       }
 
       // Format menu
+      // A little frosted window of its own above Notes (ui/MenuPopup.qml).
+      MenuPopup {
+      item: bar
+      at: Qt.point(12, 48)
+      visible: formatMenu.open
       Glass {
         id: formatMenu
         property bool open: false
-        z: 10
-        x: 12; y: 48
         width: 190; height: fcol.implicitHeight + 12
-        radius: 12; fill: Theme.popover
+        radius: 12; fill: Theme.menuGlass
         visible: opacity > 0
         opacity: open ? 1 : 0
         scale: open ? 1 : 0.9
@@ -465,6 +468,7 @@ ShellRoot {
             }
           }
         }
+      }
       }
 
       Flickable {

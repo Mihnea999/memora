@@ -467,7 +467,11 @@ Scope {
         Row {
           id: zones
           z: 11
-          anchors { fill: parent; margins: 10; topMargin: 8 }
+          // At the open size, not the island's: the island springs to it
+          // (overshooting a few times), and the zones following it made the
+          // icons bob up and down fast until it settled.
+          anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10; topMargin: 8 }
+          height: 118 - 8 - 10
           spacing: 8
           opacity: win.dragWide && island.height > 80 ? 1 : 0
           visible: opacity > 0
@@ -871,12 +875,15 @@ Scope {
         Rectangle { anchors.fill: parent; radius: 17; color: dz.hot ? Theme.accent : Qt.rgba(1, 1, 1, 0.1); Behavior on color { ColorAnimation { duration: Theme.fast } } }
         Sym { anchors.centerIn: parent; name: dz.sym; width: 16; height: 16; color: "#ffffff" }
         scale: dz.hot ? 1.12 : 1
-        Behavior on scale { SpringAnimation { spring: 5; damping: 0.25; epsilon: 0.005 } }
-        // A little hop when the file comes over it.
-        SequentialAnimation on y {
+        Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutBack } }
+        // A little hop when the file comes over it: on a transform, as the
+        // Column sets the item's own y on every layout and broke the rhythm.
+        transform: Translate { id: hop }
+        SequentialAnimation {
           running: dz.hot && dz.visible; loops: Animation.Infinite
-          NumberAnimation { from: 0; to: -3; duration: 420; easing.type: Easing.OutQuad }
-          NumberAnimation { from: -3; to: 0; duration: 420; easing.type: Easing.InQuad }
+          onStopped: hop.y = 0
+          NumberAnimation { target: hop; property: "y"; from: 0; to: -3; duration: 420; easing.type: Easing.OutQuad }
+          NumberAnimation { target: hop; property: "y"; from: -3; to: 0; duration: 420; easing.type: Easing.InQuad }
         }
       }
       Txt { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: dz.title; color: "#f5f5f7"; font.weight: Font.Bold; elide: Text.ElideRight }

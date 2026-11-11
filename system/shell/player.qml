@@ -763,15 +763,20 @@ ShellRoot {
         it.push({ text: "Show in Files", action: () => Quickshell.execDetached(["memora-files", paths[0].substring(0, paths[0].lastIndexOf("/"))]) })
         menu.items = it
         const p = item.mapToItem(menu, x, y)
-        box.x = Math.min(p.x, menu.width - box.width - 8); box.y = Math.min(p.y, menu.height - box.height - 8)
+        boxPop.at = Qt.point(p.x, p.y)
         visible = true
       }
       TapHandler { onTapped: menu.visible = false }
       TapHandler { acceptedButtons: Qt.RightButton; onTapped: menu.visible = false }
-      Rectangle {
+      // A little frosted window of its own above Player (ui/MenuPopup.qml).
+      MenuPopup {
+      id: boxPop
+      item: menu
+      visible: menu.visible
+      Glass {
         id: box
         width: 250; height: mcol.implicitHeight + 10; radius: 10
-        color: Theme.dark ? "#2c2c30" : "#fbfbfd"; border.color: Theme.separator
+        fill: Theme.menuGlass
         Column {
           id: mcol
           x: 5; y: 5; width: parent.width - 10
@@ -788,6 +793,7 @@ ShellRoot {
             }
           }
         }
+      }
       }
     }
   }

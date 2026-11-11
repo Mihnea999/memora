@@ -132,7 +132,7 @@ Item {
   }
   // Touch: a long press is the right click.
   TapHandler { acceptedDevices: PointerDevice.TouchScreen; onLongPressed: it.openMenu() }
-  function openMenu() { it.dockRoot.menuX = it.dockRoot.hitX + it.centerX; it.dockRoot.menuFor = it.entry }
+  function openMenu() { it.dockRoot.menuX = it.dockRoot.hitX + it.centerX; it.dockRoot.showMenu(it.entry) }
 
   function activate() {
     if (kind === "trash") return Apps.run("memora-files trash:///")

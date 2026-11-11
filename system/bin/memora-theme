@@ -32,6 +32,35 @@ font_set() {
 }
 list() { for d in "$themes"/*/; do basename "$d"; done; }
 
+# The login screen runs as its own user (greeter) and can't read your home: it
+# shows your desktop picture and light or dark from /var/lib/memora/look/$USER,
+# a folder of yours in a shared one (made by the installer and by updates, sticky
+# like /tmp: nobody can touch another's). The shell calls this whenever the
+# picture or the appearance changes. The login screen trusts the folder only
+# when it belongs to the person it is named after.
+looks="${MEMORA_LOOKS:-/var/lib/memora/look}"
+login_sync() { # [PICTURE]
+  local dir="$looks/${USER:-$(id -un)}" wall="${1:-}" mode tmp
+  [[ -d $looks && -w $looks && -k $looks ]] || return 0
+  [[ -e $dir ]] || mkdir -m 755 "$dir" 2>/dev/null || return 0
+  [[ -d $dir && ! -L $dir && -O $dir ]] || return 0
+  chmod 755 "$dir"
+  mode="$(current)"; [[ $mode == light ]] || mode=dark
+  tmp="$(mktemp "$dir/.theme.XXXXXX")" && printf '%s\n' "$mode" > "$tmp" && chmod 644 "$tmp" && mv -f "$tmp" "$dir/theme"
+  if [[ -n $wall && -f $wall && -r $wall ]]; then
+    # Only when it changed: a picture is big, the appearance switch is not.
+    local src; src="$(realpath -e -- "$wall")" || return 0
+    [[ "$(cat "$dir/source" 2>/dev/null)" == "$src $(stat -c %Y -- "$src")" && -f $dir/wallpaper ]] && return 0
+    tmp="$(mktemp "$dir/.wallpaper.XXXXXX")" || return 0
+    # A screen-sized copy (pictures can be 8K); the first frame of a moving one.
+    if ! { command -v magick >/dev/null && magick "$src[0]" -auto-orient -resize '3840x3840>' -quality 92 "jpg:$tmp" 2>/dev/null; }; then
+      cp -f -- "$src" "$tmp" || { rm -f "$tmp"; return 0; }
+    fi
+    chmod 644 "$tmp" && mv -f "$tmp" "$dir/wallpaper"
+    (umask 077; printf '%s %s\n' "$src" "$(stat -c %Y -- "$src")" > "$dir/source")
+  fi
+}
+
 apply() {
   local t="$1" dir="$themes/$1"
   [[ -f $dir/colors ]] || { echo "Unknown theme: $t (try: $(list | tr '\n' ' '))" >&2; exit 1; }
@@ -80,6 +109,7 @@ case "${1:-current}" in
   list) list ;;
   desktop-settings) desktop_settings ;;
   current) current ;;
+  login-sync) login_sync "${2:-}" ;;
   font) if [[ -n ${2:-} ]]; then font_set "$2"; else font_now; echo; fi ;;
   set) apply "${2:?usage: memora-theme set NAME}" ;;
   next)
@@ -89,5 +119,5 @@ case "${1:-current}" in
     apply "$next"
     ;;
 
-  *) echo "usage: memora-theme [list|current|set NAME|next|font [NAME]]"; exit 1 ;;
+  *) echo "usage: memora-theme [list|current|set NAME|next|font [NAME]|login-sync [PICTURE]]"; exit 1 ;;
 esac

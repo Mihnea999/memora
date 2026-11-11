@@ -23,11 +23,28 @@ render_flow() { # name mode
   "${PYTHON:-python3}" "$root/tools/flow.py" "$name" "$mode" 7680 4800 "$tmp/f.png"
   magick "$tmp/f.png" -sampling-factor 4:4:4 -quality 94 "$out"
 }
+# The playful sets (tools/play.py, numpy and pillow too): Sorbet, Lagoon, Petal, Bubbles.
+render_play() { # name mode
+  local name=$1 mode=$2 out="$root/system/wallpapers/$1-$2.jpg"
+  [[ -f $out && $out -nt $root/tools/play.py ]] && return 0
+  "${PYTHON:-python3}" "$root/tools/play.py" "$name" "$mode" 7680 4800 "$tmp/p-$name-$mode.png"
+  magick "$tmp/p-$name-$mode.png" -sampling-factor 4:4:4 -quality 94 "$out"
+  rm -f "$tmp/p-$name-$mode.png"
+}
+# Settings shows each set as a small light/dark pair.
+thumb() { # name mode
+  local src="$root/system/wallpapers/$1-$2.jpg" out="$root/system/wallpapers/thumbs/$1-$2.jpg"
+  [[ -f $out && $out -nt $src ]] && return 0
+  mkdir -p "$root/system/wallpapers/thumbs"
+  magick "$src" -resize 540x338^ -gravity center -extent 540x338 -quality 82 "$out"
+}
 wallpaper() { # theme-dir mode
   local m=$2
   render_flow ember "$m"; render_flow tide "$m"
   render_wall silk "$m" "$root/tools/silk.py" "$m"
   for n in horizon dunes; do render_wall "$n" "$m" "$root/tools/walls.py" "$n" "$m"; done
+  for n in sorbet lagoon petal bubbles; do render_play "$n" "$m"; done
+  for n in ember tide horizon dunes silk sorbet lagoon petal bubbles; do thumb "$n" "$m"; done
   ln -sf "../../wallpapers/ember-$m.jpg" "$1/wallpaper.jpg"
 }
 

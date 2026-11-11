@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Archives
+Comment=Open, extract and make zip, rar, 7z, tar and other archives
+Exec=memora-archive %F
+Icon=memora-archive
+Terminal=false
+Categories=Utility;Archiving;Compression;
+MimeType=application/zip;application/x-zip-compressed;application/x-7z-compressed;application/vnd.rar;application/x-rar;application/x-rar-compressed;application/x-tar;application/x-gtar;application/x-compressed-tar;application/x-bzip2-compressed-tar;application/x-bzip-compressed-tar;application/x-xz-compressed-tar;application/x-zstd-compressed-tar;application/x-lzma-compressed-tar;application/x-lz4-compressed-tar;application/x-lzip-compressed-tar;application/x-tarz;application/gzip;application/x-gzip;application/x-bzip2;application/x-bzip;application/x-xz;application/zstd;application/x-zstd;application/x-lzma;application/x-lz4;application/x-lzip;application/x-compress;application/x-cpio;application/vnd.ms-cab-compressed;application/x-cab;application/x-arj;application/x-lha;application/x-lzh-compressed;application/x-ace;application/x-archive;application/x-cd-image;application/x-iso9660-image;application/x-apple-diskimage;application/x-ms-wim;application/x-xar;application/x-rpm;application/vnd.debian.binary-package;application/x-java-archive;application/x-msi;application/x-squashfs;application/x-zip;application/x-7z-compressed-tar;
+Keywords=zip;unzip;rar;unrar;winrar;7z;7zip;tar;extract;compress;archive;
+Actions=Compress;
+
+[Desktop Action Compress]
+Name=New Archive
+Exec=memora-archive --compress

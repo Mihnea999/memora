@@ -13,7 +13,7 @@ Singleton {
   property bool clock24: true
   property bool showDate: true
   property string wallpaper: ""        // a picture of yours; empty: the set below
-  property string wallpaperSet: "ember"   // ember | tide | horizon | dunes | silk, follows light/dark
+  property string wallpaperSet: "ember"   // ember | tide | horizon | dunes | silk | sorbet | lagoon | petal | bubbles, follows light/dark
   property var wallpaperRecent: []     // your pictures used lately, newest first
   property bool batteryPercent: true   // the percentage next to the battery in the menu bar
   property bool lowPowerOnBattery: false   // Low Power mode while unplugged
@@ -33,8 +33,8 @@ Singleton {
   property bool menuBarTransparent: true
   // Liquid glass (System Settings > Appearance)
   property string glassStyle: "clear"  // clear | tinted
-  property real blur: 0.3              // how much the glass frosts what is behind (0 … 1)
-  property real shine: 0             // light on the glass edges (0 … 1); none: the shape shows by the bend and the tint
+  property real blur: 0.0              // how much the glass frosts what is behind (0 … 1)
+  property real shine: 1             // light on the glass edges (0 … 1), as ybouane/liquidglass at 1
   property real vibrancy: 0.7          // colour carried through the glass (0 … 1)
   property bool reduceTransparency: false
   property string accent: "blue"       // blue | purple | pink | red | orange | green | graphite

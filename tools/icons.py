@@ -255,6 +255,26 @@ ICONS["apps/memora-activity"] = icon(
     rim_op=0.16)
 
 
+# Archives: a white page zipped down the middle, on indigo.
+def _zipper():
+    teeth = "".join(
+        f'<rect x="{478 if i % 2 == 0 else 512}" y="{230 + i * 30}" width="34" height="20" rx="7" fill="#3b3f58"/>'
+        for i in range(12))
+    return teeth
+
+
+ICONS["apps/memora-archive"] = icon(
+    "archive", lg("bg", "#8c7bff", "#4a36d8") + lg("pg", "#ffffff", "#e6e8f3"), "url(#bg)",
+    f'''<g filter="url(#soft)">
+      <rect x="292" y="196" width="440" height="636" rx="46" fill="url(#pg)"/>
+      <rect x="497" y="196" width="30" height="400" fill="#000" fill-opacity="0.06"/>
+      {_zipper()}
+      <rect x="474" y="590" width="76" height="170" rx="34" fill="#3b3f58"/>
+      <rect x="496" y="672" width="32" height="62" rx="16" fill="#e6e8f3"/>
+      <circle cx="512" cy="606" r="20" fill="#5a5f7c"/>
+    </g>''', rim_op=0.3)
+
+
 # ---- places: folders as on the desktop, plus Trash ---------------------------
 def place(glyph_path, extra_defs=""):
     """Folder icon (no squircle): back panel, front panel and an embossed glyph."""

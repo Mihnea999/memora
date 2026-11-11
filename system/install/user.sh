@@ -31,6 +31,7 @@ xdg-mime default memora-files.desktop inode/directory
 for t in image/png image/jpeg image/webp image/gif image/bmp image/svg+xml image/heic image/tiff image/avif image/jxl; do xdg-mime default memora-photos.desktop "$t"; done
 for t in video/mp4 video/x-matroska video/webm video/quicktime video/x-msvideo video/mpeg; do xdg-mime default memora-photos.desktop "$t"; done   # Gallery
 for t in audio/mpeg audio/flac audio/ogg audio/x-wav audio/mp4; do xdg-mime default memora-player.desktop "$t"; done
+for t in application/zip application/x-7z-compressed application/vnd.rar application/x-rar application/x-tar application/x-compressed-tar application/x-bzip2-compressed-tar application/x-xz-compressed-tar application/x-zstd-compressed-tar application/gzip application/x-bzip2 application/x-xz application/zstd application/x-lzma application/vnd.ms-cab-compressed application/x-arj application/x-lha application/x-cpio; do xdg-mime default memora-archive.desktop "$t"; done   # Archives
 xdg-mime default org.gnome.Papers.desktop application/pdf
 for t in text/plain text/markdown text/x-log application/json text/x-python text/x-shellscript; do xdg-mime default org.gnome.TextEditor.desktop "$t"; done
 for t in x-scheme-handler/http x-scheme-handler/https text/html; do xdg-mime default chromium.desktop "$t"; done

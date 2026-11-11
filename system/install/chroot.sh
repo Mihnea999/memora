@@ -251,6 +251,9 @@ session_cmd="memora-session"
 mkdir -p /etc/greetd /var/lib/memora
 printf %s "$MEMORA_USER" > /var/lib/memora/last-user
 chown -R greeter:greeter /var/lib/memora
+# Your picture and appearance for the login screen (memora-theme login-sync).
+install -Dm644 $MEMORA_PATH/units/memora-tmpfiles.conf /usr/lib/tmpfiles.d/memora.conf
+install -d -m 1777 -o root -g root /var/lib/memora/look
 greeter_cmd="memora-greeter $MEMORA_THEME"
 
 {

@@ -39,6 +39,8 @@ jq
 gum
 unzip
 7zip
+unrar
+zstd
 pciutils
 usbutils
 inotify-tools

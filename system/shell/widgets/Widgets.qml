@@ -397,8 +397,8 @@ Item {
         id: card
         anchors.fill: parent
         radius: 24
-        // Glass like the Dock's when the picture behind can be frosted, else a thicker sheet.
-        fill: root.backdrop ? (Theme.dark ? Qt.rgba(0.08, 0.08, 0.10, Theme.see(0.26)) : Qt.rgba(1, 1, 1, Theme.see(0.24)))
+        // Clear glass like the Dock's when the picture behind is there to bend, else a thicker sheet.
+        fill: root.backdrop ? (Theme.tinted ? (Theme.dark ? Qt.rgba(0.08, 0.08, 0.10, Theme.see(0.26)) : Qt.rgba(1, 1, 1, Theme.see(0.24))) : Theme.glass)
           : (Theme.dark ? Qt.rgba(0.09, 0.09, 0.11, 0.55) : Qt.rgba(1, 1, 1, 0.55))
         backdrop: root.backdrop
         backdropRect: Qt.rect(w.x, w.y, w.width, w.height)

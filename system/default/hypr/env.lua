@@ -30,3 +30,5 @@ if exists("/etc/memora/nvidia") and not exists("/etc/memora/hybrid") then
   hl.env("NVD_BACKEND", "direct")
   hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 end
+-- Qt animations on the real clock, not 16.67 ms a frame (too fast on 120/165 Hz screens).
+hl.env("QSG_USE_SIMPLE_ANIMATION_DRIVER", "1")

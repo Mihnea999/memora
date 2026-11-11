@@ -73,16 +73,9 @@ PanelWindow {
     color: Theme.bar
     Behavior on color { ColorAnimation { duration: Theme.slow } }
   }
-  // Transparent bar: a faint veil keeps the text readable on any picture. It stays
-  // fainter than the compositor's blur floor (rules.lua), so nothing is frosted behind it.
-  Rectangle {
-    visible: Prefs.menuBarTransparent
-    anchors.fill: parent
-    gradient: Gradient {
-      GradientStop { position: 0; color: bar.onDark ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(1, 1, 1, 0.12) }
-      GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0) }
-    }
-  }
+  // Transparent bar: nothing at all behind the text, as on a Mac (no veil, no
+  // frost: rules.lua never blurs this layer). The ink follows the picture
+  // instead, so it reads on any of them.
 
   // ---------------------------------------------------------------- left side
   RowLayout {

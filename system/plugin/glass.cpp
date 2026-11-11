@@ -29,6 +29,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -56,6 +57,7 @@
 #include <hyprland/src/render/Framebuffer.hpp>
 #include <hyprland/src/render/Texture.hpp>
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
+#include <hyprland/src/managers/SessionLockManager.hpp>
 #include <hyprland/src/protocols/LayerShell.hpp>
 #include <hyprland/src/protocols/core/Compositor.hpp>
 #include <hyprland/src/output/Monitor.hpp>
@@ -70,6 +72,8 @@ namespace {
         Vector2D    surface;      // the layer surface's size, to tell layers with the same namespace apart
         CBox        box;          // in the surface
         float       radius = 0, bevel = 0, alpha = 1;
+        float       adapt = 0;        // 1: Tinted (dim or lift what is behind under the text), 0: Clear
+        float       frost = 0;        // 0 clear, as ybouane/liquidglass … 1 frosted (Appearance > Frost)
         bool        popup = false;    // in a menu hanging from the layer, not the layer itself
     };
     std::unordered_map<std::string, SGlass> g_glass;
@@ -77,11 +81,13 @@ namespace {
     // Light or dark, as Memora's appearance (memora-theme writes it).
     bool dark() {
         static std::string path = std::string(getenv("HOME") ? getenv("HOME") : "") + "/.config/memora/theme";
-        static time_t      seen = -1;
+        static long long   seen = -1;
         static bool        val  = true;
         struct stat        st {};
-        if (stat(path.c_str(), &st) == 0 && st.st_mtime != seen) {
-            seen = st.st_mtime;
+        // To the nanosecond: dark then light within one second must still switch.
+        const auto stamp = [](const struct stat& s) { return (long long)s.st_mtim.tv_sec * 1000000000LL + s.st_mtim.tv_nsec; };
+        if (stat(path.c_str(), &st) == 0 && stamp(st) != seen) {
+            seen = stamp(st);
             std::ifstream f(path);
             std::string   v;
             f >> v;
@@ -117,6 +123,8 @@ uniform float refraction;
 uniform float chroma;
 uniform float alpha;
 uniform float darkMode;
+uniform float frost;
+uniform float adapt;
 layout(location = 0) out vec4 fragColor;
 
 float rrSDF(vec2 p, vec2 b, float r) {
@@ -139,16 +147,16 @@ void main() {
     float sdf = rrSDF(p, half_, r);
     // The same soft edge as the shell's (shell/ui/glass.frag), at the same
     // place: wider, it shows as a second, untinted outline.
-    float mask = 1.0 - smoothstep(-1.0, 0.5, sdf);
+    float mask = 1.0 - smoothstep(-1.5, 0.5, sdf);   // as ybouane/liquidglass
     if (mask <= 0.0) discard;
 
     float maxD = min(half_.x, half_.y);
     float inside = -sdf;
     float edge = smoothstep(maxD * 0.35, 0.0, inside);
 
-    float zR = max(1.0, min(zRadius, maxD));
-    // A wide step smooths the rim's slope (it is vertical at the very edge).
-    float e = 3.0;
+    float zR = max(1.0, zRadius);   // not cut to half the size: a small shape is lens all over, as in the reference
+    // The same 2 px step as the reference.
+    float e = 2.0;
     float hC = bevelHeight(inside, zR);
     float hR = bevelHeight(-rrSDF(p + vec2(e, 0.0), half_, r), zR);
     float hL = bevelHeight(-rrSDF(p - vec2(e, 0.0), half_, r), zR);
@@ -164,12 +172,11 @@ void main() {
     vec2 bend = hGrad * refrPow;
     vec2 refrPx = (bend * 2.0 + bend * thickNorm * 0.5) * refraction * 30.0;
     refrPx += (-p / max(half_, vec2(1.0))) * refraction * 4.0 * depth;
-    // Never more than the rim is wide: squeezing more into the last pixels
-    // shows as stripes.
-    float refrLen = length(refrPx);
-    float refrMax = zR * 0.8;
-    if (refrLen > refrMax) refrPx *= refrMax / refrLen;
-    float caS = chroma * 36.0 * (edge * 0.7 + 0.3);
+    // Heavily frosted (the Launchpad), the rim doesn't bend: over a blur there
+    // is nothing to see bent, and the blur squeezed into the rim showed as dark bands.
+    float still = 1.0 - smoothstep(0.5, 1.0, frost);
+    refrPx *= still;
+    float caS = chroma * 36.0 * (edge * 0.7 + 0.3) * still;
 
     vec2 base = (gl_FragCoord.xy + toScreen * refrPx) / fbSize;
     vec2 ca = (toScreen * (N.xy * caS)) / fbSize;
@@ -177,10 +184,23 @@ void main() {
     vec2 uR = clamp(base + ca, lo, hi), uG = clamp(base, lo, hi), uB = clamp(base - ca, lo, hi);
     vec3 sharp = vec3(texture(texSharp, uR).r, texture(texSharp, uG).g, texture(texSharp, uB).b);
     vec3 blur  = vec3(texture(texBlur, uR).r, texture(texBlur, uG).g, texture(texBlur, uB).b);
-    // Frosted all over, as Apple's: the rim bends the picture, it isn't
-    // clearer (a clear ring reads as a second frame). Only a little, fading in.
-    float rimSharp = smoothstep(zR, 0.0, inside) * smoothstep(0.0, 4.0, inside) * 0.3;
-    vec3 col = mix(blur, sharp, rimSharp);
+    // Frost past one half (the Launchpad asks for 1): a wide blur on top of
+    // Hyprland's, so nothing behind can be read, only its colours.
+    if (frost > 0.5) {
+        float rad = 28.0 * smoothstep(0.5, 1.0, frost);
+        vec3 acc = blur;
+        for (int i = 0; i < 32; i++) {
+            float a = float(i) * 2.39996;
+            vec2 o = toScreen * (vec2(cos(a), sin(a)) * rad * sqrt((float(i) + 0.5) / 32.0));
+            acc += texture(texBlur, clamp(uG + o / fbSize, lo, hi)).rgb;
+        }
+        blur = acc / 33.0;
+    }
+    // Clear by default, as ybouane/liquidglass: what is behind shows sharp,
+    // only bent at the rim. With Frost it is frosted all over (the rim isn't
+    // clearer: a clear ring reads as a second frame).
+    float rimSharp = smoothstep(zR, 0.0, inside) * smoothstep(0.0, 4.0, inside) * 0.3 * still;   // none when heavily frosted: sharp edges behind showed through the rim
+    vec3 col = mix(sharp, mix(blur, sharp, rimSharp), clamp(frost * 5.0, 0.0, 1.0));
     col *= 1.0 + 0.06 * depth;
 
     // Adaptive, as Apple's "regular" glass: how bright is what is behind, here
@@ -195,10 +215,10 @@ void main() {
     float L = mix(here, whole / 5.0, 0.6);
     if (darkMode > 0.5) {
         // Light text: a bright background is dimmed until it reads, a dark one left clear.
-        col *= 1.0 - smoothstep(0.3, 0.95, L) * 0.65;
+        col *= 1.0 - smoothstep(0.3, 0.95, L) * 0.5 * adapt;
     } else {
         // Dark text: a dark background is lifted towards white.
-        col = mix(col, vec3(1.0), smoothstep(0.6, 0.1, L) * 0.62);
+        col = mix(col, vec3(1.0), smoothstep(0.6, 0.1, L) * 0.45 * adapt);
     }
     fragColor = vec4(col, 1.0) * mask * alpha;
 })";
@@ -207,7 +227,7 @@ void main() {
     bool        g_shaderFailed = false;
     struct {
         GLint darkMode = -1;
-        GLint sharp = -1, blur = -1, fbSize = -1, size = -1, pad = -1, radius = -1, zRadius = -1, refraction = -1, chroma = -1, alpha = -1;
+        GLint sharp = -1, blur = -1, fbSize = -1, size = -1, pad = -1, radius = -1, zRadius = -1, refraction = -1, chroma = -1, alpha = -1, frost = -1, adapt = -1;
     } U;
 
     bool ensureShader() {
@@ -232,6 +252,8 @@ void main() {
         U.refraction = glGetUniformLocation(P, "refraction");
         U.chroma     = glGetUniformLocation(P, "chroma");
         U.alpha      = glGetUniformLocation(P, "alpha");
+        U.frost      = glGetUniformLocation(P, "frost");
+        U.adapt      = glGetUniformLocation(P, "adapt");
         g_shader     = s;
         return true;
     }
@@ -253,6 +275,9 @@ void main() {
         for (auto& [_, g] : g_glass)
             if (g.alpha > 0.01 && belongs(g, ls, mon))
                 out.push_back(&g);
+        // Bigger shapes first: a glass on top of another (the Launchpad's panel
+        // on its frosted backdrop) must be drawn after it, or it is covered.
+        std::stable_sort(out.begin(), out.end(), [](const SGlass* a, const SGlass* b) { return a->box.w * a->box.h > b->box.w * b->box.h; });
         return out;
     }
 
@@ -377,6 +402,8 @@ class CMemoraGlassPass : public IPassElement {
             glUniform1f(U.radius, g.radius * mon->m_scale);
             glUniform1f(U.zRadius, g.bevel * mon->m_scale);
             glUniform1f(U.alpha, std::clamp(g.alpha * m_fade, 0.F, 1.F));
+            glUniform1f(U.frost, std::clamp(g.frost, 0.F, 1.F));
+            glUniform1f(U.adapt, std::clamp(g.adapt, 0.F, 1.F));
             glBindVertexArray(g_shader->getUniformLocation(SHADER_SHADER_VAO));
             CBox    area = quad.copy().round();
             CRegion here = ctx.m_data.damage.copy().intersect(area);
@@ -397,6 +424,21 @@ class CMemoraGlassPass : public IPassElement {
         gl->setActiveTexture(GL_TEXTURE0);
         copy->getTexture()->unbind();
         return {};
+    }
+
+    // Where this glass draws, in the frame's px (as the frame's damage is).
+    CRegion area() {
+        CRegion out;
+        auto    mon = m_mon.lock();
+        if (!mon)
+            return out;
+        for (auto& g : m_shapes) {
+            CBox box = g.box;
+            box.translate(m_origin);
+            box.scale(mon->m_scale);
+            out.add(box.expand(4).round());
+        }
+        return out;
     }
 
   private:
@@ -444,7 +486,10 @@ static void addPopupGlass(CRenderContext& ctx, PHLLS ls, PHLMONITOR mon, size_t 
 static void hkRenderLayer(void* thisptr, CRenderContext& ctx, PHLLS ls, PHLMONITOR mon, const Time::steady_tp& time, bool popups, bool lockscreen, bool workspaceScene) {
     auto orig = (origRenderLayer)g_renderLayerHook->m_original;
     // Nothing is behind the desktop layers.
-    if (ctx.m_renderingSnapshot || !ls || !mon || !ls->m_namespace.starts_with("memora-") || ls->m_layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM) {
+    // Locked: Hyprland draws only the lock screen, so no glass either (it showed
+    // the Dock's empty shape over the lock screen).
+    const bool locked = g_pSessionLockManager && g_pSessionLockManager->isSessionLocked();
+    if (ctx.m_renderingSnapshot || locked || !ls || !mon || !ls->m_namespace.starts_with("memora-") || ls->m_layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM) {
         orig(thisptr, ctx, ls, mon, time, popups, lockscreen, workspaceScene);
         return;
     }
@@ -481,6 +526,32 @@ static void hkRenderLayer(void* thisptr, CRenderContext& ctx, PHLLS ls, PHLMONIT
         s->m_data.blur = false;
         s->m_data.discardMode &= ~DISCARD_ALPHA;
     }
+}
+
+// A frame that redraws any part of a glass redraws all of it. The lens weighs
+// how bright what is behind is across the whole shape and bends the picture in
+// from beside each point: drawn only where a menu row lit up under the pointer,
+// it read last frame's picture (the white menu already on it) around that row,
+// and the row flashed as a white square until the next frame drew it all.
+// (CRegion CRenderPass::render(CRenderContext&, const CRegion&): leaving out
+// the context made `damage` the context, and Hyprland crashed on the first frame.)
+typedef CRegion (*origPassRender)(void*, CRenderContext&, const CRegion&);
+static CFunctionHook* g_passRenderHook = nullptr;
+
+static CRegion hkPassRender(void* thisptr, CRenderContext& ctx, const CRegion& damage) {
+    auto  orig = (origPassRender)g_passRenderHook->m_original;
+    auto* pass = (CRenderPass*)thisptr;
+    if (!pass || damage.empty())
+        return orig(thisptr, ctx, damage);
+    CRegion grown = damage.copy();
+    for (auto& el : pass->m_passElements) {
+        if (!el.element || std::string_view{el.element->passName()} != "CMemoraGlassPass")
+            continue;
+        auto area = static_cast<CMemoraGlassPass*>(el.element.get())->area();
+        if (!area.copy().intersect(damage).empty())
+            grown.add(area);
+    }
+    return orig(thisptr, ctx, grown);
 }
 
 // ------------------------------------------------------------------- socket
@@ -532,6 +603,10 @@ namespace {
         std::string kind;
         in >> kind;
         g.popup = kind == "P";
+        if (!(in >> g.frost))   // older shells don't send it
+            g.frost = 0.3F;
+        if (!(in >> g.adapt))
+            g.adapt = 1.F;
         g.surface = {sw, sh};
         g.box     = {x, y, w, h};
         auto it   = g_glass.find(id);
@@ -617,6 +692,15 @@ void memoraGlassInit(HANDLE handle) {
     if (!g_renderLayerHook || !g_renderLayerHook->hook()) {
         HyprlandAPI::addNotification(handle, "[memora] liquid glass: could not hook the renderer", CHyprColor{1.0, 0.4, 0.3, 1.0}, 5000);
         return;
+    }
+    // Without it the glass still draws, only a part may flash for a frame.
+    for (auto& fn : HyprlandAPI::findFunctionsByName(handle, "render")) {
+        if (fn.demangled.find("CRenderPass::render(") == std::string::npos || fn.demangled.find("CRenderContext") == std::string::npos)
+            continue;
+        g_passRenderHook = HyprlandAPI::createFunctionHook(handle, fn.address, (void*)&hkPassRender);
+        if (g_passRenderHook && !g_passRenderHook->hook())
+            g_passRenderHook = nullptr;
+        break;
     }
 
     const auto path = socketPath();

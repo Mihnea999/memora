@@ -53,7 +53,7 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Calendar** (day, week, month and year,
 calendars in their own colours, your country's public holidays, events typed the way you'd say them,
 dragged to another day or time, search, reminders from the desktop), **Photos**, **Player** (films and music), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
-**Activity Monitor**, **Welcome**, all in the same style. Terminal is Ghostty with Memora's light and dark themes. Anything that
+**Archives** (`memora-archive`: opens zip, rar/rar5, 7z, tar.gz/xz/zst/bz2, iso, dmg, cab, msi, deb, rpm, wim and more, multi-part ones too; browse, search, open or drag out single files, extract all or some, check for damage; makes zip, 7z, RAR (with RARLAB's rar, fetched in one click) and tar.* with a password, hidden names and parts; adds to and deletes from zip, 7z, tar and RAR; built on 7-Zip, unrar and bsdtar), **Activity Monitor**, **Welcome**, all in the same style. Terminal is Ghostty with Memora's light and dark themes. Anything that
 can't be undone (shut down, restart, log out, emptying the Trash, deleting forever) asks first.
 
 Liquid glass is configurable in System Settings > Appearance: Clear or Tinted, transparency, frost
@@ -61,7 +61,8 @@ Liquid glass is configurable in System Settings > Appearance: Clear or Tinted, t
 System Settings > Reset puts the settings back to how they came, or erases the computer (home folder,
 added apps, saved networks) and restarts into a new home; the account stays.
 Wallpapers: **Ember** (default, warm) and **Tide** are lit per pixel by `tools/flow.py`; Horizon,
-Dunes and Silk are drawn as SVG. All are 8K, in light and dark.
+Dunes and Silk are drawn as SVG. The playful sets, **Sorbet** (warm), **Lagoon** (cool), **Petal**
+and **Bubbles**, are soft 3D shapes lit per pixel by `tools/play.py`. All are 8K, in light and dark.
 GTK apps get round window buttons, and windows float with deep shadows; Super+T tiles one.
 Icons are Memora's own (`tools/icons.py`); apps without one are placed on the same squircle tile.
 
@@ -130,7 +131,7 @@ system/              installed to /usr/share/memora
   themes/            light, dark (colours, wallpaper, logo)
   install/           chroot and user setup run by the installer
 test/vm.sh           QEMU harness
-tools/               gen-art.sh (logos, wallpapers, icons), silk.py, icons.py
+tools/               gen-art.sh (logos, wallpapers, icons), silk.py, play.py, icons.py
 ```
 
 Personal Hyprland changes go in `~/.config/hypr/user.lua`; it loads last.

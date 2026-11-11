@@ -100,6 +100,9 @@ apply_memora() { # url version (as root)
   install -Dm644 -t /usr/share/applications "$MEMORA_PATH"/applications/*.desktop
   # What the password dialog says for each kind of change (new kinds come with new versions).
   install -Dm644 "$MEMORA_PATH/polkit/org.memora.admin.policy" /usr/share/polkit-1/actions/org.memora.admin.policy
+  # Folders it needs (the login screen's copy of your picture and appearance).
+  install -Dm644 "$MEMORA_PATH/units/memora-tmpfiles.conf" /usr/lib/tmpfiles.d/memora.conf
+  systemd-tmpfiles --create /usr/lib/tmpfiles.d/memora.conf 2>/dev/null || true
   rm -rf "$tmp"
 }
 
