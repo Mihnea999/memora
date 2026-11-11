@@ -30,35 +30,46 @@ def squircle(x=O, y=O, s=B, n=5.0, steps=240):
 BODY = squircle()
 
 
-def icon(name, defs, body_fill, art, rim="#ffffff", rim_op=0.35):
-    """body_fill: a fill reference; art: SVG drawn clipped to the body."""
+def icon(name, defs, body_fill, art, light=False, lift=0.22):
+    """One app icon: a squircle body (body_fill), a soft light from above, a glass
+    rim (bright at the top, fading down) and the art drawn clipped to the body.
+    Art uses url(#ink) (white glyph, a touch cooler at the bottom) and
+    filter="url(#lift)" (the glyph floats a little above the body).
+    light: a white body (paper apps), which gets a faint dark edge instead."""
+    rim = ('<path d="{b}" fill="none" stroke="#000" stroke-opacity="0.10" stroke-width="2.5"/>'
+           '<path d="{b}" fill="none" stroke="url(#rim)" stroke-width="5"/>') if light else \
+          '<path d="{b}" fill="none" stroke="url(#rim)" stroke-width="5"/>'
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{C}" height="{C}" viewBox="0 0 {C} {C}">
 <defs>
   <clipPath id="body"><path d="{BODY}"/></clipPath>
   <filter id="drop" x="-20%" y="-20%" width="140%" height="150%">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="18"/><feOffset dy="14"/>
-    <feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer>
+    <feGaussianBlur in="SourceAlpha" stdDeviation="16"/><feOffset dy="12"/>
+    <feComponentTransfer><feFuncA type="linear" slope="0.24"/></feComponentTransfer>
     <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
   </filter>
-  <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="10"/><feOffset dy="8"/>
-    <feComponentTransfer><feFuncA type="linear" slope="0.28"/></feComponentTransfer>
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="170%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/>
+    <feComponentTransfer><feFuncA type="linear" slope="{0.12 if light else 0.20}"/></feComponentTransfer>
     <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
   </filter>
-  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#fff" stop-opacity="0.28"/>
-    <stop offset="0.45" stop-color="#fff" stop-opacity="0.04"/>
-    <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+  <radialGradient id="sky" cx="0.5" cy="0" r="0.9">
+    <stop offset="0" stop-color="#fff" stop-opacity="{lift}"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity="{0.9 if light else 0.55}"/>
+    <stop offset="0.35" stop-color="#fff" stop-opacity="0.08"/>
+    <stop offset="1" stop-color="#fff" stop-opacity="{0.0 if light else 0.18}"/>
   </linearGradient>
+  <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="260" x2="0" y2="760"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e9edf5"/></linearGradient>
   {defs}
 </defs>
 <g filter="url(#drop)">
   <path d="{BODY}" fill="{body_fill}"/>
   <g clip-path="url(#body)">
+    <rect width="{C}" height="{C}" fill="url(#sky)"/>
     {art}
-    <rect x="0" y="0" width="{C}" height="{C * 0.55}" fill="url(#gloss)"/>
   </g>
-  <path d="{BODY}" fill="none" stroke="{rim}" stroke-opacity="{rim_op}" stroke-width="3"/>
+  {rim.format(b=BODY)}
 </g>
 </svg>
 '''
@@ -68,191 +79,190 @@ def lg(id_, c1, c2, x1=0, y1=0, x2=0, y2=1):
     return f'<linearGradient id="{id_}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"><stop offset="0" stop-color="{c1}"/><stop offset="1" stop-color="{c2}"/></linearGradient>'
 
 
-def folder_glyph(fill_back="#cfe8ff", fill_front="url(#ff)", mark=""):
-    # A folder sitting in the body, front panel slightly lighter.
-    return f'''
-    <path d="M232 330 q0 -34 34 -34 h170 q22 0 36 18 l30 38 h256 q34 0 34 34 v330 q0 34 -34 34 h-492 q-34 0 -34 -34 Z" fill="{fill_back}"/>
-    <path d="M232 418 q0 -30 30 -30 h500 q30 0 30 30 v290 q0 34 -34 34 h-492 q-34 0 -34 -34 Z" fill="{fill_front}" filter="url(#soft)"/>
-    {mark}'''
+def rounded_poly(pts, rad):
+    """A closed path through pts with every corner rounded by rad."""
+    d = ""
+    n = len(pts)
+    for k in range(n):
+        p0, p1, p2 = pts[k - 1], pts[k], pts[(k + 1) % n]
+
+        def toward(a, b, t):
+            L = math.hypot(b[0] - a[0], b[1] - a[1])
+            return (a[0] + (b[0] - a[0]) * t / L, a[1] + (b[1] - a[1]) * t / L)
+        a = toward(p1, p0, rad)
+        b = toward(p1, p2, rad)
+        d += ("M" if k == 0 else "L") + f"{a[0]:.1f} {a[1]:.1f} Q{p1[0]:.1f} {p1[1]:.1f} {b[0]:.1f} {b[1]:.1f} "
+    return d + "Z"
 
 
+def rounded_triangle(cx, cy, r, rad):
+    return rounded_poly([(cx + r * math.cos(a), cy + r * math.sin(a)) for a in (0, 2 * math.pi / 3, 4 * math.pi / 3)], rad)
+
+
+def sparkle(cx, cy, r, k=0.18):
+    """A four-pointed star with curved sides."""
+    i = r * k
+    return (f"M{cx} {cy - r} C{cx + i} {cy - i} {cx + i} {cy - i} {cx + r} {cy} "
+            f"C{cx + i} {cy + i} {cx + i} {cy + i} {cx} {cy + r} "
+            f"C{cx - i} {cy + i} {cx - i} {cy + i} {cx - r} {cy} "
+            f"C{cx - i} {cy - i} {cx - i} {cy - i} {cx} {cy - r} Z")
+
+
+# Every glyph sits in the middle half of the body (about 300..724), one idea per
+# icon, white on colour; the paper apps (Notes, Calendar, Text Editor) are white
+# with a coloured glyph.
 ICONS = {}
 
-# Files: a blue folder on a blue field.
+# Files: a white folder on blue.
 ICONS["apps/org.gnome.Nautilus"] = icon(
-    "files", lg("bg", "#6cc4ff", "#1468e8") + lg("ff", "#ffffff", "#dbeeff"), "url(#bg)",
-    folder_glyph("#a9d6ff", "url(#ff)",
-                 '<rect x="420" y="520" width="184" height="22" rx="11" fill="#5aa6f2"/>'))
-
+    "files", lg("bg", "#5fc6ff", "#0a62f0"), "url(#bg)",
+    '''<g filter="url(#lift)">
+      <path d="M290 372 q0 -40 40 -40 h118 q22 0 36 17 l26 31 h194 q40 0 40 40 v40 H290 Z" fill="#ffffff" fill-opacity="0.62"/>
+      <rect x="290" y="420" width="444" height="292" rx="40" fill="url(#ink)"/>
+    </g>''')
 ICONS["apps/memora-files"] = ICONS["apps/org.gnome.Nautilus"]
 
-# Notes: a cream page with ruled lines and a golden header, a pencil across it.
+# Notes: a yellow note on white, three lines on it.
 ICONS["apps/memora-notes"] = icon(
-    "notes", lg("bg", "#fffdf6", "#f1ead8") + lg("band", "#ffd25e", "#f5b72e"), "url(#bg)",
-    '''<rect x="100" y="100" width="824" height="210" fill="url(#band)"/>
-    <rect x="100" y="300" width="824" height="14" fill="#000" fill-opacity="0.06"/>
-    <g stroke="#e3dccb" stroke-width="12" stroke-linecap="round"><path d="M250 430 h524 M250 530 h524 M250 630 h524 M250 730 h360"/></g>
-    <g filter="url(#soft)" transform="rotate(-38 640 640)">
-      <rect x="610" y="380" width="64" height="380" rx="10" fill="#4d8dff"/>
-      <path d="M610 760 h64 l-32 70 Z" fill="#f3d3a6"/><path d="M632 808 h20 l-10 22 Z" fill="#3a3a3f"/>
-      <rect x="610" y="380" width="64" height="44" rx="10" fill="#ff7a8a"/>
-    </g>''', rim="#000000", rim_op=0.07)
+    "notes", lg("bg", "#ffffff", "#eeeef1") + lg("note", "#ffd95a", "#ffb81c"), "url(#bg)",
+    '''<g filter="url(#lift)">
+      <rect x="300" y="276" width="424" height="472" rx="52" fill="url(#note)"/>
+      <g stroke="#ffffff" stroke-opacity="0.92" stroke-width="28" stroke-linecap="round">
+        <path d="M376 420 h272 M376 512 h272 M376 604 h168"/>
+      </g>
+    </g>''', light=True)
 
-# Calendar: a white page with a red band and two rings, the days in a grid,
-# one of them circled in red.
-def _days():
-    out = []
-    for r in range(4):
-        for c in range(5):
-            x, y = 262 + c * 125, 450 + r * 105
-            if (r, c) == (2, 2):
-                out.append(f'<circle cx="{x}" cy="{y}" r="44" fill="#ff3b30"/><circle cx="{x}" cy="{y}" r="15" fill="#ffffff"/>')
-            else:
-                out.append(f'<circle cx="{x}" cy="{y}" r="17" fill="#{"c9cbd2" if r < 3 or c < 3 else "e4e6eb"}"/>')
-    return "".join(out)
-
-
+# Calendar: the day of the month under a red weekday, on white.
 ICONS["apps/memora-calendar"] = icon(
-    "calendar", lg("bg", "#ffffff", "#eceef2") + lg("band", "#ff6259", "#e8312a"), "url(#bg)",
-    f'''<rect x="100" y="100" width="824" height="230" fill="url(#band)"/>
-    <rect x="100" y="320" width="824" height="12" fill="#000" fill-opacity="0.08"/>
-    <g fill="#ffffff" fill-opacity="0.95"><rect x="300" y="190" width="424" height="40" rx="20"/></g>
-    <g filter="url(#soft)"><rect x="318" y="70" width="44" height="150" rx="22" fill="#d9dbe1"/><rect x="662" y="70" width="44" height="150" rx="22" fill="#d9dbe1"/></g>
-    {_days()}''', rim="#000000", rim_op=0.07)
+    "calendar", lg("bg", "#ffffff", "#eeeef1"), "url(#bg)",
+    '''<text x="512" y="330" text-anchor="middle" font-family="Inter, Adwaita Sans, sans-serif" font-weight="600"
+            font-size="96" letter-spacing="4" fill="#ff3b30">MON</text>
+    <text x="512" y="700" text-anchor="middle" font-family="Inter, Adwaita Sans, sans-serif" font-weight="300"
+            font-size="380" letter-spacing="-4" fill="#1d1d1f">17</text>''', light=True)
 
-# App Store: a white "A" built from three strokes, on a vivid blue.
+# App Store: an "A" of three rounded strokes on blue.
 ICONS["apps/memora-store"] = icon(
-    "store", lg("bg", "#3fb8ff", "#1f5ef0"), "url(#bg)",
-    '''<g filter="url(#soft)" stroke="#ffffff" stroke-width="64" stroke-linecap="round" fill="none">
-      <path d="M512 250 L330 640"/><path d="M512 250 L694 640"/><path d="M300 560 L724 560"/>
+    "store", lg("bg", "#45bfff", "#1660f2"), "url(#bg)",
+    '''<g filter="url(#lift)" stroke="url(#ink)" stroke-width="54" stroke-linecap="round" fill="none">
+      <path d="M512 286 L360 630"/><path d="M512 286 L664 630"/><path d="M338 560 H686"/>
     </g>''')
 
-# Launchpad: nine coloured tiles on graphite.
-tiles = ["#ff6b6b", "#ffb347", "#ffd84d", "#5fd38a", "#3fc3c9", "#4d8dff", "#8f6bff", "#e86bd8", "#b8bcc6"]
-tile_svg = "".join(
-    f'<rect x="{262 + (i % 3) * 180}" y="{262 + (i // 3) * 180}" width="140" height="140" rx="38" fill="{c}"/>'
-    for i, c in enumerate(tiles))
-ICONS["apps/memora-launchpad"] = icon("launchpad", lg("bg", "#5b5f6b", "#23252c"), "url(#bg)",
-                                       f'<g filter="url(#soft)">{tile_svg}</g>')
+# Launchpad: nine soft tiles, a colour each, on graphite.
+_tiles = ["#ff6b6b", "#ffa94d", "#ffd43b", "#51cf66", "#22c3c9", "#4dabf7", "#845ef7", "#e64980", "#adb5bd"]
+ICONS["apps/memora-launchpad"] = icon(
+    "launchpad", lg("bg", "#4a4c55", "#1b1c20"), "url(#bg)",
+    '<g filter="url(#lift)">' + "".join(
+        f'<rect x="{302 + (i % 3) * 152}" y="{302 + (i // 3) * 152}" width="116" height="116" rx="34" fill="{c}"/>'
+        for i, c in enumerate(_tiles)) + '</g>', lift=0.16)
 
-# Browser: a white globe on deep sea blue.
+# Browser: a white globe on sea blue.
 ICONS["apps/chromium"] = icon(
-    "browser", lg("bg", "#38d1e8", "#1652d9") + lg("gl", "#ffffff", "#e2f2ff"), "url(#bg)",
-    '''<g filter="url(#soft)" fill="none" stroke="url(#gl)" stroke-width="30" stroke-linecap="round">
-      <circle cx="512" cy="512" r="250"/>
-      <ellipse cx="512" cy="512" rx="105" ry="250"/>
-      <path d="M270 430 h484 M270 594 h484"/>
+    "browser", lg("bg", "#3fd4ec", "#1258e0"), "url(#bg)",
+    '''<g filter="url(#lift)" fill="none" stroke="url(#ink)" stroke-width="26" stroke-linecap="round">
+      <circle cx="512" cy="512" r="222"/>
+      <ellipse cx="512" cy="512" rx="96" ry="222"/>
+      <path d="M296 512 h432 M326 404 h372 M326 620 h372"/>
     </g>''')
 
-# Terminal: a prompt on near-black glass.
+# Terminal: a prompt on near-black.
 ICONS["apps/org.gnome.Ptyxis"] = icon(
-    "terminal", lg("bg", "#3a3d45", "#101114"), "url(#bg)",
-    '''<rect x="120" y="120" width="784" height="70" fill="#ffffff" fill-opacity="0.06"/>
-    <g filter="url(#soft)" stroke="#f2f4f7" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <path d="M300 400 l120 112 l-120 112"/>
-      <path d="M490 640 h230" stroke="#7ee0a3"/>
-    </g>''', rim_op=0.18)
+    "terminal", lg("bg", "#3b3d45", "#121316"), "url(#bg)",
+    '''<g filter="url(#lift)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M330 404 l108 108 l-108 108" stroke="url(#ink)"/>
+      <path d="M494 626 h200" stroke="#6ee7a1"/>
+    </g>''', lift=0.14)
 ICONS["apps/kitty"] = ICONS["apps/org.gnome.Ptyxis"]
 ICONS["apps/com.mitchellh.ghostty"] = ICONS["apps/org.gnome.Ptyxis"]
 
 # Memora AI: a white spark on a dusk gradient.
 ICONS["apps/memora-ai"] = icon(
-    "ai", lg("bg", "#7b5cff", "#ff7a59", 0, 0, 1, 1) + '<radialGradient id="glow" cx="0.3" cy="0.25" r="0.8"><stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>',
-    "url(#bg)",
-    '''<rect width="1024" height="1024" fill="url(#glow)"/>
-    <path filter="url(#soft)" fill="#ffffff" d="M512 238 C532 420 604 492 786 512 C604 532 532 604 512 786 C492 604 420 532 238 512 C420 492 492 420 512 238 Z"/>
-    <path fill="#ffffff" fill-opacity="0.85" d="M716 262 C722 316 742 336 796 342 C742 348 722 368 716 422 C710 368 690 348 636 342 C690 336 710 316 716 262 Z"/>''')
+    "ai", lg("bg", "#8a6bff", "#ff7d5c", 0, 0, 1, 1), "url(#bg)",
+    f'''<g filter="url(#lift)">
+      <path fill="url(#ink)" d="{sparkle(490, 534, 230)}"/>
+      <path fill="#ffffff" fill-opacity="0.85" d="{sparkle(696, 318, 74)}"/>
+    </g>''', lift=0.26)
 
 # Welcome: Memora's mark on midnight blue.
 ICONS["apps/memora-welcome"] = icon(
-    "welcome", lg("bg", "#3a4a78", "#141a2e") + '<radialGradient id="glow" cx="0.5" cy="0.2" r="0.75"><stop offset="0" stop-color="#6b9bff" stop-opacity="0.45"/><stop offset="1" stop-color="#6b9bff" stop-opacity="0"/></radialGradient>',
-    "url(#bg)",
-    '''<rect width="1024" height="1024" fill="url(#glow)"/>
-    <g filter="url(#soft)" transform="translate(224 236) scale(4.5)">
-      <path d="M26 100 V38 L64 78 L102 38 V100" fill="none" stroke="#f4f4f6" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="64" cy="26" r="9" fill="#8fb4ff"/>
+    "welcome", lg("bg", "#3d4f80", "#121a30"), "url(#bg)",
+    '''<g filter="url(#lift)" transform="translate(272 270) scale(3.75)">
+      <path d="M26 100 V38 L64 78 L102 38 V100" fill="none" stroke="url(#ink)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="64" cy="22" r="9" fill="#8fb4ff"/>
     </g>''')
 
-# Text Editor: a sheet of paper with an amber title bar.
+# Text Editor: lines of text and a blue caret, on white.
 ICONS["apps/org.gnome.TextEditor"] = icon(
-    "editor", lg("bg", "#ffffff", "#e9ebef"), "url(#bg)",
-    '''<rect x="100" y="100" width="824" height="170" fill="#ffbe3c"/>
-    <rect x="100" y="250" width="824" height="22" fill="#e9a22b"/>
-    <g stroke="#c9ccd3" stroke-width="20" stroke-linecap="round">
-      <path d="M260 380 h504 M260 470 h504 M260 560 h504 M260 650 h340"/>
-    </g>''', rim="#000000", rim_op=0.08)
+    "editor", lg("bg", "#ffffff", "#eeeef1"), "url(#bg)",
+    '''<g stroke-linecap="round">
+      <path d="M318 368 h388 M318 456 h388 M318 544 h300 M318 632 h196" stroke="#b9bcc6" stroke-width="30"/>
+      <rect x="550" y="588" width="22" height="90" rx="11" fill="#0a84ff" filter="url(#lift)"/>
+    </g>''', light=True)
 
-# Calculator: keys on graphite, one amber operator.
-keys = ""
-for r in range(4):
-    for c in range(3):
-        keys += f'<circle cx="{318 + c * 130}" cy="{430 + r * 118}" r="46" fill="#6d717c"/>'
-for r in range(4):
-    keys += f'<circle cx="{708}" cy="{430 + r * 118}" r="46" fill="#ff9f2e"/>'
+# Calculator: plus, minus, times and equals, white on orange.
 ICONS["apps/org.gnome.Calculator"] = icon(
-    "calc", lg("bg", "#4a4d56", "#1d1e23"), "url(#bg)",
-    f'''<rect x="250" y="220" width="524" height="120" rx="28" fill="#9fe3b6" fill-opacity="0.9"/>
-    <rect x="560" y="262" width="170" height="36" rx="10" fill="#1f5135" fill-opacity="0.75"/>
-    <g filter="url(#soft)">{keys}</g>''', rim_op=0.16)
+    "calc", lg("bg", "#ffb340", "#ff6a00"), "url(#bg)",
+    '''<g filter="url(#lift)" stroke="url(#ink)" stroke-width="40" stroke-linecap="round" fill="none">
+      <path d="M352 400 h112 M408 344 v112"/>
+      <path d="M560 400 h112"/>
+      <path d="M368 584 l80 80 M448 584 l-80 80"/>
+      <path d="M560 600 h112 M560 652 h112"/>
+    </g>''')
 
-# Photos: a landscape on a sky gradient.
+# Photos: a white sun over white hills, on a sunset.
 ICONS["apps/org.gnome.Loupe"] = icon(
-    "photos", lg("bg", "#8fd3ff", "#ffd1a8"), "url(#bg)",
-    '''<circle cx="690" cy="330" r="86" fill="#fff6d6"/>
-    <path d="M100 760 L380 450 L560 640 L670 530 L924 790 V924 H100 Z" fill="#3c9b6e"/>
-    <path d="M100 820 L330 600 L520 790 L640 690 L924 900 V924 H100 Z" fill="#2c7a55"/>''')
-
+    "photos", lg("bg", "#ffb15c", "#ff4f7b"), "url(#bg)",
+    f'''<g filter="url(#lift)">
+      <circle cx="610" cy="390" r="64" fill="url(#ink)"/>
+      <path d="{rounded_poly([(292, 700), (446, 470), (560, 620), (624, 540), (732, 700)], 22)}" fill="url(#ink)"/>
+    </g>''', lift=0.26)
 ICONS["apps/memora-photos"] = ICONS["apps/org.gnome.Loupe"]
 
-# Documents: a page with a red band and folded corner.
+# Documents: a white page with a folded corner on red.
 ICONS["apps/org.gnome.Papers"] = icon(
-    "docs", lg("bg", "#ff6b5f", "#d62f45"), "url(#bg)",
-    '''<g filter="url(#soft)">
-      <path d="M300 220 h300 l124 124 v460 q0 24 -24 24 h-400 q-24 0 -24 -24 v-560 q0 -24 24 -24 Z" fill="#ffffff"/>
-      <path d="M600 220 v100 q0 24 24 24 h100 Z" fill="#ffd2cc"/>
-      <g stroke="#e0e2e8" stroke-width="22" stroke-linecap="round"><path d="M360 470 h300 M360 550 h300 M360 630 h220"/></g>
+    "docs", lg("bg", "#ff6b5f", "#d92b47"), "url(#bg)",
+    '''<g filter="url(#lift)">
+      <path d="M362 262 h214 l122 122 v338 q0 40 -40 40 h-296 q-40 0 -40 -40 v-420 q0 -40 40 -40 Z" fill="url(#ink)"/>
+      <path d="M576 262 v84 q0 38 38 38 h84 Z" fill="#ffc9c3"/>
+      <g stroke="#f0c4c4" stroke-width="22" stroke-linecap="round"><path d="M392 500 h240 M392 572 h240 M392 644 h150"/></g>
     </g>''')
 
-# Player: one clean white play mark on a coral-to-magenta body. The triangle is
-# equilateral with evenly rounded corners, nudged right so it looks centred.
-def rounded_triangle(cx, cy, r, rad):
-    import math as m
-    pts = [(cx + r * m.cos(a), cy + r * m.sin(a)) for a in (0, 2 * m.pi / 3, 4 * m.pi / 3)]
-    d = ""
-    for k in range(3):
-        p0, p1, p2 = pts[k - 1], pts[k], pts[(k + 1) % 3]
-        def toward(a, b, t):
-            L = m.hypot(b[0] - a[0], b[1] - a[1]); return (a[0] + (b[0] - a[0]) * t / L, a[1] + (b[1] - a[1]) * t / L)
-        a = toward(p1, p0, rad); b = toward(p1, p2, rad)
-        d += ("M" if k == 0 else "L") + f"{a[0]:.1f} {a[1]:.1f} Q{p1[0]:.1f} {p1[1]:.1f} {b[0]:.1f} {b[1]:.1f} "
-    return d + "Z"
-
-
+# Player: a white play mark on coral to magenta, nudged right to look centred.
 ICONS["apps/memora-player"] = icon(
-    "player", lg("bg", "#ff7a5c", "#d92e7a", 0.2, 0, 0.8, 1)
-    + '<radialGradient id="lift" cx="0.5" cy="0.18" r="0.75"><stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>',
-    "url(#bg)",
-    f'''<rect width="1024" height="1024" fill="url(#lift)"/>
-    <path filter="url(#soft)" fill="#ffffff" d="{rounded_triangle(536, 512, 228, 58)}"/>''', rim_op=0.22)
+    "player", lg("bg", "#ff7f5c", "#d42c7c", 0.2, 0, 0.8, 1), "url(#bg)",
+    f'<path filter="url(#lift)" fill="url(#ink)" d="{rounded_triangle(538, 512, 200, 52)}"/>', lift=0.24)
 ICONS["apps/mpv"] = ICONS["apps/memora-player"]
 
-# Settings: a machined gear on silver.
-teeth = "".join(
-    f'<rect x="482" y="196" width="60" height="110" rx="18" fill="url(#gear)" transform="rotate({a} 512 512)"/>'
-    for a in range(0, 360, 30))
-ICONS["apps/memora-settings"] = icon(
-    "settings", lg("bg", "#c9ccd3", "#7f838d") + lg("gear", "#f6f7f9", "#b9bcc4"), "url(#bg)",
-    f'''<g filter="url(#soft)">{teeth}
-      <circle cx="512" cy="512" r="232" fill="url(#gear)"/>
-      <circle cx="512" cy="512" r="150" fill="#8a8e98"/>
-      <circle cx="512" cy="512" r="96" fill="url(#gear)"/></g>''', rim_op=0.4)
 
-# System monitor: a pulse on dark.
+# Settings: a graphite gear on silver, its hole showing the body.
+def _gear(cx=512, cy=512, ro=228, ri=178, hole=84, n=10):
+    pts = []
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        w = math.pi / n
+        for t, r in ((-0.55, ri), (-0.32, ro), (0.32, ro), (0.55, ri)):
+            pts.append((cx + r * math.cos(a + t * w), cy + r * math.sin(a + t * w)))
+    outer = rounded_poly(pts, 12)
+    return outer + f" M{cx + hole} {cy} A{hole} {hole} 0 1 0 {cx - hole} {cy} A{hole} {hole} 0 1 0 {cx + hole} {cy} Z"
+
+
+ICONS["apps/memora-settings"] = icon(
+    "settings", lg("bg", "#e4e6ea", "#a4a8b1") + lg("gear", "#6b6f78", "#3d4047"), "url(#bg)",
+    f'<path filter="url(#lift)" fill="url(#gear)" fill-rule="evenodd" d="{_gear()}"/>', light=True, lift=0.3)
+
+# System monitor: a green pulse on black.
 ICONS["apps/memora-activity"] = icon(
-    "monitor", lg("bg", "#30333b", "#0f1013"), "url(#bg)",
-    '''<g stroke="#ffffff" stroke-opacity="0.08" stroke-width="6"><path d="M100 400 h824 M100 560 h824 M100 720 h824"/></g>
-    <path filter="url(#soft)" d="M200 600 h150 l70 -200 l100 340 l90 -260 l60 120 h154" fill="none" stroke="#5fe0a0" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>''',
-    rim_op=0.16)
+    "monitor", lg("bg", "#33363e", "#0f1013"), "url(#bg)",
+    '''<path filter="url(#lift)" d="M290 540 h96 l60 -160 l92 290 l78 -210 l46 80 h72" fill="none"
+            stroke="#5fe3a1" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>''', lift=0.14)
+
+# Archives: a white storage box, its lid and handle slot, on indigo.
+ICONS["apps/memora-archive"] = icon(
+    "archive", lg("bg", "#8f7dff", "#4732d6"), "url(#bg)",
+    '''<g filter="url(#lift)">
+      <rect x="290" y="304" width="444" height="104" rx="30" fill="url(#ink)"/>
+      <rect x="318" y="430" width="388" height="290" rx="36" fill="url(#ink)" fill-opacity="0.9"/>
+      <rect x="448" y="500" width="128" height="34" rx="17" fill="#5a47e0" fill-opacity="0.55"/>
+    </g>''')
 
 
 # ---- places: folders as on the desktop, plus Trash ---------------------------
