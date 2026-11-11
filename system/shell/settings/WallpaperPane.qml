@@ -27,7 +27,7 @@ Kit.Page {
     onAccepted: Prefs.set("wallpaper", decodeURIComponent(String(selectedFile).replace(/^file:\/\//, "")))
   }
 
-  readonly property var sets: [["ember", "Ember"], ["tide", "Tide"], ["horizon", "Horizon"], ["dunes", "Dunes"], ["silk", "Silk"]]
+  readonly property var sets: [["bloom", "Bloom"], ["ember", "Ember"], ["tide", "Tide"], ["horizon", "Horizon"], ["dunes", "Dunes"], ["silk", "Silk"]]
 
   Kit.Group {
     header: "Memora"
@@ -35,8 +35,8 @@ Kit.Page {
       id: setsGrid
       Layout.fillWidth: true
       Layout.margins: 12
-      columns: 5; spacing: 12
-      readonly property real tw: Math.floor((width - 4 * spacing) / 5)
+      columns: 3; spacing: 12
+      readonly property real tw: Math.floor((width - 2 * spacing) / 3)
       Repeater {
         model: p.sets
         delegate: Column {
