@@ -3,7 +3,8 @@
 
 usage: icons.py OUTDIR   (writes OUTDIR/tile.svg and OUTDIR/Memora/{index.theme,src/apps,src/places})
 Every icon shares the canvas (1024), body (824, continuous-corner squircle),
-light from above, a soft drop shadow and a hairline rim.
+light from above and a hairline rim. No drop shadow: on the Dock's
+glass it showed as a dark halo around every icon.
 """
 import math
 import os
@@ -42,11 +43,6 @@ def icon(name, defs, body_fill, art, light=False, lift=0.22):
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{C}" height="{C}" viewBox="0 0 {C} {C}">
 <defs>
   <clipPath id="body"><path d="{BODY}"/></clipPath>
-  <filter id="drop" x="-20%" y="-20%" width="140%" height="150%">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="16"/><feOffset dy="12"/>
-    <feComponentTransfer><feFuncA type="linear" slope="0.24"/></feComponentTransfer>
-    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-  </filter>
   <filter id="lift" x="-30%" y="-30%" width="160%" height="170%">
     <feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/>
     <feComponentTransfer><feFuncA type="linear" slope="{0.12 if light else 0.20}"/></feComponentTransfer>
@@ -63,7 +59,7 @@ def icon(name, defs, body_fill, art, light=False, lift=0.22):
   <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="260" x2="0" y2="760"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e9edf5"/></linearGradient>
   {defs}
 </defs>
-<g filter="url(#drop)">
+<g>
   <path d="{BODY}" fill="{body_fill}"/>
   <g clip-path="url(#body)">
     <rect width="{C}" height="{C}" fill="url(#sky)"/>
@@ -273,14 +269,9 @@ def place(glyph_path, extra_defs=""):
     """Folder icon (no squircle): back panel, front panel and an embossed glyph."""
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{C}" height="{C}" viewBox="0 0 {C} {C}">
 <defs>
-  {lg("back", "#64b2f5", "#3d8fe6")}{lg("front", "#9fd3ff", "#6db8fb")}
-  <filter id="drop" x="-20%" y="-20%" width="140%" height="150%">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/>
-    <feComponentTransfer><feFuncA type="linear" slope="0.25"/></feComponentTransfer>
-    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-  </filter>{extra_defs}
+  {lg("back", "#64b2f5", "#3d8fe6")}{lg("front", "#9fd3ff", "#6db8fb")}{extra_defs}
 </defs>
-<g filter="url(#drop)">
+<g>
   <path d="M110 250 q0 -46 46 -46 h232 q30 0 50 24 l42 50 h388 q46 0 46 46 v460 q0 46 -46 46 h-712 q-46 0 -46 -46 Z" fill="url(#back)"/>
   <path d="M110 370 q0 -40 40 -40 h724 q40 0 40 40 v420 q0 46 -46 46 h-712 q-46 0 -46 -46 Z" fill="url(#front)"/>
   <path d="M150 336 h724" stroke="#ffffff" stroke-opacity="0.55" stroke-width="6"/>
@@ -313,13 +304,8 @@ def trash(full):
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{C}" height="{C}" viewBox="0 0 {C} {C}">
 <defs>
   {lg("can", "#eef0f4", "#b9bdc6")}
-  <filter id="drop" x="-20%" y="-20%" width="140%" height="150%">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="10"/>
-    <feComponentTransfer><feFuncA type="linear" slope="0.25"/></feComponentTransfer>
-    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-  </filter>
 </defs>
-<g filter="url(#drop)">
+<g>
   {paper}
   <path d="M300 340 h424 l-40 500 q-4 40 -44 40 h-256 q-40 0 -44 -40 Z" fill="url(#can)" fill-opacity="0.92"/>
   {ribs}
@@ -331,9 +317,8 @@ def trash(full):
 
 
 TILE = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{C}" height="{C}" viewBox="0 0 {C} {C}">
-<defs>{lg("t", "#ffffff", "#e4e6eb")}
-<filter id="drop" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur in="SourceAlpha" stdDeviation="18"/><feOffset dy="14"/><feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-<g filter="url(#drop)"><path d="{BODY}" fill="url(#t)"/><path d="{BODY}" fill="none" stroke="#000" stroke-opacity="0.08" stroke-width="3"/></g></svg>
+<defs>{lg("t", "#ffffff", "#e4e6eb")}</defs>
+<g><path d="{BODY}" fill="url(#t)"/><path d="{BODY}" fill="none" stroke="#000" stroke-opacity="0.08" stroke-width="3"/></g></svg>
 '''
 
 
@@ -355,7 +340,7 @@ def main():
         with open(os.path.join(out, "src/places", name + ".svg"), "w") as f:
             f.write(trash(full))
     # SVG sources live in src/; gen-art.sh renders them to PNG sizes with librsvg,
-    # since Qt's SVG renderer skips the shadow filters.
+    # since Qt's SVG renderer skips the glyphs' lift filter.
     sizes = [32, 48, 64, 128, 256, 512]
     dirs = [f"{n}x{n}/{ctx}" for n in sizes for ctx in ("apps", "places")]
     with open(os.path.join(out, "index.theme"), "w") as f:
