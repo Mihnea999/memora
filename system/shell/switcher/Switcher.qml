@@ -66,8 +66,14 @@ Scope {
     index = list.length > 1 ? 1 : 0
     return true
   }
+  // Super or Alt held right now (the Memora plugin reports both going down and up).
+  property bool superHeld: false
+  property bool altHeld: false
+  // A quick tap: the key was let go before the shortcut reached the shell (it
+  // comes through a process, a few hundred ms), so switch at once, as on a Mac.
+  function finishIfLetGo() { if (open && !superHeld && !altHeld) commit() }
   function step(d, m) {
-    if (!open) { start(m || "windows"); return }
+    if (!open) { if (start(m || "windows")) finishIfLetGo(); return }
     if (list.length) index = (index + d + list.length) % list.length
   }
   // In apps mode: the chosen app's windows instead.
@@ -83,8 +89,21 @@ Scope {
     open = false
     const e = list[index]
     if (!e) return
-    if (mode === "apps") Apps.activate(e.cls)
-    else Apps.focus(e)
+    // Only once the panel is gone: while it closes, the compositor hands the
+    // keyboard back to the window that had it before, undoing the switch.
+    chosen = e; chosenMode = mode
+    activateLater.restart()
+  }
+  property var chosen: null
+  property string chosenMode: ""
+  Timer {
+    id: activateLater; interval: 60
+    onTriggered: {
+      if (!sw.chosen) return
+      if (sw.chosenMode === "apps") Apps.activate(sw.chosen.cls)
+      else Apps.focus(sw.chosen)
+      sw.chosen = null
+    }
   }
   // Q and H while choosing an app (Super+Q / Super+H come here through the shell).
   readonly property string chosenApp: open && mode === "apps" && list[index] ? list[index].cls : ""
@@ -106,10 +125,14 @@ Scope {
   Connections {
     target: Hyprland
     function onRawEvent(ev) {
-      if (ev.name === "memorakeyup" && sw.open) sw.commit()
+      if (ev.name === "memorakeyup") {
+        if (ev.data === "alt") sw.altHeld = false; else sw.superHeld = false
+        if (sw.open) sw.commit()
+      }
+      else if (ev.name === "memorakeydown" && ev.data === "alt") sw.altHeld = true
       // Super went down: not used with anything yet. A key or a click with it
       // (Super+drag moves a window) means letting go isn't a tap.
-      else if (ev.name === "memorakeydown") sw.superAlone = true
+      else if (ev.name === "memorakeydown") { sw.superHeld = true; sw.superAlone = true }
       else if (ev.name === "memorachord") sw.superAlone = false
     }
   }
@@ -134,7 +157,7 @@ Scope {
       if (sw.open) return sw.step(1)
       const act = Hyprland.activeToplevel
       if (!act) return
-      sw.start("windows", Apps.classOf(Apps.windows.find(x => x.address === act.address) || act))
+      if (sw.start("windows", Apps.classOf(Apps.windows.find(x => x.address === act.address) || act))) sw.finishIfLetGo()
     }
     function commit(): void { sw.commit() }
     function cancel(): void { sw.open = false }

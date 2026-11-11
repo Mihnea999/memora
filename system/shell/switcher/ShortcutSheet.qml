@@ -19,7 +19,7 @@ Scope {
   Connections {
     target: Hyprland
     function onRawEvent(ev) {
-      if (ev.name === "memorakeydown") hold.restart()
+      if (ev.name === "memorakeydown" && ev.data === "super") hold.restart()
       else if (ev.name === "memorachord") { hold.stop(); ks.close() }
       else if (ev.name === "memorakeyup" && ev.data === "super") { hold.stop(); ks.close() }
     }

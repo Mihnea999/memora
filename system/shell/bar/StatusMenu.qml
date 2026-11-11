@@ -230,8 +230,12 @@ PopupWindow {
   // (not filtered on .audio: a node only has it once tracked, which is below)
   // System sounds (the shell's volume pop, memora-sound's pw-play) are left out:
   // they have their own slider above, and would show as "Quickshell" or "pw-play".
-  readonly property var streams: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioOutStream && !sm.systemSound(n))
-  PwObjectTracker { objects: sm.sinks.concat(sm.streams) }
+  // All of them are tracked, the system sounds too: a node's properties fill in
+  // once it is tracked, so tracking only the filtered list would drop and re-add
+  // the same node over and over (a binding loop that crashed the shell in PipeWire).
+  readonly property var allStreams: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioOutStream)
+  readonly property var streams: allStreams.filter(n => !sm.systemSound(n))
+  PwObjectTracker { objects: sm.sinks.concat(sm.allStreams) }
   function systemSound(n) {
     const p = n.properties || {}
     const bin = p["application.process.binary"] || ""

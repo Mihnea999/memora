@@ -2,8 +2,8 @@
 // minimize request). This plugin turns that request into the IPC event
 // "minimized>>ADDRESS,1", which the Memora shell answers by putting the window
 // in the Dock.
-// It also reports when Super or Alt is let go (and when Super goes down, for the
-// shortcuts sheet) ("memorakeyup>>super" / "alt"):
+// It also reports when Super or Alt goes down and is let go ("memorakeydown>>super"
+// / "alt", "memorakeyup>>super" / "alt"):
 // Hyprland keeps that to itself after a shortcut, and the app switcher
 // (Super+Tab, Alt+Tab) needs it to finish switching. No other key is reported. Built for Hyprland 0.57 (window backends); build.sh rebuilds it
 // after every Hyprland update.
@@ -40,7 +40,7 @@ static void watch(PHLWINDOW w) {
 
 // Super is down; something else was used with it since (a key, a mouse button:
 // Super+drag moves a window, so that's not "Super held on its own").
-static bool superDown = false, chord = false;
+static bool superDown = false, chord = false, altDown = false;
 static void chordWithSuper() {
     if (superDown && !chord) {
         chord = true;
@@ -64,14 +64,23 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                     IPC::Socket2::sock()->postEvent({"memorakeydown", "super"});
                 superDown = true;
                 chord     = false;
-            } else
+            } else {
+                // Alt down too ("memorakeydown>>alt"): a quick Alt+Tab can be let
+                // go before the switcher hears of the Tab, and then must not wait.
+                if ((ev.keycode == 56 || ev.keycode == 100) && !altDown) {
+                    altDown = true;
+                    IPC::Socket2::sock()->postEvent({"memorakeydown", "alt"});
+                }
                 chordWithSuper();
+            }
             return;
         }
         if (ev.state != WL_KEYBOARD_KEY_STATE_RELEASED)
             return;
         if (ev.keycode == 125 || ev.keycode == 126)
             superDown = false;
+        if (ev.keycode == 56 || ev.keycode == 100)
+            altDown = false;
         // evdev codes: 125/126 Super, 56/100 Alt
         if (ev.keycode == 125 || ev.keycode == 126)
             IPC::Socket2::sock()->postEvent({"memorakeyup", "super"});
