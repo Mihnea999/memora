@@ -13,7 +13,7 @@ Singleton {
   property bool clock24: true
   property bool showDate: true
   property string wallpaper: ""        // a picture of yours; empty: the set below
-  property string wallpaperSet: "orbs"   // orbs | ember | tide | horizon | dunes | silk, follows light/dark
+  property string wallpaperSet: "candy"   // candy | ember | tide | horizon | dunes | silk, follows light/dark
   property var wallpaperRecent: []     // your pictures used lately, newest first
   property bool batteryPercent: true   // the percentage next to the battery in the menu bar
   property bool lowPowerOnBattery: false   // Low Power mode while unplugged
