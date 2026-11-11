@@ -226,10 +226,11 @@ ICONS["apps/org.gnome.Papers"] = icon(
       <g stroke="#f0c4c4" stroke-width="22" stroke-linecap="round"><path d="M392 500 h240 M392 572 h240 M392 644 h150"/></g>
     </g>''')
 
-# Player: a white play mark on coral to magenta, nudged right to look centred.
+# Player: a white play mark on coral to magenta. Its box is centred, nudged 8px
+# right (the point makes a truly centred triangle look left-heavy).
 ICONS["apps/memora-player"] = icon(
     "player", lg("bg", "#ff7f5c", "#d42c7c", 0.2, 0, 0.8, 1), "url(#bg)",
-    f'<path filter="url(#lift)" fill="url(#ink)" d="{rounded_triangle(538, 512, 200, 52)}"/>', lift=0.24)
+    f'<path filter="url(#lift)" fill="url(#ink)" d="{rounded_triangle(470, 512, 200, 52)}"/>', lift=0.24)
 ICONS["apps/mpv"] = ICONS["apps/memora-player"]
 
 
