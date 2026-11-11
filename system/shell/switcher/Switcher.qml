@@ -6,16 +6,20 @@ import Quickshell.Io
 import qs.core
 import qs.ui
 
-// Switching, as on a Mac and a PC together:
-//   Super+Tab   apps, most recent first (hold Super: Tab moves, Q quits the
-//               chosen app, H hides it, ` or ↓ shows its windows); let go to switch
-//   Alt+Tab     windows, with live pictures: this desktop's first, then the
-//               others, minimized ones last
-//   Super+`     the windows of the app in front
+// Switching, as with Command+Tab on a Mac (Alt sits where Command does):
+//   Alt+Tab, Super+Tab   apps, most recent first (hold the key: Tab moves, Q quits
+//               the chosen app, H hides it, ` or ↓ shows its windows); let go to switch.
+//               A quick tap switches straight back without showing the panel.
+//   Alt+`, Super+`       the windows of the app in front, with live pictures:
+//               this desktop's first, then the others, minimized ones last
 // Hover picks, click switches. Sizes follow the screen.
 Scope {
   id: sw
   property bool open: false
+  // The panel shows only once the key has been held a moment, as on a Mac.
+  property bool shown: false
+  onOpenChanged: { shown = false; if (open) revealLater.restart(); else revealLater.stop() }
+  Timer { id: revealLater; interval: 140; onTriggered: sw.shown = sw.open }
   property bool superAlone: true      // Super has been used on its own since it went down
   property string mode: "windows"     // windows | apps
   property string onlyApp: ""         // windows mode for one app
@@ -145,7 +149,7 @@ Scope {
       id: win
       required property var modelData
       screen: modelData
-      visible: sw.open && modelData === (Hyprland.focusedMonitor ? Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor.name) || Quickshell.screens[0] : Quickshell.screens[0])
+      visible: sw.shown && modelData === (Hyprland.focusedMonitor ? Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor.name) || Quickshell.screens[0] : Quickshell.screens[0])
       readonly property real maxW: screen.width - 80
       // Apps: icons as big as fit. Windows: pictures about a sixth of the screen tall.
       readonly property real iconSize: Math.max(48, Math.min(96, (maxW - 60) / Math.max(1, sw.list.length) - 16))
@@ -163,7 +167,7 @@ Scope {
         id: keys
         anchors.fill: parent
         focus: sw.open
-        Connections { target: sw; function onOpenChanged() { if (sw.open) Qt.callLater(() => keys.forceActiveFocus()) } }
+        Connections { target: sw; function onShownChanged() { if (sw.shown) Qt.callLater(() => keys.forceActiveFocus()) } }
         Keys.onReleased: ev => {
           if ([Qt.Key_Meta, Qt.Key_Super_L, Qt.Key_Super_R, Qt.Key_Alt, Qt.Key_AltGr].indexOf(ev.key) >= 0) sw.commit()
         }
@@ -212,6 +216,16 @@ Scope {
                 width: Math.max(20, cnt.implicitWidth + 10); height: 20; radius: 10
                 color: Theme.accent
                 Txt { id: cnt; anchors.centerIn: parent; text: ac.modelData.wins.length; color: "#ffffff"; font.pixelSize: Theme.small; font.weight: Font.Bold }
+              }
+              // The chosen app's name, under its icon.
+              Txt {
+                visible: ac.index === sw.index
+                anchors { top: parent.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
+                width: Math.min(implicitWidth, (win.iconSize + 28) * 2.2)
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
+                text: Apps.nameFor(ac.modelData.cls)
+                font.weight: Font.DemiBold
               }
               HoverHandler { onHoveredChanged: if (hovered) sw.index = ac.index }
               TapHandler { onTapped: { sw.index = ac.index; sw.commit() } }
@@ -276,18 +290,18 @@ Scope {
           }
         }
 
+        // Windows: the chosen one's title along the bottom.
         Txt {
+          visible: sw.mode === "windows"
           anchors { bottom: parent.bottom; bottomMargin: 14; horizontalCenter: parent.horizontalCenter }
           width: parent.width - 40
           horizontalAlignment: Text.AlignHCenter
-          font.weight: sw.mode === "apps" ? Font.Bold : Font.Normal
+          elide: Text.ElideRight
           text: {
             const e = sw.list[sw.index]
-            if (!e) return ""
-            if (sw.mode === "apps") return Apps.nameFor(e.cls)
-            return e.title || Apps.nameFor(Apps.classOf(e))
+            return e && sw.mode === "windows" ? e.title || Apps.nameFor(Apps.classOf(e)) : ""
           }
-          color: sw.mode === "apps" ? Theme.text : Theme.textDim
+          color: Theme.textDim
         }
       }
 

@@ -123,7 +123,7 @@ Kit.Page {
     header: "Shortcuts"
     footer: "All shortcuts: Help > Keyboard Shortcuts."
     Repeater {
-      model: [["Search", "Super+Space"], ["Apps", "Tap Super"], ["Switch apps", "Super+Tab"], ["Switch windows", "Alt+Tab"], ["Arrange windows", "Super+Alt+A"], ["Close window", "Super+W"],
+      model: [["Search", "Super+Space"], ["Apps", "Tap Super"], ["Switch apps", "Alt+Tab"], ["Switch windows", "Alt+`"], ["Arrange windows", "Super+Alt+A"], ["Close window", "Super+W"],
               ["Quit app", "Super+Q"], ["Hide app", "Super+H"], ["Minimize", "Super+M"], ["Screenshot", "Super+Shift+3 · 4 · 5"],
               ["Lock screen", "Ctrl+Super+Q"], ["Memora AI", "Super+A"]]
       delegate: Kit.Row {

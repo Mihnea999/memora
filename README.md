@@ -48,7 +48,7 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 | Notifications | Banners, and Notification Center with a calendar (click the clock) |
 | Lock and login | Same face: time, person, password field; login runs in greetd + cage |
 | Dialogs | Administrator password (polkit), volume and brightness |
-| Switching | Super+Tab: apps (Q quits, H hides, ` shows its windows); Alt+Tab: windows with live pictures; Super+`: the app's windows; hold Super to see the shortcuts |
+| Switching | Alt+Tab or Super+Tab: apps, as Command+Tab on a Mac (Q quits, H hides, ` or ↓ shows its windows with live pictures); Alt+` or Super+`: the app's windows; hold Super to see the shortcuts |
 
 Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Calendar** (day, week, month and year,
 calendars in their own colours, your country's public holidays, events typed the way you'd say them,

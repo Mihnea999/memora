@@ -33,8 +33,10 @@ b(S .. " + ALT + ESCAPE", run("memora-app activity"), "Force Quit (Activity Moni
 b(S .. " + TAB", shell("switch nextApp"), "Switch apps (hold Super: Q quits, H hides, ` shows its windows)")
 b(S .. " + SHIFT + TAB", shell("switch prevApp"), "Switch apps backwards")
 b(S .. " + grave", shell("switch appWindows"), "Switch between the windows of the app in front")
-b("ALT + TAB", shell("switch next"), "Switch windows")
-b("ALT + SHIFT + TAB", shell("switch prev"), "Switch windows backwards")
+-- Alt sits where Command does on a Mac keyboard, so Alt+Tab is Command+Tab.
+b("ALT + TAB", shell("switch nextApp"), "Switch apps (hold Alt: Q quits, H hides, ` shows its windows)")
+b("ALT + SHIFT + TAB", shell("switch prevApp"), "Switch apps backwards")
+b("ALT + grave", shell("switch appWindows"), "Switch between the windows of the app in front")
 b("ALT + ALT_L", shell("switch commit"), "Finish switching", { release = true })
 
 -- Windows
