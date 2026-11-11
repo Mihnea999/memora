@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# memora-archive [ARCHIVE | --compress FILE…] — Archives: opens zip, rar, 7z, tar, iso and
+# dozens more, extracts them, and makes new ones. With Archives open, the window shows it.
+dir="${MEMORA_PATH:-/usr/share/memora}"
+source "$dir/lib/single.sh"
+qml="$dir/shell/archive.qml"
+mode=open
+# Once per user: archives open in Archives (run at login, so older installs get it too).
+if [[ ${1:-} == --defaults ]]; then
+  mark="$HOME/.config/memora/archive-defaults"
+  [[ -f $mark ]] && exit 0
+  for t in application/zip application/x-7z-compressed application/vnd.rar application/x-rar application/x-tar \
+    application/x-compressed-tar application/x-bzip2-compressed-tar application/x-xz-compressed-tar application/x-zstd-compressed-tar \
+    application/gzip application/x-bzip2 application/x-xz application/zstd application/x-lzma application/vnd.ms-cab-compressed \
+    application/x-arj application/x-lha application/x-cpio; do xdg-mime default memora-archive.desktop "$t"; done
+  mkdir -p "${mark%/*}" && touch "$mark"
+  exit 0
+fi
+[[ ${1:-} == --compress ]] && { mode=compress; shift; }
+files=()
+for f in "$@"; do f="${f#file://}"; [[ -n $f ]] && files+=("$(realpath -m "$f")"); done
+list="$(printf '%s\n' "${files[@]}")"
+if memora_single memora-archive "$qml"; then
+  [[ ${#files[@]} -gt 0 ]] && qs -p "$qml" ipc call archive "$mode" "$list"
+  exit 0
+fi
+MEMORA_ARCHIVE_MODE="$mode" MEMORA_ARCHIVE_FILES="$list" exec qs -p "$qml"

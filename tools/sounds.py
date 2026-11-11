@@ -13,7 +13,7 @@ smooth room. What keeps them from sounding like a synthesiser:
   - nothing above about 9 kHz, nothing shrill: the notes sit between D4 and E6.
 Run: python3 tools/sounds.py [alerts] [system]   (needs numpy and ffmpeg)
 """
-import os, re, subprocess, sys, tempfile, wave
+import os, re, shutil, subprocess, sys, tempfile, wave
 import numpy as np
 
 SR = 48000
@@ -223,6 +223,11 @@ def momentary_max(path):
     return max(vals) if vals else -70.0
 
 
+# Sounds the shell plays itself (QtMultimedia SoundEffect, which needs WAV):
+# the volume pop must sound the moment a key is pressed.
+WAV = {"volume"}
+
+
 def save(name, x, level=-18.0, ceiling=0.84, top=9000.0):
     """Tidy the ends, soften the very top, then bring the sound to its loudness
     (`level`: its loudest moment, LUFS) without peaks over about -1.5 dBFS."""
@@ -249,6 +254,8 @@ def save(name, x, level=-18.0, ceiling=0.84, top=9000.0):
     got = momentary_max(tmp)
     dst = os.path.join(OUT, name + ".oga")
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", tmp, "-c:a", "libvorbis", "-q:a", "7", dst], check=True)
+    if name in WAV:   # also kept as WAV, for the shell to hold decoded (it plays at once)
+        shutil.copyfile(tmp, os.path.join(OUT, name + ".wav"))
     os.unlink(tmp)
     print(f"{name}.oga  {len(x) / SR:.2f}s  {got:.1f} LUFS (target {level})  peak {np.abs(x).max():.2f}")
 

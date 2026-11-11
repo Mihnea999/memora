@@ -79,7 +79,7 @@ ShellRoot {
           if (base === "qs" || base === "quickshell") {
             const target = f.slice(7).find(a => a.indexOf("/memora/shell") >= 0) || ""
             const file = target.endsWith(".qml") ? target.split("/").pop().replace(".qml", "") : "shell"
-            name = ({ shell: "Memora desktop", settings: "System Settings", notes: "Notes", store: "App Store", activity: "Activity Monitor",
+            name = ({ shell: "Memora desktop", settings: "System Settings", notes: "Notes", store: "App Store", activity: "Activity Monitor", archive: "Archives",
               ai: "Memora AI", files: "Files", welcome: "Welcome", greeter: "Login window", installer: "Installer" })[file] || "Memora"
           }
           return { pid: parseInt(f[0]), user: f[1], cpu: parseFloat(f[2]), mem: parseInt(f[3]), name: name }

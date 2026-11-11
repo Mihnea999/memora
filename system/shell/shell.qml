@@ -49,6 +49,11 @@ ShellRoot {
   }
   property bool onBattery: UPower.onBattery
   readonly property real started: Date.now()
+  // The login screen shows your desktop picture and light or dark: a copy goes
+  // where it can read it whenever either changes (memora-theme login-sync).
+  readonly property string loginLook: Theme.mode + "|" + Theme.wallpaper
+  onLoginLookChanged: loginSync.restart()
+  Timer { id: loginSync; interval: 2000; running: true; onTriggered: Quickshell.execDetached(["memora-theme", "login-sync", Theme.wallpaper]) }
   // Screens change (plugged in or out) or the Dock moves: windows follow, so
   // docked ones dock again and none is left too big or out of reach.
   Timer { id: refitLater; interval: 900; onTriggered: Quickshell.execDetached(["memora-window", "refit"]) }

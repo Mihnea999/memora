@@ -36,7 +36,7 @@ PanelWindow {
 
   property real shown: open ? 1 : 0
   Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
-  onOpenChanged: if (open) Net.refresh()
+  onOpenChanged: if (open) { Net.refresh(); Sys.refreshBrightness() }
 
   // Nearby Share receiving: everyone, trusted devices only, or off (~/.config/memora/share.json).
   property string shareMode: "everyone"

@@ -18,6 +18,27 @@ ShellRoot {
   // Quietly: uwsm reports every step on the console, which would flash on screen.
   readonly property var session: ["memora-session"]
 
+  // The chosen person's own look: their desktop picture and light or dark, as
+  // the desktop leaves them in /var/lib/memora/look/NAME (memora-theme login-sync).
+  // Only from a folder that belongs to that person.
+  readonly property string defaultMode: Quickshell.env("MEMORA_MODE") || "dark"
+  property string wallpaper: ""
+  Process {
+    id: look
+    property string who: ""
+    command: ["bash", "-c", "d=/var/lib/memora/look/$1; u=$(id -u -- \"$1\" 2>/dev/null) || exit 0; " +
+      "[[ -d $d && ! -L $d && $(stat -c %u -- \"$d\") == \"$u\" ]] || exit 0; " +
+      "m=; [[ -f $d/theme && ! -L $d/theme ]] && m=$(head -c 8 \"$d/theme\"); echo \"${m%%[^a-z]*}\"; " +
+      "f=$d/wallpaper; [[ -f $f && ! -L $f && $(stat -c %u -- \"$f\") == \"$u\" ]] && echo \"$f\"", "_", who]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        const [m, w] = text.split("\n")
+        Theme.mode = m === "light" || m === "dark" ? m : g.defaultMode
+        g.wallpaper = (w || "").trim()
+      }
+    }
+  }
+
   // People who can log in, and who logged in last.
   Process {
     running: true
@@ -36,6 +57,9 @@ ShellRoot {
     user = name
     const u = users.find(x => x.name === name)
     fullName = u ? u.full : name
+    look.running = false
+    look.who = name
+    look.running = true
     message = ""
     if (Greetd.state !== GreetdState.Inactive) Greetd.cancelSession()
   }
@@ -73,6 +97,7 @@ ShellRoot {
       anchors.fill: parent
       userName: g.user
       fullName: g.fullName
+      wallpaper: g.wallpaper !== "" ? g.wallpaper : Theme.wallpaper
       users: g.users
       message: g.message
       busy: Greetd.state === GreetdState.Authenticating

@@ -37,8 +37,10 @@ slurp
 satty
 wl-clipboard
 cliphist
+wl-clip-persist
 wtype
 brightnessctl
+ddcutil
 playerctl
 pavucontrol
 nm-connection-editor

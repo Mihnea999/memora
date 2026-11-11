@@ -16,10 +16,11 @@ Singleton {
 
   function volume(dir) {
     if (dir === "mute") Sys.toggleMute()
-    else Sys.changeVolume(Sys.volume + (dir === "up" ? 0.05 : -0.05))
+    else Sys.changeVolume(Sys.volume + (dir === "up" ? 0.05 : -0.05), true)
     show("volume", Sys.volume, Sys.muted)
   }
   function brightness(dir) {
+    if (!Sys.hasBacklight) { Sys.refreshBrightness(); return }
     Sys.setBrightness(Sys.brightness + (dir === "up" ? 0.05 : -0.05))
     show("brightness", Sys.brightness, false)
   }

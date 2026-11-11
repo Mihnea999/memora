@@ -9,10 +9,14 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("uwsm app -- memora-shell")
   hl.exec_cmd("uwsm app -- hypridle")
   hl.exec_cmd("uwsm app -- wl-paste --watch cliphist store")
+  -- Copied text outlives the app it was copied from (on Wayland it would go
+  -- with it: copy in a browser, close it, and Paste would do nothing).
+  hl.exec_cmd("uwsm app -- wl-clip-persist --clipboard regular")
   -- Nearby Share: send and receive files with phones and computers (LocalSend).
   hl.exec_cmd("uwsm app -- memora-share serve")
   hl.exec_cmd("uwsm app -- memora-drives watch")   -- drives you open at login, USB sticks as they are plugged in
   hl.exec_cmd("uwsm app -- memora-touch serve")    -- touch screens: on-screen keyboard, turning with a 2-in-1
   hl.exec_cmd("sleep 1.5 && memora-welcome --first-run")
+  hl.exec_cmd("memora-archive --defaults")                -- zip, rar, 7z, tar… open in Archives
   hl.exec_cmd("sleep 0.6 && memora-sound startup")
 end)

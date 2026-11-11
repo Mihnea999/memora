@@ -21,7 +21,7 @@ Singleton {
 
   readonly property string share: Quickshell.env("MEMORA_PATH") || "/usr/share/memora"
   // The desktop picture for a mode (yours if you picked one, else the chosen set).
-  readonly property var wallpaperSets: ["candy", "ember", "tide", "horizon", "dunes", "silk"]
+  readonly property var wallpaperSets: ["candy", "ember", "tide", "horizon", "dunes", "silk", "sorbet", "lagoon", "petal", "bubbles"]
   function wallpaperFor(m) { return Prefs.wallpaper !== "" ? Prefs.wallpaper : share + "/wallpapers/" + (wallpaperSets.indexOf(Prefs.wallpaperSet) >= 0 ? Prefs.wallpaperSet : "candy") + "-" + m + ".jpg" }
   readonly property string wallpaper: wallpaperFor(mode)
 
@@ -54,28 +54,35 @@ Singleton {
   // rounded rim (ui/glass.frag). No shadow. Clear is close to see-through, as
   // on a Mac; Tinted is calmer; Transparency scales both; Reduce Transparency makes it solid.
   // The fills stay above the alpha under which Hyprland leaves a layer unblurred
-  // (ignore_alpha in default/hypr/rules.lua: 0.13 light, 0.16 dark).
+  // (ignore_alpha in default/hypr/rules.lua: 0.04), for when
+  // the compositor plugin isn't there. ui/glass.frag gets them premultiplied.
   readonly property bool tinted: Prefs.glassStyle === "tinted"
   function see(a) {
     if (Prefs.reduceTransparency) return 0.97
-    const base = tinted ? a + (0.9 - a) * 0.45 : a
+    const base = tinted ? 0.12 + a + (0.9 - a) * 0.45 : a
     return base + (0.96 - base) * (1 - Prefs.transparency)
   }
-  readonly property color glass: dark ? Qt.rgba(0.08, 0.08, 0.10, see(0.22)) : Qt.rgba(1, 1, 1, see(0.17))
+  readonly property color glass: dark ? Qt.rgba(0.08, 0.08, 0.10, see(0)) : Qt.rgba(1, 1, 1, see(0))
   // Strong glass carries text (menus, panels). The light one is thicker than the
   // dark one: dark ink needs a bright sheet under it over a dark or vivid picture
   // (what is behind dark glass is dimmed by the compositor instead).
-  readonly property color glassStrong: dark ? Qt.rgba(0.10, 0.10, 0.12, see(0.20)) : Qt.rgba(1, 1, 1, see(0.24))
+  readonly property color glassStrong: dark ? Qt.rgba(0.10, 0.10, 0.12, see(0.04)) : Qt.rgba(1, 1, 1, see(0.04))
   // Menus and sheets drawn inside a window: nothing frosts what is behind them
   // there (the compositor only blurs behind whole windows and layers), so they
   // are close to solid, or the window's text would show through theirs.
   readonly property color popover: dark ? Qt.rgba(0.15, 0.15, 0.17, 0.97) : Qt.rgba(0.975, 0.975, 0.985, 0.98)
+  // Menus of the apps: a little window of their own (as on a Mac), which Hyprland
+  // frosts (decoration:blur:popups, default/hypr/look.lua). Thick enough to be
+  // over popups_ignorealpha, so it is frosted, and for its text over a window full of text.
+  readonly property color menuGlass: Prefs.reduceTransparency ? popover : (dark ? Qt.rgba(0.13, 0.13, 0.15, see(0.58)) : Qt.rgba(0.98, 0.98, 0.99, see(0.62)))
   readonly property color glassSolid: dark ? "#232326" : "#f5f5f7"
   // App windows: only a hint of glass, so text in them always reads well over
   // whatever is behind (Frost blurs the rest).
   readonly property color window: dark ? Qt.rgba(0.105, 0.105, 0.12, see(0.9)) : Qt.rgba(0.975, 0.975, 0.98, see(0.92))
   readonly property color sidebar: dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.035)
-  readonly property color bar: Prefs.menuBarTransparent && !Prefs.reduceTransparency ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.06, 0.06, 0.08, see(0.24)) : Qt.rgba(1, 1, 1, see(0.22)))
+  // The menu bar is never frosted (default/hypr/rules.lua): see-through, or a
+  // calm sheet of its own when Transparent menu bar is off.
+  readonly property color bar: Prefs.menuBarTransparent && !Prefs.reduceTransparency ? Qt.rgba(0, 0, 0, 0) : (dark ? Qt.rgba(0.11, 0.11, 0.13, see(0.86)) : Qt.rgba(0.97, 0.97, 0.98, see(0.86)))
   readonly property real shine: Prefs.reduceTransparency ? 0.3 : Prefs.shine
   readonly property color hover: dark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.06)
   readonly property color pressed: dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.11)

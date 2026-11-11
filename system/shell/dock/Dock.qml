@@ -181,6 +181,7 @@ PanelWindow {
       id: plate
       anchors.fill: parent
       radius: 26
+      bevel: 40   // the Dock is lens all over, as the reference
       fill: Theme.glass
     }
 
@@ -317,7 +318,7 @@ PanelWindow {
         onTapped: sepItem.openMenu()
       }
       TapHandler { onLongPressed: sepItem.openMenu() }
-      function openMenu() { const p = sepItem.mapToItem(hit, sepItem.width / 2, sepItem.height / 2); dock.menuX = dock.hitX + (dock.vertical ? p.y : p.x); dock.menuFor = { kind: "sep", id: "sep" } }
+      function openMenu() { const p = sepItem.mapToItem(hit, sepItem.width / 2, sepItem.height / 2); dock.menuX = dock.hitX + (dock.vertical ? p.y : p.x); dock.showMenu({ kind: "sep", id: "sep" }) }
     }
   }
 
@@ -332,6 +333,10 @@ PanelWindow {
   // Context menu for a dock icon.
   property var menuFor: null
   property real menuX: 0
+  // One menu at a time: the bar's and the desktop's close first (the Dock's own
+  // too, on Shell.closing, before this one is set).
+  function showMenu(e) { if (Shell.open !== "") Shell.close(); else Shell.closing(); menuFor = e }
+  Connections { target: Shell; function onClosing() { dock.menuFor = null } function onOpenChanged() { if (Shell.open !== "") dock.menuFor = null } }
   PopupWindow {
     id: ctx
     visible: dock.menuFor !== null
@@ -347,6 +352,8 @@ PanelWindow {
       id: ctxPanel
       solid: false
       width: implicitWidth; height: implicitHeight
+      focus: ctx.visible
+      Keys.onEscapePressed: dock.menuFor = null
       items: dock.menuFor ? dock.menuItems(dock.menuFor) : []
       onPicked: item => { const run = item.action; dock.menuFor = null; if (run) Qt.callLater(run) }
     }

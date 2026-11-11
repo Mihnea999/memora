@@ -22,7 +22,8 @@ layout(std140, binding = 0) uniform buf {
     float fresnel;      // 0..1
     float hasBackdrop;  // 1: `source` is what is behind, refract it
     float darkMode;     // 1: the dark look (light text)
-    vec4 fill;          // the glass tint (not premultiplied)
+    float adapt;        // 1: Tinted, what is behind is dimmed or lifted under the text; 0: Clear, as ybouane/liquidglass
+    vec4 fill;          // the glass tint, premultiplied (Qt hands colours to shaders so)
 };
 layout(binding = 1) uniform sampler2D source;
 
@@ -42,7 +43,7 @@ void main() {
     vec2 p = (qt_TexCoord0 - 0.5) * size;          // px from the centre, y down
     float r = min(radius, min(half_.x, half_.y));
     float sdf = rrSDF(p, half_, r);
-    float mask = 1.0 - smoothstep(-1.0, 0.5, sdf);
+    float mask = 1.0 - smoothstep(-1.5, 0.5, sdf);   // as ybouane/liquidglass
     if (mask <= 0.0) { fragColor = vec4(0.0); return; }
 
     float maxD = min(half_.x, half_.y);
@@ -50,8 +51,8 @@ void main() {
     float edge = smoothstep(maxD * 0.35, 0.0, inside);
 
     // Surface normal of the bevel.
-    float zR = max(1.0, min(zRadius, maxD));
-    float e = 3.0;
+    float zR = max(1.0, zRadius);   // not cut to half the size: a small shape is lens all over, as in the reference
+    float e = 2.0;
     float hC = bevelHeight(inside, zR);
     float hR = bevelHeight(-rrSDF(p + vec2(e, 0.0), half_, r), zR);
     float hL = bevelHeight(-rrSDF(p - vec2(e, 0.0), half_, r), zR);
@@ -70,9 +71,6 @@ void main() {
         vec2 bend = hGrad * refrPow;
         vec2 refrPx = (bend * 2.0 + bend * thickNorm * 0.5) * refraction * 30.0;
         refrPx += (-p / max(half_, vec2(1.0))) * refraction * 4.0 * depth;
-        float refrLen = length(refrPx);
-        float refrMax = zR * 0.8;
-        if (refrLen > refrMax) refrPx *= refrMax / refrLen;
         float caS = chroma * 36.0 * (edge * 0.7 + 0.3);
         vec2 ca = N.xy * caS / size;
         vec2 uv = clamp(qt_TexCoord0 + refrPx / size, vec2(0.0), vec2(1.0));
@@ -83,13 +81,15 @@ void main() {
         // Adaptive, as the compositor's glass (system/plugin/glass.cpp).
         const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
         float L = mix(dot(texture(source, uv).rgb, LUMA), dot(texture(source, vec2(0.5)).rgb, LUMA), 0.6);
-        if (darkMode > 0.5) col *= 1.0 - smoothstep(0.3, 0.95, L) * 0.65;
-        else col = mix(col, vec3(1.0), smoothstep(0.6, 0.1, L) * 0.62);
-        col = mix(col, fill.rgb, fill.a);
+        if (darkMode > 0.5) col *= 1.0 - smoothstep(0.3, 0.95, L) * 0.5 * adapt;
+        else col = mix(col, vec3(1.0), smoothstep(0.6, 0.1, L) * 0.45 * adapt);
+        col = col * (1.0 - fill.a) + fill.rgb;
         alpha = 1.0;
     } else {
         // The compositor frosts what is behind; only the tint is drawn here.
-        col = fill.rgb;
+        // (Its colour, unpremultiplied: multiplied by its alpha twice, a white
+        // tint turned into a grey veil that darkened the glass.)
+        col = fill.a > 0.0 ? fill.rgb / fill.a : vec3(0.0);
         alpha = fill.a;
     }
 
@@ -99,8 +99,7 @@ void main() {
     float topBias = 0.5 - 0.5 * (p.y / half_.y);
     stroke *= 0.35 + 0.65 * topBias;
     float rim = edge * edgeLight * 0.22;
-    // (No soft band beside the stroke: the two read as two outlines.)
-    float glow = 0.0;
+    float glow = smoothstep(5.0, 0.0, inside) * edgeLight * 0.15;
     float env = (0.5 - N.y * 0.5) * fres * 0.08;
     float white = clamp(fres * 0.2 + rim + glow + stroke * edgeLight * 0.55 + env, 0.0, 1.0);
 

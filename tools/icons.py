@@ -264,6 +264,8 @@ ICONS["apps/memora-archive"] = icon(
     </g>''')
 
 
+
+
 # ---- places: folders as on the desktop, plus Trash ---------------------------
 def place(glyph_path, extra_defs=""):
     """Folder icon (no squircle): back panel, front panel and an embossed glyph."""

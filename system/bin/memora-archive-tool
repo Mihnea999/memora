@@ -1,0 +1,733 @@
+#!/usr/bin/env python3
+"""memora-archive-tool: the engine behind Archives (memora-archive).
+
+7-Zip reads almost everything: zip, 7z, rar and rar5, tar with gz/bz2/xz/zst,
+iso, dmg, cab, msi, deb, rpm, wim, arj, lzh, chm, cpio, squashfs, vhd, … and
+multi-part archives from their first part. unrar steps in for RAR when 7-Zip
+can't, bsdtar for what 7-Zip doesn't know (lz4, lzip, …). RARLAB's rar (WinRAR
+for Linux) makes RAR archives once it is installed (get-rar).
+
+usage:
+  list ARCHIVE                  one JSON line: {"info": {...}, "entries": [...]}
+  extract ARCHIVE DEST [ITEM…]  everything into a folder of its own (one item inside:
+                                just that item), or the ITEMs next to each other in DEST
+  open ARCHIVE DIR ITEM…        the ITEMs into DIR as they are inside (to open or drag out)
+  test ARCHIVE                  checks every file
+  create OUT FORMAT LEVEL FILE… zip 7z rar tar tar.gz tar.bz2 tar.xz tar.zst; level 0–9
+  add ARCHIVE INNERDIR FILE…    FILEs into a folder of the archive ("" = the top)
+  delete ARCHIVE ITEM…
+  caps                          what this machine can make
+  get-rar                       installs rar from rarlab.com into ~/.local
+
+The password comes in MEMORA_ARCHIVE_PASSWORD, never on this tool's command line;
+MEMORA_ARCHIVE_HIDE=1 also hides the file names (7z, rar), MEMORA_ARCHIVE_SPLIT=BYTES
+cuts a new archive into parts of that size.
+Output, one per line: "P 42.5" (percent), "F name" (file at work), "OUT path",
+"OK", "ERR needpass" / "ERR badpass" / "ERR message".
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import urllib.request
+
+PW = os.environ.get("MEMORA_ARCHIVE_PASSWORD", "")
+HIDE = os.environ.get("MEMORA_ARCHIVE_HIDE") == "1"
+SPLIT = int(os.environ.get("MEMORA_ARCHIVE_SPLIT") or 0)
+LOCAL_BIN = os.path.expanduser("~/.local/bin")
+
+children = []
+made = []          # temporary paths removed on the way out
+
+
+class Fail(Exception):
+    pass
+
+
+def say(*a):
+    print(*a, flush=True)
+
+
+def which(*names):
+    for n in names:
+        p = shutil.which(n) or (os.path.join(LOCAL_BIN, n) if os.access(os.path.join(LOCAL_BIN, n), os.X_OK) else None)
+        if p:
+            return p
+    return None
+
+
+SEVEN = which("7z", "7zz", "7za") or "7z"
+
+
+def cleanup():
+    for p in made:
+        try:
+            if os.path.isdir(p) and not os.path.islink(p):
+                shutil.rmtree(p, ignore_errors=True)
+            elif os.path.lexists(p):
+                os.unlink(p)
+        except OSError:
+            pass
+
+
+def stopped(*_):
+    for c in children:
+        try:
+            c.kill()
+        except OSError:
+            pass
+    cleanup()
+    sys.exit(143)
+
+
+signal.signal(signal.SIGTERM, stopped)
+signal.signal(signal.SIGINT, stopped)
+
+
+# ---- running the tools --------------------------------------------------------
+
+def pump(stream, on_line):
+    """Lines of a stream, also the ones a progress meter redraws with \\r or \\b."""
+    buf = b""
+    while True:
+        chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(65536)
+        if not chunk:
+            break
+        buf += chunk
+        parts = re.split(rb"[\r\n\x08]+", buf)
+        buf = parts.pop()
+        for p in parts:
+            if p.strip():
+                on_line(p.decode("utf-8", "replace"))
+    if buf.strip():
+        on_line(buf.decode("utf-8", "replace"))
+
+
+class Meter:
+    """Percent lines from 7z/unrar/rar mapped onto a slice of the whole job."""
+
+    def __init__(self, start=0.0, span=100.0):
+        self.start, self.span, self.last = start, span, -1.0
+        self.lines = []
+
+    def __call__(self, line):
+        m = re.match(r"^\s*(\d+)%(?:\s+\d+)?(?:\s+[-+=U]\s*)?(.*)$", line)
+        if m:
+            p = self.start + int(m.group(1)) / 100 * self.span
+            if p - self.last >= 0.5:
+                self.last = p
+                say(f"P {p:.1f}")
+            name = m.group(2).strip()
+            if name and not name.startswith(":") and " : " not in name:
+                say("F " + name)
+            return
+        self.lines.append(line)
+
+
+def pw_args():
+    # Always say a password (an empty one when none is known): 7-Zip would stop and ask otherwise.
+    return ["-p" + PW]
+
+
+def run(cmd, meter=None, cwd=None, stdin=subprocess.DEVNULL):
+    meter = meter or Meter()
+    p = subprocess.Popen(cmd, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
+    children.append(p)
+    pump(p.stdout, meter)
+    code = p.wait()
+    children.remove(p)
+    return code, meter.lines
+
+
+def failure(lines, code=2):
+    t = "\n".join(lines)
+    if re.search(r"wrong password|encrypted archive|incorrect password|password is incorrect|checksum error in the encrypted", t, re.I):
+        return Fail("needpass" if not PW else "badpass")
+    known = [
+        (r"Cannot open the file as \[?archive|is not archive|Can not open the file as archive", "This file isn't an archive, or it is damaged."),
+        (r"Unexpected end of archive|Unexpected end of data", "The archive ends too soon: it may be incomplete, or a part is missing."),
+        (r"Missing volume|next volume|volume .* is missing", "A part of this multi-part archive is missing."),
+        (r"No space left|There is not enough space", "There isn't enough free space."),
+        (r"Permission denied|Access is denied", "Archives isn't allowed to write there."),
+        (r"CRC Failed|Data Error|checksum error|corrupt", "Some files in the archive are damaged."),
+        (r"Unsupported Method|unsupported compression|Unsupported feature", "This archive uses a method that can't be read here."),
+    ]
+    for pat, msg in known:
+        if re.search(pat, t, re.I):
+            return Fail(msg)
+    errs = [l.strip() for l in lines if re.search(r"error|cannot|can't|failed", l, re.I)]
+    return Fail(errs[0] if errs else f"It didn't work (code {code}).")
+
+
+def unique(path):
+    """path, or "name 2.ext", "name 3.ext", … when that is taken."""
+    if not os.path.lexists(path):
+        return path
+    d, base = os.path.split(path)
+    m = re.match(r"^(.*?)((?:\.tar)?\.[A-Za-z0-9]{1,5})?$", base) if not os.path.isdir(path) else None
+    stem, ext = (m.group(1), m.group(2) or "") if m and m.group(1) else (base, "")
+    n = 2
+    while os.path.lexists(os.path.join(d, f"{stem} {n}{ext}")):
+        n += 1
+    return os.path.join(d, f"{stem} {n}{ext}")
+
+
+def stem_of(path):
+    b = os.path.basename(path)
+    b = re.sub(r"\.part0*1\.rar$|\.(7z|zip|rar|tar)?\.0*1$|\.z01$", "", b, flags=re.I)
+    b = re.sub(r"\.(tar\.(gz|bz2|xz|zst|lz4|lz|lzma|Z)|t(gz|bz2?|xz|zst|az|lz)|[^.]{1,6})$", "", b, flags=re.I)
+    return b or "Archive"
+
+
+def du(paths):
+    total = 0
+    for p in paths:
+        if os.path.isfile(p) and not os.path.islink(p):
+            total += os.path.getsize(p)
+        for root, _, files in os.walk(p):
+            for f in files:
+                try:
+                    total += os.lstat(os.path.join(root, f)).st_size
+                except OSError:
+                    pass
+    return max(total, 1)
+
+
+# ---- reading: what kind of archive, and what is in it ---------------------------
+
+COMPRESSED = {"gzip": "gz", "bzip2": "bz2", "xz": "xz", "zstd": "zst", "lzma": "lzma", "Z": "Z"}
+TARRY = re.compile(r"\.(tar\.[a-z0-9]+|t(gz|bz2?|xz|zst|az|lz|pz))$", re.I)
+
+
+def parse_slt(text):
+    head, _, body = text.partition("\n----------\n")
+    props = {}
+    for l in head.split("\n--\n")[-1].splitlines():
+        k, sep, v = l.partition(" = ")
+        if sep:
+            props[k] = v
+    entries = []
+    for blk in body.split("\n\n"):
+        d = {}
+        for l in blk.splitlines():
+            k, sep, v = l.partition(" = ")
+            if sep:
+                d[k] = v
+            elif l.endswith(" ="):
+                d[l[:-2]] = ""
+        if "Path" in d:
+            entries.append(d)
+    return props, entries
+
+
+def seven_list(path, nested=False):
+    if nested:
+        outer = subprocess.Popen([SEVEN, "x", "-so", "-bsp0", "-bse0"] + pw_args() + [path],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        children.append(outer)
+        r = subprocess.run([SEVEN, "l", "-slt", "-si", "-ttar"], stdin=outer.stdout, capture_output=True)
+        outer.wait()
+    else:
+        r = subprocess.run([SEVEN, "l", "-slt"] + pw_args() + [path], stdin=subprocess.DEVNULL, capture_output=True)
+    text = r.stdout.decode("utf-8", "replace")
+    err = r.stderr.decode("utf-8", "replace")
+    if r.returncode not in (0, 1) or "\n----------\n" not in text:
+        raise failure((text + "\n" + err).splitlines(), r.returncode)
+    props, entries = parse_slt(text)
+    if r.returncode == 1 or "Warnings:" in text:
+        props["_warn"] = "1"
+    return props, entries
+
+
+def bsdtar_list(path):
+    r = subprocess.run(["bsdtar", "-tvf", path], stdin=subprocess.DEVNULL, capture_output=True)
+    if r.returncode != 0:
+        raise failure(r.stderr.decode("utf-8", "replace").splitlines(), r.returncode)
+    entries = []
+    for l in r.stdout.decode("utf-8", "replace").splitlines():
+        m = re.match(r"^(\S+)\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\w{3}\s+\d+\s+[\d:]+)\s+(.*)$", l)
+        if not m:
+            continue
+        name = re.sub(r" -> .*$| link to .*$", "", m.group(4))
+        entries.append({"Path": name, "Size": m.group(2), "Packed Size": "", "Modified": "",
+                        "Attributes": "D" if m.group(1).startswith("d") else "A"})
+    return {"Type": "tar"}, entries
+
+
+def probe(path):
+    """(engine, nested, props, raw entries): engine "7z" or "bsdtar"; nested when a
+    compressed file holds a tar (tar.gz, …): read through the outer layer."""
+    if not os.path.exists(path):
+        raise Fail("The archive isn't there any more.")
+    try:
+        props, entries = seven_list(path)
+    except Fail as e:
+        if str(e) in ("needpass", "badpass"):
+            raise
+        try:
+            props, entries = bsdtar_list(path)
+            return "bsdtar", False, props, entries
+        except Fail:
+            raise e
+    typ = props.get("Type", "")
+    if typ in COMPRESSED and len(entries) == 1 and (entries[0]["Path"].lower().endswith(".tar") or TARRY.search(path)):
+        try:
+            props2, entries2 = seven_list(path, nested=True)
+            props2["Type"] = "tar." + COMPRESSED[typ]
+            props2["Physical Size"] = props.get("Physical Size", "")
+            props2["Method"] = typ
+            return "7z", True, props2, entries2
+        except Fail:
+            pass
+    return "7z", False, props, entries
+
+
+def to_int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
+def cmd_list(path):
+    engine, nested, props, raw = probe(path)
+    items = {}
+    any_enc = False
+    for d in raw:
+        p = d["Path"].replace("\\", "/").strip("/")
+        while p.startswith("./"):
+            p = p[2:]
+        if not p:
+            continue
+        isdir = d.get("Folder") == "+" or d.get("Attributes", "").startswith("D")
+        enc = d.get("Encrypted") == "+"
+        any_enc = any_enc or enc
+        items[p] = {"p": p, "n": p.rsplit("/", 1)[-1], "d": p.rsplit("/", 1)[0] if "/" in p else "",
+                    "dir": isdir, "s": to_int(d.get("Size")), "k": to_int(d.get("Packed Size")),
+                    "m": (d.get("Modified") or "")[:16], "e": enc}
+    # Folders a zip only names in its files' paths.
+    for p in list(items):
+        parent = items[p]["d"]
+        while parent and parent not in items:
+            items[parent] = {"p": parent, "n": parent.rsplit("/", 1)[-1], "d": parent.rsplit("/", 1)[0] if "/" in parent else "",
+                             "dir": True, "s": 0, "k": 0, "m": "", "e": False}
+            parent = items[parent]["d"]
+    # A folder's size: all that is in it.
+    for it in sorted(items.values(), key=lambda x: -x["p"].count("/")):
+        if it["d"] and it["d"] in items:
+            items[it["d"]]["s"] += it["s"]
+            items[it["d"]]["k"] += it["k"]
+    files = [i for i in items.values() if not i["dir"]]
+    typ = props.get("Type", "?")
+    multi = (props.get("Multivolume") == "+" or to_int(props.get("Volumes")) > 1
+             or re.search(r"\.(\d{3}|part\d+\.rar|z\d\d|r\d\d)$", path, re.I) is not None)
+    disk = to_int(props.get("Total Physical Size")) or to_int(props.get("Physical Size")) or os.path.getsize(path)
+    rar_type = typ.lower().startswith("rar")
+    writable = (not multi and os.access(path, os.W_OK) and engine == "7z" and not nested and
+                (typ in ("7z", "zip", "tar") or (rar_type and which("rar") is not None)))
+    info = {
+        "path": path, "type": typ, "method": props.get("Method", ""), "solid": props.get("Solid") == "+",
+        "encrypted": any_enc,
+        "multi": multi, "volumes": to_int(props.get("Volumes")) or 1, "comment": props.get("Comment", ""),
+        "disk": disk, "size": sum(i["s"] for i in files), "files": len(files),
+        "folders": len(items) - len(files), "writable": writable, "nested": nested, "engine": engine,
+        "warn": props.get("_warn") == "1",
+    }
+    print(json.dumps({"info": info, "entries": sorted(items.values(), key=lambda x: x["p"])}), flush=True)
+
+
+# ---- extracting ------------------------------------------------------------------
+
+def extract_to(path, out, items):
+    """Everything (or ITEMs, with their folders) from the archive into the folder out."""
+    engine, nested, props, _ = probe(path)
+    items = list(items)
+    if engine == "bsdtar":
+        r = subprocess.run(["bsdtar", "-xf", path, "-C", out] + items, capture_output=True)
+        if r.returncode:
+            raise failure(r.stderr.decode("utf-8", "replace").splitlines(), r.returncode)
+        say("P 100")
+        return
+    if nested:
+        meter = Meter()
+        outer = subprocess.Popen([SEVEN, "x", "-so", "-bsp2", "-bse2"] + pw_args() + [path],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        children.append(outer)
+        t = threading.Thread(target=pump, args=(outer.stderr, meter), daemon=True)
+        t.start()
+        code, lines = run([SEVEN, "x", "-si", "-ttar", "-y", "-spd", "-bso0", "-bsp0", "-bse1", "-o" + out] + (["--"] + items if items else []),
+                          stdin=outer.stdout)
+        outer.wait()
+        t.join()
+        if outer.returncode or code:
+            raise failure(meter.lines + lines, outer.returncode or code)
+        return
+    meter = Meter()
+    code, lines = run([SEVEN, "x", "-y", "-spd", "-bsp1", "-bso0", "-bse1"] + pw_args() + ["-o" + out, path] + (["--"] + items if items else []), meter)
+    if code == 0:
+        return
+    err = failure(lines, code)
+    # RAR that 7-Zip can't read (old or odd ones): unrar.
+    unrar = which("unrar", "rar")
+    if props.get("Type", "").lower().startswith("rar") and unrar and str(err) not in ("needpass", "badpass"):
+        code, lines = run([unrar, "x", "-o+", "-y", "-idc", ("-p" + PW) if PW else "-p-", path] + items + [out.rstrip("/") + "/"], Meter())
+        if code == 0:
+            return
+        err = failure(lines, code)
+    raise err
+
+
+def cmd_extract(path, dest, items):
+    os.makedirs(dest, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix=".memora-extract-", dir=dest)
+    made.append(tmp)
+    extract_to(path, tmp, items)
+    outs = []
+    if items:
+        # The chosen items, side by side in DEST.
+        for it in items:
+            src = os.path.join(tmp, it)
+            if os.path.lexists(src):
+                final = unique(os.path.join(dest, os.path.basename(it.rstrip("/"))))
+                os.rename(src, final)
+                outs.append(final)
+    else:
+        inner = os.listdir(tmp)
+        # A tar.gz that came out as a .tar (an odd one 7-Zip didn't see through): open that too.
+        if len(inner) == 1 and inner[0].lower().endswith(".tar") and os.path.isfile(os.path.join(tmp, inner[0])):
+            t = os.path.join(tmp, inner[0])
+            extract_to(t, tmp, [])
+            os.unlink(t)
+            inner = os.listdir(tmp)
+        if len(inner) == 1:
+            # One thing inside: that thing, not a folder around it.
+            final = unique(os.path.join(dest, inner[0]))
+            os.rename(os.path.join(tmp, inner[0]), final)
+        else:
+            final = unique(os.path.join(dest, stem_of(path)))
+            os.rename(tmp, final)
+            made.remove(tmp)
+        outs.append(final)
+    cleanup()
+    say("P 100")
+    for o in outs:
+        say("OUT " + o)
+
+
+def cmd_open(path, into, items):
+    os.makedirs(into, exist_ok=True)
+    extract_to(path, into, items)
+    say("P 100")
+    for it in items:
+        say("OUT " + os.path.join(into, it))
+
+
+def cmd_test(path):
+    engine, nested, props, _ = probe(path)
+    if engine == "bsdtar":
+        r = subprocess.run(["bsdtar", "-tf", path], capture_output=True)
+        if r.returncode:
+            raise failure(r.stderr.decode().splitlines())
+        say("OK")
+        return
+    if nested:
+        code, lines = run([SEVEN, "t", "-bsp1", "-bso0", "-bse1"] + pw_args() + [path], Meter(0, 100))
+    else:
+        code, lines = run([SEVEN, "t", "-bsp1", "-bso0", "-bse1"] + pw_args() + [path], Meter())
+    if code:
+        bad = [re.sub(r"^.*?:\s*", "", l).strip() for l in lines if re.search(r"CRC Failed|Data Error", l)]
+        if bad and not re.search(r"encrypted", "\n".join(lines), re.I):
+            raise Fail("Damaged: " + ", ".join(bad[:4]) + (f" and {len(bad) - 4} more" if len(bad) > 4 else ""))
+        raise failure(lines, code)
+    say("P 100")
+    say("OK")
+
+
+# ---- making and changing archives -------------------------------------------------
+
+def by_dir(files):
+    groups = {}
+    for f in files:
+        f = os.path.abspath(f).rstrip("/")
+        groups.setdefault(os.path.dirname(f), []).append(os.path.basename(f))
+    return list(groups.items())
+
+
+def seven_create(out, fmt, level, files):
+    args = [SEVEN, "a", "-t" + fmt, f"-mx={level}", "-bsp1", "-bso0", "-bse1", "-y"]
+    if PW:
+        args += ["-p" + PW]
+        if fmt == "zip":
+            args += ["-mem=AES256"]
+        elif HIDE:
+            args += ["-mhe=on"]
+    groups = by_dir(files)
+    if SPLIT:
+        args += [f"-v{SPLIT}b"]
+    if len(groups) == 1 or not SPLIT:
+        n = len(groups)
+        for i, (d, names) in enumerate(groups):
+            # -snl: links inside folders stay links.
+            code, lines = run(args + ["-snl", out, "--"] + names, Meter(i * 100 / n, 100 / n), cwd=d)
+            if code:
+                raise failure(lines, code)
+        return
+    # Parts from different folders in one split archive: gathered (as links) in one place first.
+    stage = tempfile.mkdtemp(prefix=".memora-stage-")
+    made.append(stage)
+    names = []
+    for d, ns in groups:
+        for nm in ns:
+            target = os.path.basename(unique(os.path.join(stage, nm)))
+            os.symlink(os.path.join(d, nm), os.path.join(stage, target))
+            names.append(target)
+    code, lines = run(args + [out, "--"] + names, Meter(), cwd=stage)
+    if code:
+        raise failure(lines, code)
+
+
+def rar_create(out, level, files, inner=""):
+    rar = which("rar")
+    if not rar:
+        raise Fail("Making RAR archives needs RAR. Get it from the RAR button in New Archive.")
+    m = {0: 0, 1: 1, 2: 2, 3: 2, 4: 3, 5: 3, 6: 4, 7: 4, 8: 5, 9: 5}[max(0, min(9, level))]
+    args = [rar, "a", f"-m{m}", "-ep1", "-ol", "-idc", "-y", "-ma5"]
+    if PW:
+        args += [("-hp" if HIDE else "-p") + PW]
+    if SPLIT:
+        args += [f"-v{SPLIT}b"]
+    if inner:
+        args += ["-ap" + inner]
+    code, lines = run(args + ["--", out] + [os.path.abspath(f).rstrip("/") for f in files], Meter())
+    if code:
+        raise failure(lines, code)
+
+
+def tar_create(out, fmt, level, files):
+    total = du(files)
+    cmd = ["bsdtar", "-c", "-f", "-"]
+    for d, names in by_dir(files):
+        cmd += ["-C", d] + names
+    comp = {
+        "tar.gz": [which("pigz", "gzip") or "gzip", f"-{max(1, level)}", "-c"],
+        "tar.bz2": [which("lbzip2", "pbzip2", "bzip2") or "bzip2", f"-{max(1, level)}", "-c"],
+        "tar.xz": ["xz", "-T0", f"-{level}", "-c"],
+        "tar.zst": ["zstd", "-T0", "-q", "-c", "--ultra" if level >= 9 else "-q",
+                    "-" + str({0: 1, 1: 1, 2: 2, 3: 3, 4: 3, 5: 3, 6: 9, 7: 12, 8: 17, 9: 21}[max(0, min(9, level))])],
+    }.get(fmt)
+    with open(out, "wb") as fh:
+        tarp = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        children.append(tarp)
+        sink = fh
+        compp = None
+        if comp:
+            compp = subprocess.Popen(comp, stdin=subprocess.PIPE, stdout=fh, stderr=subprocess.DEVNULL)
+            children.append(compp)
+            sink = compp.stdin
+        done, last = 0, -1.0
+        while True:
+            chunk = tarp.stdout.read(1 << 20)
+            if not chunk:
+                break
+            sink.write(chunk)
+            done += len(chunk)
+            p = min(99.0, done * 100 / total)
+            if p - last >= 0.5:
+                last = p
+                say(f"P {p:.1f}")
+        if compp:
+            compp.stdin.close()
+            compp.wait()
+        err = tarp.stderr.read().decode("utf-8", "replace")
+        if tarp.wait() or (compp and compp.returncode):
+            raise failure(err.splitlines() or ["The archive couldn't be made."])
+    if SPLIT:
+        n = 1
+        with open(out, "rb") as fh:
+            while True:
+                part = fh.read(SPLIT)
+                if not part:
+                    break
+                with open(f"{out}.{n:03d}", "wb") as o:
+                    o.write(part)
+                n += 1
+        os.unlink(out)
+
+
+def cmd_create(out, fmt, level, files):
+    level = max(0, min(9, int(level)))
+    files = [f for f in files if os.path.lexists(f)]
+    if not files:
+        raise Fail("There is nothing to put in the archive.")
+    out = unique(os.path.abspath(out))
+    made.append(out)
+    if fmt in ("zip", "7z"):
+        seven_create(out, fmt, level, files)
+    elif fmt == "rar":
+        rar_create(out, level, files)
+    elif fmt == "tar" or fmt.startswith("tar."):
+        tar_create(out, fmt, level, files)
+    else:
+        raise Fail("Unknown format " + fmt)
+    made.remove(out)
+    first = out
+    if SPLIT:
+        cand = [out + ".001", re.sub(r"\.rar$", "", out) + ".part1.rar", re.sub(r"\.rar$", "", out) + ".part01.rar",
+                re.sub(r"\.rar$", "", out) + ".part001.rar"]
+        first = next((c for c in cand if os.path.exists(c)), out)
+    say("P 100")
+    say("OUT " + first)
+
+
+def archive_type(path):
+    _, nested, props, _ = probe(path)
+    return props.get("Type", ""), nested
+
+
+def cmd_add(path, inner, files):
+    typ, nested = archive_type(path)
+    inner = inner.strip("/")
+    if typ.lower().startswith("rar"):
+        rar_create(path, 3, files, inner)
+    elif typ in ("7z", "zip", "tar") and not nested:
+        base = [SEVEN, "a", "-y", "-bsp1", "-bso0", "-bse1"] + (["-p" + PW] if PW else [])
+        if PW and typ == "7z" and HIDE:
+            base += ["-mhe=on"]
+        if PW and typ == "zip":
+            base += ["-mem=AES256"]
+        if not inner:
+            groups = by_dir(files)
+            for i, (d, names) in enumerate(groups):
+                code, lines = run(base + ["-snl", path, "--"] + names, Meter(i * 100 / len(groups), 100 / len(groups)), cwd=d)
+                if code:
+                    raise failure(lines, code)
+        else:
+            # Into a folder of the archive: the files are set out (as links) under that path first.
+            stage = tempfile.mkdtemp(prefix=".memora-stage-")
+            made.append(stage)
+            os.makedirs(os.path.join(stage, inner))
+            for f in files:
+                f = os.path.abspath(f).rstrip("/")
+                os.symlink(f, unique(os.path.join(stage, inner, os.path.basename(f))))
+            code, lines = run(base + [path, "--", inner.split("/")[0]], Meter(), cwd=stage)
+            if code:
+                raise failure(lines, code)
+    else:
+        raise Fail("This kind of archive can't be changed. Make a new one with these files instead.")
+    cleanup()
+    say("P 100")
+    say("OK")
+
+
+def cmd_delete(path, items):
+    typ, nested = archive_type(path)
+    if typ.lower().startswith("rar"):
+        rar = which("rar")
+        if not rar:
+            raise Fail("Changing RAR archives needs RAR.")
+        code, lines = run([rar, "d", "-idc", "-y"] + ([("-p" + PW)] if PW else []) + ["--", path] + items, Meter())
+        dirs = [i.rstrip("/") + "/*" for i in items]
+        if code == 0:
+            code, lines = run([rar, "d", "-idc", "-y", "-r"] + ([("-p" + PW)] if PW else []) + ["--", path] + dirs, Meter())
+        if code not in (0, 10):   # 10: nothing matched (no folders in the list)
+            raise failure(lines, code)
+    elif typ in ("7z", "zip", "tar") and not nested:
+        code, lines = run([SEVEN, "d", "-y", "-spd", "-bsp1", "-bso0", "-bse1"] + pw_args() + [path, "--"] + items, Meter())
+        if code:
+            raise failure(lines, code)
+    else:
+        raise Fail("This kind of archive can't be changed.")
+    say("P 100")
+    say("OK")
+
+
+def cmd_caps():
+    print(json.dumps({"rar": which("rar") is not None, "unrar": which("unrar") is not None,
+                      "seven": shutil.which(SEVEN) is not None}), flush=True)
+
+
+def cmd_get_rar():
+    say("F rarlab.com")
+    page = urllib.request.urlopen("https://www.rarlab.com/download.htm", timeout=30).read().decode("utf-8", "replace")
+    links = re.findall(r"rar/rarlinux-x64-(\d+)\.tar\.gz", page)
+    if not links:
+        raise Fail("RAR for Linux wasn't found on rarlab.com.")
+    url = f"https://www.rarlab.com/rar/rarlinux-x64-{max(links, key=int)}.tar.gz"
+    tmp = tempfile.mkdtemp(prefix="memora-rar-")
+    made.append(tmp)
+    tgz = os.path.join(tmp, "rar.tar.gz")
+    with urllib.request.urlopen(url, timeout=60) as r, open(tgz, "wb") as fh:
+        total = int(r.headers.get("Content-Length") or 0) or 1
+        done = 0
+        while True:
+            b = r.read(1 << 16)
+            if not b:
+                break
+            fh.write(b)
+            done += len(b)
+            say(f"P {min(95, done * 95 / total):.1f}")
+    r = subprocess.run(["bsdtar", "-xf", tgz, "-C", tmp], capture_output=True)
+    if r.returncode:
+        raise Fail("The RAR download was damaged. Try again.")
+    home = os.path.expanduser("~/.local/share/memora/rar")
+    shutil.rmtree(home, ignore_errors=True)
+    shutil.copytree(os.path.join(tmp, "rar"), home)
+    os.makedirs(LOCAL_BIN, exist_ok=True)
+    for b in ("rar", "unrar"):
+        if os.path.exists(os.path.join(home, b)):
+            link = os.path.join(LOCAL_BIN, b)
+            if os.path.lexists(link):
+                os.unlink(link)
+            os.symlink(os.path.join(home, b), link)
+    cleanup()
+    say("P 100")
+    say("OK")
+
+
+def main():
+    a = sys.argv[1:]
+    if not a:
+        print(__doc__)
+        return 2
+    cmd = a[0]
+    try:
+        if cmd == "list" and len(a) == 2:
+            cmd_list(os.path.abspath(a[1]))
+        elif cmd == "extract" and len(a) >= 3:
+            cmd_extract(os.path.abspath(a[1]), os.path.abspath(a[2]), a[3:])
+        elif cmd == "open" and len(a) >= 4:
+            cmd_open(os.path.abspath(a[1]), os.path.abspath(a[2]), a[3:])
+        elif cmd == "test" and len(a) == 2:
+            cmd_test(os.path.abspath(a[1]))
+        elif cmd == "create" and len(a) >= 5:
+            cmd_create(a[1], a[2], a[3], a[4:])
+        elif cmd == "add" and len(a) >= 4:
+            cmd_add(os.path.abspath(a[1]), a[2], a[3:])
+        elif cmd == "delete" and len(a) >= 3:
+            cmd_delete(os.path.abspath(a[1]), a[2:])
+        elif cmd == "caps":
+            cmd_caps()
+        elif cmd == "get-rar":
+            cmd_get_rar()
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        cleanup()
+        say("ERR " + str(e))
+        return 1
+    except OSError as e:
+        cleanup()
+        say("ERR " + (e.strerror or str(e)))
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

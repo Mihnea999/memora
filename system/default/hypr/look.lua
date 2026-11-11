@@ -55,7 +55,7 @@ hl.config({
 -- Glass, from System Settings > Appearance (~/.config/memora/glass.lua).
 local okg, gl = pcall(dofile, os.getenv("HOME") .. "/.config/memora/glass.lua")
 if not okg or type(gl) ~= "table" then gl = {} end
-local gb = math.max(0, math.min(1, tonumber(gl.blur) or 0.3))
+local gb = math.max(0, math.min(1, tonumber(gl.blur) or 0))
 local gv = math.max(0, math.min(1, tonumber(gl.vibrancy) or 0.7))
 -- Liquid glass is close to clear: what is behind is softened, not turned to
 -- milk, so its shapes and colours still come through (Frost at the top of its
@@ -66,13 +66,17 @@ local mode = mf and (mf:read("*l") or "") or "dark"
 if mf then mf:close() end
 local light = mode:match("light") ~= nil
 hl.config({ decoration = { blur = {
-  enabled = gl.reduce ~= true and gb > 0.02,
-  size = math.floor(2 + gb * 7 + 0.5),
+  -- Always on: the glass plugin takes its frost from it (the Launchpad's, or
+  -- all of it with Frost up); clear glass doesn't use it.
+  enabled = gl.reduce ~= true,
+  size = math.floor(4 + gb * 5 + 0.5),
   passes = gb < 0.75 and 2 or 3,
   brightness = light and 1.06 or 0.85,
   contrast = light and 1.0 or 1.08,
-  vibrancy = 0.12 + gv * 0.5,
-  vibrancy_darkness = 0.1 + gv * 0.25,
+  -- Vibrancy only a little: more pushes the greys of a pale picture to lilac
+  -- and darker, and the glass reads as tinted plastic.
+  vibrancy = 0.05 + gv * 0.25,
+  vibrancy_darkness = 0.1 + gv * 0.15,
   popups_ignorealpha = light and 0.13 or 0.16,
 } } })
 

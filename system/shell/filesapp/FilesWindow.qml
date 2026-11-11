@@ -44,7 +44,7 @@ FloatingWindow {
   function go(p, keepHistory) {
     if (!p || p === path) return
     if (!keepHistory) { back = back.concat([path]); fwd = [] }
-    path = p; selected = ({}); renaming = ""; search.text = ""; query = ""
+    path = p; selected = ({}); lastClicked = ""; renaming = ""; search.text = ""; query = ""
     appear.restart()
   }
   function goBack() { if (!back.length) return; fwd = [path].concat(fwd); const p = back[back.length - 1]; back = back.slice(0, -1); go(p, true) }
@@ -57,18 +57,38 @@ FloatingWindow {
     if (isDir) return go(p)
     Quickshell.execDetached(["gio", "open", p])
   }
+  // The path of row i in what is shown (the folder, or search results).
+  function pathAt(i) { return content.searching ? found[i] : folder.get(i, "filePath") }
+  function isDir(p) { const i = folder.indexOf("file://" + p); return i >= 0 && !!folder.get(i, "fileIsDir") }
+  // As in Finder: a click selects one; Ctrl (or Super) adds or removes one;
+  // Shift adds everything from the last clicked one to this one.
+  // `mods` comes from the handler's point (a TapHandler's tapped eventPoint
+  // carries no modifiers).
   function select(p, mods) {
-    const s = Object.assign({}, selected)
-    if (mods & Qt.ControlModifier) { if (s[p]) delete s[p]; else s[p] = true }
-    else if (mods & Qt.ShiftModifier && lastClicked) {
-      const names = [], m = folder
-      for (let i = 0; i < m.count; i++) names.push(m.get(i, "filePath"))
-      const a = names.indexOf(lastClicked), b = names.indexOf(p)
-      if (a >= 0 && b >= 0) for (let i = Math.min(a, b); i <= Math.max(a, b); i++) s[names[i]] = true
-    } else { for (const k in s) delete s[k]; s[p] = true }
-    selected = s; lastClicked = p
+    const toggle = mods & (Qt.ControlModifier | Qt.MetaModifier), range = mods & Qt.ShiftModifier
+    const s = toggle || range ? Object.assign({}, selected) : {}
+    const a = range && lastClicked ? (() => { for (let i = 0; i < content.n; i++) if (pathAt(i) === lastClicked) return i; return -1 })() : -1
+    if (a >= 0) {
+      let b = -1
+      for (let i = 0; i < content.n; i++) if (pathAt(i) === p) { b = i; break }
+      if (b < 0) s[p] = true
+      else for (let i = Math.min(a, b); i <= Math.max(a, b); i++) s[pathAt(i)] = true
+    } else if (toggle) { if (s[p]) delete s[p]; else s[p] = true }
+    else s[p] = true
+    selected = s
+    if (a < 0) lastClicked = p
   }
-  function selectAll() { const s = {}; for (let i = 0; i < win.entries; i++) s[folder.get(i, "filePath")] = true; selected = s }
+  function selectAll() { const s = {}; for (let i = 0; i < content.n; i++) s[pathAt(i)] = true; selected = s }
+  // A drag of the selection starts: the icons it shows.
+  function iconSrc(p) {
+    const name = p.split("/").pop(), dir = isDir(p)
+    return !dir && kindOf(name, false) === "image" ? "file://" + p : iconFor(p, name, dir)
+  }
+  function startDrag() {
+    dragging = selection.slice()
+    ghost.icons = dragging.slice(0, 3).map(iconSrc)
+    ghost.count = dragging.length
+  }
   function newFolder() {
     let n = "untitled folder", i = 2
     const names = {}; for (let j = 0; j < win.entries; j++) names[folder.get(j, "fileName")] = true
@@ -221,7 +241,8 @@ FloatingWindow {
     mp4: "video", mkv: "video", webm: "video", mov: "video", avi: "video",
     mp3: "audio", flac: "audio", ogg: "audio", wav: "audio", m4a: "audio", opus: "audio",
     pdf: "pdf", txt: "text", md: "text", log: "text", json: "code", js: "code", ts: "code", py: "code", sh: "code", rs: "code", go: "code", c: "code", cpp: "code", h: "code", qml: "code", lua: "code", html: "code", css: "code",
-    zip: "archive", tar: "archive", gz: "archive", xz: "archive", zst: "archive", "7z": "archive", rar: "archive",
+    zip: "archive", tar: "archive", gz: "archive", xz: "archive", zst: "archive", "7z": "archive", rar: "archive", tgz: "archive", bz2: "archive",
+    tbz2: "archive", txz: "archive", tzst: "archive", lz: "archive", lz4: "archive", lzma: "archive", cab: "archive", arj: "archive", lzh: "archive", cpio: "archive", "001": "archive",
     iso: "disc", img: "disc", deb: "package", AppImage: "package", doc: "document", docx: "document", odt: "document",
     xls: "sheet", xlsx: "sheet", ods: "sheet", ppt: "slides", pptx: "slides", odp: "slides"
   })
@@ -473,7 +494,7 @@ FloatingWindow {
       if (win.renaming) return
       if (ev.key === Qt.Key_Delete) win.trash()
       else if (ev.key === Qt.Key_F2 && win.selection.length === 1) win.renaming = win.selection[0]
-      else if (ev.key === Qt.Key_Return && win.selection.length) { win.selection.forEach(p => { const i = folder.indexOf("file://" + p); win.openItem(p, i >= 0 && folder.get(i, "fileIsDir")) }) }
+      else if (ev.key === Qt.Key_Return && win.selection.length) { win.selection.forEach(p => win.openItem(p, win.isDir(p))) }
       else if (c && s && ev.key === Qt.Key_N) win.newFolder()
       else if (c && ev.key === Qt.Key_N) app.openWindow(win.path)
       else if (c && ev.key === Qt.Key_W) win.closeMe()
@@ -499,12 +520,87 @@ FloatingWindow {
     }
 
     // Click on empty space: clear the selection; right-click: folder menu.
+    // In the icon view only the icon and its name count, not the rest of the cell.
     function hitAt(x, y) {
-      return win.view === "icons" ? grid.itemAt(x - grid.x + grid.contentX, y - grid.y + grid.contentY)
-                                  : list.itemAt(x - list.x + list.contentX, y - list.parent.y - list.y + list.contentY)
+      if (win.view !== "icons") return list.itemAt(x - list.x + list.contentX, y - list.parent.y - list.y + list.contentY)
+      const c = grid.itemAt(x - grid.x + grid.contentX, y - grid.y + grid.contentY)
+      if (!c || !c.hitBox) return c
+      return c.hitBox.contains(c.hitBox.mapFromItem(content, x, y)) ? c : null
     }
     // (not while a menu is open: a click on its buttons passes through to here)
-    TapHandler { enabled: !menu.visible; onTapped: ev => { if (!content.hitAt(ev.position.x, ev.position.y)) win.selected = ({}); content.forceActiveFocus() } }
+    TapHandler {
+      id: bgTap
+      enabled: !menu.visible
+      onTapped: ev => {
+        if (!content.hitAt(ev.position.x, ev.position.y) && !(bgTap.point.modifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier))) win.selected = ({})
+        content.forceActiveFocus()
+      }
+    }
+
+    // A drag on empty space draws a box; what it touches is selected
+    // (added to the selection with Ctrl, Super or Shift held).
+    readonly property real scrollY: win.view === "icons" ? grid.contentY : list.contentY
+    DragHandler {
+      id: band
+      target: null
+      enabled: !menu.visible && !win.renaming
+      property bool on: false
+      property real ax; property real ay           // where it started (ay scrolls with the files)
+      property real bx; property real by           // where the pointer is
+      property var base: ({})
+      onActiveChanged: {
+        if (!active) { on = false; return }
+        const pp = centroid.pressPosition
+        if (content.hitAt(pp.x, pp.y)) return
+        base = centroid.modifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier) ? Object.assign({}, win.selected) : ({})
+        ax = pp.x; ay = pp.y + content.scrollY
+        bx = centroid.position.x; by = centroid.position.y
+        on = true
+        content.forceActiveFocus()
+        content.bandSelect()
+      }
+      onCentroidChanged: if (on) { bx = centroid.position.x; by = centroid.position.y; content.bandSelect() }
+    }
+    onScrollYChanged: if (band.on) bandSelect()
+    function bandSelect() {
+      const sy = scrollY
+      const x1 = Math.min(band.ax, band.bx), x2 = Math.max(band.ax, band.bx)
+      const y1 = Math.min(band.ay, band.by + sy), y2 = Math.max(band.ay, band.by + sy)
+      const s = Object.assign({}, band.base)
+      if (win.view === "icons") {
+        const cw = grid.cellWidth, ch = grid.cellHeight, cols = Math.max(1, Math.floor(grid.width / cw))
+        const bw = win.iconSize + 12, bh = win.iconSize + 44
+        for (let i = 0; i < n; i++) {
+          const ix = grid.x + (i % cols) * cw + (cw - bw) / 2, iy = grid.y + Math.floor(i / cols) * ch + 4
+          if (ix < x2 && ix + bw > x1 && iy < y2 && iy + bh > y1) s[win.pathAt(i)] = true
+        }
+      } else {
+        const top = list.parent.y + list.y
+        if (x1 < list.width - 6 && x2 > 6)
+          for (let i = 0; i < n; i++) { const ry = top + i * 30; if (ry < y2 && ry + 30 > y1) s[win.pathAt(i)] = true }
+      }
+      win.selected = s
+    }
+    // Near the top or bottom edge, the files scroll under the box.
+    Timer {
+      interval: 16; repeat: true; running: band.on
+      onTriggered: {
+        const v = win.view === "icons" ? grid : list
+        const top = v.mapToItem(content, 0, 0).y, bot = top + v.height
+        const d = band.by < top + 10 ? -14 : (band.by > bot - 10 ? 14 : 0)
+        if (d) v.contentY = Math.max(0, Math.min(Math.max(0, v.contentHeight - v.height), v.contentY + d))
+      }
+    }
+    Rectangle {
+      visible: band.on
+      z: 20
+      x: Math.max(0, Math.min(band.ax, band.bx)); y: Math.max(0, Math.min(band.ay - content.scrollY, band.by))
+      width: Math.max(0, Math.min(content.width, Math.max(band.ax, band.bx)) - x)
+      height: Math.max(0, Math.min(content.height, Math.max(band.ay - content.scrollY, band.by)) - y)
+      radius: 3
+      color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
+      border.width: 1; border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.7)
+    }
     // Only on empty space: a file under the pointer opens its own menu.
     TapHandler {
       acceptedButtons: Qt.RightButton
@@ -583,19 +679,29 @@ FloatingWindow {
         }
         RenameField { visible: win.renaming === cell.f.path; anchors { horizontalCenter: parent.horizontalCenter; top: ib.bottom; topMargin: 2 } width: cell.width - 8; target: cell.f.path }
 
-        TapHandler { id: tap; enabled: !menu.visible; onTapped: ev => { win.select(cell.f.path, ev.modifiers); content.forceActiveFocus() }
-                     onDoubleTapped: win.openItem(cell.f.path, cell.f.dir) }
-        TapHandler { acceptedButtons: Qt.RightButton; onTapped: ev => { if (!cell.sel) win.select(cell.f.path, 0); const p = cell.mapToItem(content, ev.position.x, ev.position.y); menu.show(p.x, p.y, cell.f) } }
-        DragHandler {
-          id: dh
-          enabled: !menu.visible
-          target: null
-          grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
-          onActiveChanged: {
-            if (active) { if (!cell.sel) win.select(cell.f.path, 0); win.dragging = win.selection.slice(); ghost.icon = thumb.source; ghost.count = win.dragging.length }
-            else ghost.release()
+        // The icon and its name take clicks and drags; the rest of the cell is
+        // empty space, where a drag draws a selection box.
+        property alias hitBox: hitBox
+        Item {
+          id: hitBox
+          anchors.horizontalCenter: parent.horizontalCenter
+          y: ib.y
+          width: Math.max(ib.width, nameBg.width)
+          height: nameBg.y + nameBg.height + 2 - ib.y
+          TapHandler { id: tap; enabled: !menu.visible; onTapped: { win.select(cell.f.path, tap.point.modifiers); content.forceActiveFocus() }
+                       onDoubleTapped: win.openItem(cell.f.path, cell.f.dir) }
+          TapHandler { acceptedButtons: Qt.RightButton; onTapped: ev => { if (!cell.sel) win.select(cell.f.path, 0); const p = hitBox.mapToItem(content, ev.position.x, ev.position.y); menu.show(p.x, p.y, cell.f) } }
+          DragHandler {
+            id: dh
+            enabled: !menu.visible
+            target: null
+            grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
+            onActiveChanged: {
+              if (active) { if (!cell.sel) win.select(cell.f.path, 0); win.startDrag() }
+              else ghost.release()
+            }
+            onCentroidChanged: if (active) { const p = hitBox.mapToItem(content, centroid.position.x, centroid.position.y); ghost.x = p.x - ghost.width / 2; ghost.y = p.y - ghost.height / 2; ghost.track(p) }
           }
-          onCentroidChanged: if (active) { const p = cell.mapToItem(content, centroid.position.x, centroid.position.y); ghost.x = p.x - 32; ghost.y = p.y - 32; ghost.track(p) }
         }
         // Folders accept a drop.
         property bool hot: false
@@ -657,7 +763,7 @@ FloatingWindow {
             Txt { width: listHead.w * 0.12; text: lrow.f.dir ? "--" : win.sizeText(lrow.f.size); color: lrow.sel ? Qt.rgba(1, 1, 1, 0.85) : Theme.textDim; font.pixelSize: Theme.small }
             Txt { width: listHead.w * 0.13; text: lrow.f.dir ? "Folder" : win.kindOf(lrow.f.name, false).replace(/^./, c => c.toUpperCase()); color: lrow.sel ? Qt.rgba(1, 1, 1, 0.85) : Theme.textDim; font.pixelSize: Theme.small }
           }
-          TapHandler { enabled: !menu.visible; onTapped: ev => { win.select(lrow.f.path, ev.modifiers); content.forceActiveFocus() } onDoubleTapped: win.openItem(lrow.f.path, lrow.f.dir) }
+          TapHandler { id: ltap; enabled: !menu.visible; onTapped: { win.select(lrow.f.path, ltap.point.modifiers); content.forceActiveFocus() } onDoubleTapped: win.openItem(lrow.f.path, lrow.f.dir) }
           property bool hot: false
           function dropHere() { if (lrow.f.dir) win.moveInto(lrow.f.path) }
           border.color: hot && f.dir ? Theme.accent : "transparent"
@@ -667,10 +773,10 @@ FloatingWindow {
             target: null
             grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType
             onActiveChanged: {
-              if (active) { if (!lrow.sel) win.select(lrow.f.path, 0); win.dragging = win.selection.slice(); ghost.icon = win.iconFor(lrow.f.path, lrow.f.name, lrow.f.dir); ghost.count = win.dragging.length }
+              if (active) { if (!lrow.sel) win.select(lrow.f.path, 0); win.startDrag() }
               else ghost.release()
             }
-            onCentroidChanged: if (active) { const p = lrow.mapToItem(content, centroid.position.x, centroid.position.y); ghost.x = p.x - 32; ghost.y = p.y - 32; ghost.track(p) }
+            onCentroidChanged: if (active) { const p = lrow.mapToItem(content, centroid.position.x, centroid.position.y); ghost.x = p.x - ghost.width / 2; ghost.y = p.y - ghost.height / 2; ghost.track(p) }
           }
           TapHandler { acceptedButtons: Qt.RightButton; onTapped: ev => { if (!lrow.sel) win.select(lrow.f.path, 0); const p = lrow.mapToItem(content, ev.position.x, ev.position.y); menu.show(p.x, p.y, lrow.f) } }
         }
@@ -678,12 +784,10 @@ FloatingWindow {
     }
 
     // What you are dragging.
-    Item {
+    DragStack {
       id: ghost
       visible: win.dragging.length > 0
-      width: 64; height: 64
-      property url icon
-      property int count: 0
+      z: 30
       property var over: null
       // Let go: into the folder under the pointer, or onto a sidebar place.
       function release() {
@@ -703,33 +807,40 @@ FloatingWindow {
         over = c && c.f && c.f.dir && win.dragging.indexOf(c.f.path) < 0 ? c : null
         if (over) over.hot = true
       }
-      Image { anchors.fill: parent; source: ghost.icon; sourceSize: Qt.size(128, 128); opacity: 0.85 }
-      Rectangle {
-        visible: ghost.count > 1
-        anchors { right: parent.right; top: parent.top }
-        width: 22; height: 22; radius: 11; color: Theme.red
-        Txt { anchors.centerIn: parent; text: ghost.count; color: "#ffffff"; font.pixelSize: Theme.small - 1; font.weight: Font.Bold }
-      }
+      opacity: 0.9
       Drag.active: visible
-      Drag.hotSpot: Qt.point(32, 32)
+      Drag.hotSpot: Qt.point(width / 2, height / 2)
     }
     // The same files, dragged out to other apps (a system drag-and-drop).
+    // Its picture is the same small stack, grabbed at its own size: given an
+    // image file's path (or nothing), the drag showed the whole picture at
+    // full size, or the whole window.
     Item {
       id: outDrag
       property string uris: ""
+      property var shot: null          // keeps the grabbed picture alive during the drag
+      property bool starting: false
       function start() {
-        if (!win.dragging.length || Drag.active) return
+        if (!win.dragging.length || Drag.active || starting) return
         uris = win.dragging.map(f => "file://" + encodeURI(f)).join("\r\n") + "\r\n"
-        Drag.imageSource = ghost.icon
         if (ghost.over) ghost.over.hot = false
         ghost.over = null
         win.dragging = []
-        Drag.active = true
+        starting = true
+        const ok = dragPic.grabToImage(r => {
+          shot = r
+          Drag.imageSource = r.url
+          starting = false
+          Drag.active = true
+        }, Qt.size(dragPic.width, dragPic.height))
+        if (!ok) { starting = false; Drag.active = true }
       }
       Drag.dragType: Drag.Automatic
       Drag.supportedActions: Qt.CopyAction
       Drag.mimeData: ({ "text/uri-list": uris })
-      Drag.onDragFinished: Drag.active = false
+      Drag.hotSpot: Qt.point(dragPic.width / 2, dragPic.height / 2)
+      Drag.imageSourceSize: Qt.size(dragPic.width, dragPic.height)
+      Drag.onDragFinished: { Drag.active = false; shot = null }
     }
   }
 
@@ -888,6 +999,7 @@ FloatingWindow {
     property var target: null
     property var items: []
     property bool chooser: false
+    property point at: Qt.point(0, 0)   // where it opens, in the window
     // A click outside the menu closes it; clicks inside belong to the menu.
     // Closed a moment later, so the handlers under it (that see the same click) still find it open.
     property int stamp: 0
@@ -900,9 +1012,8 @@ FloatingWindow {
       target = f
       chooser = false
       const p = content.mapToItem(menu, x, y)
-      panel.x = Math.min(p.x, menu.width - panel.width - 10)
-      panel.y = Math.min(p.y, menu.height - 300)
-      items = f ? itemMenu(f) : folderMenu()
+      at = Qt.point(p.x, p.y)
+      items = (f ? itemMenu(f) : folderMenu()).filter(i => i)
       visible = true
       if (f && !f.dir) openWith.load(f.path)
     }
@@ -911,8 +1022,7 @@ FloatingWindow {
       target = null
       chooser = false
       const p = item.mapToItem(menu, x, y)
-      panel.x = Math.min(p.x, menu.width - panel.width - 10)
-      panel.y = Math.min(p.y, menu.height - 300)
+      at = Qt.point(p.x, p.y)
       items = list
       visible = true
     }
@@ -937,7 +1047,7 @@ FloatingWindow {
         { text: "Delete Immediately", action: () => win.trash() }
       ]
       return [
-        { text: "Open", action: () => win.selection.forEach(p => win.openItem(p, f.dir && p === f.path)) },
+        { text: "Open", action: () => win.selection.forEach(p => win.openItem(p, p === f.path ? f.dir : win.isDir(p))) },
         f.dir ? { text: "Open in New Window", action: () => app.openWindow(f.path) } : { text: "Open With…", submenu: true },
         { text: "Share…", enabled: !win.selection.some(p => p === f.path && f.dir), action: () => Quickshell.execDetached(["memora-shell", "share"].concat(win.selection)) },
         { separator: true },
@@ -947,7 +1057,11 @@ FloatingWindow {
         { text: "Copy", keys: "Ctrl C", action: () => win.copy(false) },
         { text: "Cut", keys: "Ctrl X", action: () => win.copy(true) },
         { text: "Duplicate", action: () => win.sh(win.freeName + "for f in " + win.selection.map(win.q).join(" ") + "; do cp -a -- \"$f\" \"$(free \"$(dirname -- \"$f\")\" \"$(basename -- \"$f\")\")\"; done") },
-        { text: "Compress", action: () => win.sh("cd " + win.q(win.path) + " && zip -rq " + win.q((many ? "Archive" : f.name) + ".zip") + " -- " + win.selection.map(p => win.q(p.split("/").pop())).join(" ")) },
+        // Archives (memora-archive) does the work: a zip at once, or the choices (7z, RAR, a password, parts).
+        { text: "Compress", action: () => Quickshell.execDetached([Theme.share + "/bin/memora-archive-tool", "create", win.path + "/" + (many ? "Archive" : f.name) + ".zip", "zip", "5"].concat(win.selection)) },
+        { text: "Compress…", action: () => Quickshell.execDetached(["memora-archive", "--compress"].concat(win.selection)) },
+        win.selection.every(p => win.kindOf(p.split("/").pop(), false) === "archive" && !win.isDir(p))
+          ? { text: "Extract Here", action: () => win.selection.forEach(p => Quickshell.execDetached([Theme.share + "/bin/memora-archive-tool", "extract", p, win.path])) } : null,
         { separator: true },
         { text: "Copy Path", action: () => Quickshell.execDetached(["bash", "-c", "printf %s \"$1\" | wl-copy", "_", win.selection.join("\n")]) },
         { text: "Ask Memora AI About This", action: () => Quickshell.execDetached(["memora-ai", "window", "Look at " + f.path + " and tell me briefly what it is."]) },
@@ -956,12 +1070,24 @@ FloatingWindow {
       ]
     }
 
+    // The menu is a little window of its own above Files, as on a Mac: the
+    // compositor frosts what is under it (Files itself included), which it
+    // can't do for anything drawn inside the window. It also keeps it on screen.
+    PopupWindow {
+      id: menuPop
+      visible: menu.visible
+      anchor.window: win
+      anchor.rect.x: menu.at.x; anchor.rect.y: menu.at.y
+      anchor.adjustment: PopupAdjustment.All
+      implicitWidth: panel.width; implicitHeight: panel.height
+      color: "transparent"
+
     Glass {
       id: panel
       width: menu.chooser ? 280 : 250
       height: (menu.chooser ? chooserCol.implicitHeight : itemsCol.implicitHeight) + 12
       radius: 12
-      fill: Theme.popover
+      fill: Theme.menuGlass
       scale: menu.visible ? 1 : 0.92
       opacity: menu.visible ? 1 : 0
       transformOrigin: Item.TopLeft
@@ -1036,6 +1162,7 @@ FloatingWindow {
         }
       }
     }
+    }
 
     QtObject {
       id: openWith
@@ -1067,6 +1194,38 @@ FloatingWindow {
   }
 
   // ---- small pieces
+  // What a drag of files looks like: the icon (or the picture, small), up to
+  // three stacked, with how many there are.
+  component DragStack: Item {
+    id: ds
+    property var icons: []
+    property int count: 0
+    width: 84; height: 84
+    Repeater {
+      model: ds.icons.slice(0, 3).reverse()        // the first one on top
+      delegate: Image {
+        required property var modelData
+        required property int index
+        readonly property int depth: Math.min(ds.icons.length, 3) - 1 - index
+        x: 10 + depth * 4; y: 10 - depth * 3
+        width: 64; height: 64
+        rotation: depth === 1 ? -7 : (depth === 2 ? 7 : 0)
+        source: modelData
+        sourceSize: Qt.size(128, 128)
+        fillMode: Image.PreserveAspectFit
+        smooth: true; mipmap: true
+      }
+    }
+    Rectangle {
+      visible: ds.count > 1
+      anchors { right: parent.right; top: parent.top; rightMargin: 2; topMargin: 2 }
+      width: Math.max(22, badge.implicitWidth + 12); height: 22; radius: 11; color: Theme.red
+      Txt { id: badge; anchors.centerIn: parent; text: ds.count; color: "#ffffff"; font.pixelSize: Theme.small - 1; font.weight: Font.Bold }
+    }
+  }
+  // The same, out of sight, for the system drag's picture (grabToImage).
+  DragStack { id: dragPic; x: -1000; y: -1000; icons: ghost.icons; count: ghost.count }
+
   component ToolBtn: Rectangle {
     id: tb
     property string sym
