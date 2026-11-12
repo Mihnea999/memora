@@ -1,2 +1,4 @@
 module qs.wallpaper
 Wallpaper 1.0 Wallpaper.qml
+DesktopIcons 1.0 DesktopIcons.qml
+

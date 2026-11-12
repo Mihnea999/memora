@@ -13,3 +13,4 @@ singleton Frames 1.0 Frames.qml
 singleton Input 1.0 Input.qml
 singleton GlassSync 1.0 GlassSync.qml
 singleton CalData 1.0 CalData.qml
+singleton Folders 1.0 Folders.qml

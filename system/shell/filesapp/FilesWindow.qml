@@ -178,13 +178,16 @@ FloatingWindow {
     renaming = ""
     if (!name || name === p.split("/").pop() || name.indexOf("/") >= 0) return
     const to = p.substring(0, p.lastIndexOf("/") + 1) + name
-    sh("mv -n -- " + q(p) + " " + q(to), () => selected = ({ [to]: true }))
+    sh("mv -n -- " + q(p) + " " + q(to), () => { selected = ({ [to]: true }); Folders.moved(p, to) })
   }
   function moveInto(dir) {
     if (!dragging.length || dragging.indexOf(dir) >= 0) return
-    sh((dir === trashDir ? "gio trash -- " : "mv -n -- ") + dragging.map(q).join(" ") + (dir === trashDir ? " && setsid -f memora-sound trash >/dev/null 2>&1" : " " + q(dir + "/")))
+    const moving = dragging.slice()
+    sh((dir === trashDir ? "gio trash -- " : "mv -n -- ") + moving.map(q).join(" ") + (dir === trashDir ? " && setsid -f memora-sound trash >/dev/null 2>&1" : " " + q(dir + "/")),
+      () => { if (dir !== trashDir) moving.forEach(m => Folders.moved(m, dir + "/" + m.split("/").pop())) })
   }
   property var dragging: []
+  property string styling: ""                  // the folder whose colour & symbol is being picked
 
   Component { id: runner; Process {
     property string cmd
@@ -235,35 +238,9 @@ FloatingWindow {
   Process { id: df; command: ["bash", "-c", "df -h --output=avail \"$1\" | tail -1", "_", win.path]; stdout: StdioCollector { onStreamFinished: win.free = text.trim() } }
   onPathChanged: { sideOpen = false; df.running = true }
 
-  // ---- icons for files
-  readonly property var kinds: ({
-    png: "image", jpg: "image", jpeg: "image", webp: "image", gif: "image", bmp: "image", svg: "image", heic: "image",
-    mp4: "video", mkv: "video", webm: "video", mov: "video", avi: "video",
-    mp3: "audio", flac: "audio", ogg: "audio", wav: "audio", m4a: "audio", opus: "audio",
-    pdf: "pdf", txt: "text", md: "text", log: "text", json: "code", js: "code", ts: "code", py: "code", sh: "code", rs: "code", go: "code", c: "code", cpp: "code", h: "code", qml: "code", lua: "code", html: "code", css: "code",
-    zip: "archive", tar: "archive", gz: "archive", xz: "archive", zst: "archive", "7z": "archive", rar: "archive", tgz: "archive", bz2: "archive",
-    tbz2: "archive", txz: "archive", tzst: "archive", lz: "archive", lz4: "archive", lzma: "archive", cab: "archive", arj: "archive", lzh: "archive", cpio: "archive", "001": "archive",
-    iso: "disc", img: "disc", deb: "package", AppImage: "package", doc: "document", docx: "document", odt: "document",
-    xls: "sheet", xlsx: "sheet", ods: "sheet", ppt: "slides", pptx: "slides", odp: "slides"
-  })
-  function kindOf(name, isDir) {
-    if (isDir) return "folder"
-    const ext = name.indexOf(".") > 0 ? name.split(".").pop() : ""
-    return kinds[ext] || kinds[ext.toLowerCase()] || "file"
-  }
-  function iconFor(p, name, isDir) {
-    if (isDir) {
-      const special = { Desktop: "user-desktop", Documents: "folder-documents", Downloads: "folder-download", Music: "folder-music",
-        Pictures: "folder-pictures", Videos: "folder-videos", Projects: "folder-projects", Public: "folder-publicshare", Templates: "folder-templates" }
-      const parent = p.substring(0, p.lastIndexOf("/"))
-      return Quickshell.iconPath(parent === app.home && special[name] ? special[name] : "folder")
-    }
-    const k = kindOf(name, false)
-    const map = { video: "video-x-generic", audio: "audio-x-generic", pdf: "application-pdf", text: "text-x-generic", code: "text-x-script",
-      archive: "package-x-generic", disc: "media-optical", package: "package-x-generic", document: "x-office-document", sheet: "x-office-spreadsheet",
-      slides: "x-office-presentation", file: "text-x-generic" }
-    return Quickshell.iconPath(map[k] || "text-x-generic", "text-x-generic")
-  }
+  // ---- icons for files (shared with the desktop; a folder's own colour and symbol too)
+  function kindOf(name, isDir) { return Folders.kindOf(name, isDir) }
+  function iconFor(p, name, isDir) { return Folders.iconFor(p, name, isDir) }
   function sizeText(b) {
     if (b < 1000) return b + " bytes"
     if (b < 1e6) return (b / 1e3).toFixed(0) + " KB"
@@ -1052,6 +1029,7 @@ FloatingWindow {
         { text: "Share…", enabled: !win.selection.some(p => p === f.path && f.dir), action: () => Quickshell.execDetached(["memora-shell", "share"].concat(win.selection)) },
         { separator: true },
         { text: "Get Info", keys: "Ctrl I", action: () => info.show(f.path) },
+        f.dir && !many ? { text: "Colour & Symbol…", action: () => win.styling = f.path } : null,
         { separator: true },
         { text: "Rename", keys: "F2", enabled: !many, action: () => win.renaming = f.path },
         { text: "Copy", keys: "Ctrl C", action: () => win.copy(false) },
@@ -1274,6 +1252,23 @@ FloatingWindow {
     }
   }
   ConfirmSheet { id: confirm }
+
+  // Colour & Symbol for a folder, over the window.
+  Rectangle {
+    anchors.fill: parent
+    visible: win.styling !== ""
+    color: Qt.rgba(0, 0, 0, Theme.dark ? 0.35 : 0.18)
+    z: 50
+    TapHandler { onTapped: win.styling = "" }
+    FolderStyler {
+      anchors.centerIn: parent
+      path: win.styling
+      onDone: win.styling = ""
+      TapHandler {}   // taps on the card stay on it
+    }
+    onVisibleChanged: if (visible) forceActiveFocus()
+    Keys.onEscapePressed: win.styling = ""
+  }
 
   // An encrypted drive's passphrase, asked once; "Remember" keeps it in the
   // Keyring and opens the drive at every login.

@@ -15,8 +15,9 @@ PanelWindow {
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.layer: WlrLayer.Background
   WlrLayershell.namespace: "memora-wallpaper"
-  // Keys only while the desktop menu is open (Escape closes it).
-  WlrLayershell.keyboardFocus: menuOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+  // Keys while the desktop menu is open (Escape closes it) or an icon is selected / being styled.
+  readonly property bool wantKeys: menuOpen || (icons && icons.visible && (icons.selection.length > 0 || icons.typing))
+  WlrLayershell.keyboardFocus: wantKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
   color: "black"
 
   property string file: Theme.wallpaper
@@ -41,22 +42,82 @@ PanelWindow {
     brightness: Theme.dark ? -0.04 : 0.0
   }
 
-  // Widgets, and the desktop's own menu (right-click on empty space).
-  Widgets { id: widgets; visible: w.modelData === Quickshell.screens[0]; backdrop: frosted }
+  // Icons on the primary desktop (~/Desktop), widgets, and the desktop menu.
+  DesktopIcons {
+    id: icons
+    visible: Quickshell.screens.length > 0 && w.modelData === Quickshell.screens[0]
+    screen: w.screen
+    widgets: widgets
+    backdrop: frosted
+  }
+  Widgets { id: widgets; visible: Quickshell.screens.length > 0 && w.modelData === Quickshell.screens[0]; backdrop: frosted }
+
   property point menuAt: Qt.point(-1, -1)
   readonly property bool menuOpen: menuAt.x >= 0
   function closeMenu() { menuAt = Qt.point(-1, -1) }
+
+  property var menuList: [
+    { text: "Edit Widgets…", action: () => widgets.editing = true },
+    { separator: true },
+    { text: "Change Wallpaper…", action: () => Apps.run("memora-settings wallpaper") },
+    { text: "Display Settings…", action: () => Apps.run("memora-settings displays") }
+  ]
+  function menuItems(x, y) {
+    if (icons && icons.visible) {
+      const im = icons.menuAt(x, y)
+      if (im) return im
+      return icons.deskItems(x, y).concat([
+        { text: "Edit Widgets…", action: () => widgets.editing = true },
+        { separator: true },
+        { text: "Change Wallpaper…", action: () => Apps.run("memora-settings wallpaper") },
+        { text: "Display Settings…", action: () => Apps.run("memora-settings displays") }
+      ])
+    }
+    return [
+      { text: "Edit Widgets…", action: () => widgets.editing = true },
+      { separator: true },
+      { text: "Change Wallpaper…", action: () => Apps.run("memora-settings wallpaper") },
+      { text: "Display Settings…", action: () => Apps.run("memora-settings displays") }
+    ]
+  }
+
   TapHandler {
     acceptedButtons: Qt.RightButton
     // One menu at a time: the bar's and the Dock's close first.
-    onTapped: ev => { if (Shell.open !== "") Shell.close(); else Shell.closing(); w.menuAt = ev.position }
+    onTapped: ev => {
+      if (Shell.open !== "") Shell.close(); else Shell.closing()
+      if (icons && icons.styling !== "") icons.styling = ""
+      w.menuList = w.menuItems(ev.position.x, ev.position.y)
+      w.menuAt = ev.position
+    }
   }
-  TapHandler { onTapped: w.closeMenu() }
+  TapHandler {
+    id: deskTap
+    onTapped: ev => {
+      w.closeMenu()
+      if (icons && icons.visible) {
+        if (icons.styling !== "") icons.styling = ""
+        icons.tapped(ev.position.x, ev.position.y, deskTap.point.modifiers, 1)
+      }
+    }
+    onDoubleTapped: ev => {
+      w.closeMenu()
+      if (icons && icons.visible) {
+        icons.tapped(ev.position.x, ev.position.y, deskTap.point.modifiers, 2)
+      }
+    }
+  }
   // It goes away as soon as the desktop loses the focus: a click anywhere else
   // (a window, the bar, the Dock), a window taking the focus, another desktop,
   // another menu, Escape.
   OutsideClick { when: w.menuOpen; windows: [w]; onOutside: w.closeMenu() }
-  Connections { target: Shell; function onClosing() { w.closeMenu() } function onOpenChanged() { if (Shell.open !== "") w.closeMenu() } }
+  OutsideClick { when: icons && icons.visible && icons.styling !== ""; windows: [w]; onOutside: icons.styling = "" }
+  OutsideClick { when: icons && icons.visible && icons.renaming !== ""; windows: [w]; onOutside: icons.commitRename() }
+  Connections {
+    target: Shell
+    function onClosing() { w.closeMenu(); if (icons) icons.styling = "" }
+    function onOpenChanged() { if (Shell.open !== "") { w.closeMenu(); if (icons) icons.styling = "" } }
+  }
   Item { focus: w.menuOpen; Keys.onEscapePressed: w.closeMenu() }
   MenuPanel {
     id: deskMenu
@@ -65,15 +126,10 @@ PanelWindow {
     solid: false
     backdrop: frosted
     backdropRect: Qt.rect(deskMenu.x, deskMenu.y, deskMenu.width, deskMenu.height)
-    x: Math.min(w.menuAt.x, w.width - width - 8); y: Math.min(w.menuAt.y, w.height - height - 8)
+    x: Math.max(8, Math.min(w.menuAt.x, w.width - width - 8)); y: Math.max(8, Math.min(w.menuAt.y, w.height - height - 8))
     width: implicitWidth; height: implicitHeight
-    items: [
-      { text: "Edit Widgets…", action: () => widgets.editing = true },
-      { separator: true },
-      { text: "Change Wallpaper…", action: () => Apps.run("memora-settings wallpaper") },
-      { text: "Display Settings…", action: () => Apps.run("memora-settings displays") }
-    ]
-    onPicked: item => { const run = item.action; w.closeMenu(); Qt.callLater(run) }
+    items: w.menuList
+    onPicked: item => { const run = item.action; w.closeMenu(); if (run) Qt.callLater(run) }
   }
 
   Component.onCompleted: a.source = "file://" + file
