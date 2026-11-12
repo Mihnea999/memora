@@ -5,5 +5,8 @@ test/*.log
 test/*.sock
 test/*.png
 test/*.ppm
-test/share/
+test/share/*
+!test/share/dev-init.sh
+!test/share/dev-setup.sh
+!test/share/shell-restart.sh
 __pycache__/

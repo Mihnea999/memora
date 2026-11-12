@@ -28,6 +28,33 @@ RES=1366x768 test/vm.sh run   # another screen size (2560x1080, 1080x1920…)
 VM=dev test/vm.sh install && VM=dev test/vm.sh dev   # second disk that runs system/ live from this checkout
 ```
 
+### Logs in the dev VM
+
+The dev VM writes what happens inside it to `test/share/logs/` on the host, from the moment you log
+in, with nothing to start by hand:
+
+| File | What is in it |
+|---|---|
+| `journal.log` | the whole boot's journal, system and session, to the millisecond |
+| `shell.log` | the shell's own output: QML errors, warnings, `console.log` |
+| `hyprland.log` | Hyprland's log |
+| `events.log` | Hyprland events (windows opening and closing, focus, workspaces), timestamped |
+| `dev.log` | when the dev helpers came up |
+| `prev/` | the same files from the previous boot |
+
+The same login also starts a command loop (a file written to `test/share/cmd` runs in the session,
+its output goes to `test/share/cmd.out`) and a `ydotoold` on `/tmp/.ydotool_socket` for pointer
+tests. Restart the shell with `bash /mnt/share/shell-restart.sh` so it keeps logging.
+
+This lives in `test/share/dev-init.sh` (edit it on the host; it runs at the next login). A new dev
+disk needs it hooked up once, in the VM's terminal:
+
+```bash
+echo memora | sudo -S mount -t 9p -o trans=virtio,version=9p2000.L share /mnt/share; bash /mnt/share/dev-setup.sh
+```
+
+It only touches the dev disk (`~/.config/hypr/user.lua`, `~/.local/bin/memora-dev-boot`), never the ISO.
+
 ## Working on Memora (also for AI agents)
 
 A change is finished only when it has been tried on the real desktop and handed over as a new image:
