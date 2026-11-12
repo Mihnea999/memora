@@ -58,6 +58,7 @@ login_sync() { # [PICTURE]
     fi
     chmod 644 "$tmp" && mv -f "$tmp" "$dir/wallpaper"
     (umask 077; printf '%s %s\n' "$src" "$(stat -c %Y -- "$src")" > "$dir/source")
+    "${MEMORA_PATH:-/usr/share/memora}/bin/memora-login-frame" pre-cache "${USER:-$(id -un)}" "$dir/wallpaper" 2>/dev/null || true
   fi
 }
 

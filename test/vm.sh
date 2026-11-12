@@ -55,7 +55,7 @@ case "${1:-}" in
     grep -q MEMORA_INSTALL_OK "${pre}install.log" && echo "INSTALL OK" || { echo "INSTALL FAILED, see test/install.log"; exit 1; }
     ;;
   boot)  # headless; with VM=dev it also runs system/ live from this checkout
-    share=(); [[ $name == dev && ${LIVE:-1} == 1 ]] && share=("${live[@]}")
+    share=(); [[ ($name == dev || $name == lt) && ${LIVE:-1} == 1 ]] && share=("${live[@]}")
     qemu-system-x86_64 "${common[@]}" "${audio[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2" -device virtio-blk-pci,drive=hd,bootindex=0 \
       ${GPU:--device virtio-vga-gl,xres=$xres,yres=$yres -display egl-headless,rendernode=/dev/dri/renderD128} \
       -vnc ":${VNC:-5}" -serial "file:${pre}boot.log" &
@@ -87,7 +87,7 @@ case "${1:-}" in
     # GPU-accelerated window (virgl). "dev" also shares the source tree: the VM then
     # runs system/ live from this checkout, and test/share is writable inside it.
     [[ -f $disk ]] || { echo "No installed disk. Run: test/vm.sh install"; exit 1; }
-    share=(); [[ $1 == dev ]] && share=("${live[@]}")
+    share=(); [[ $name == dev || $name == lt || $1 == dev ]] && share=("${live[@]}")
     qemu-system-x86_64 "${common[@]}" "${audio[@]}" "${share[@]}" -drive "file=$disk,if=none,id=hd,format=qcow2,cache=unsafe,aio=io_uring" -device virtio-blk-pci,drive=hd,bootindex=0 \
       -device virtio-vga-gl,hostmem=1G,blob=true,xres=$xres,yres=$yres -object memory-backend-memfd,id=mem,size=8G,share=on -machine memory-backend=mem \
       -display sdl,gl=on -serial "file:${pre}boot.log" ;;
