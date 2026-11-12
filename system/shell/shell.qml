@@ -102,12 +102,26 @@ ShellRoot {
   Timer { id: dockDown; interval: 1; onTriggered: { root.dockUp = false; dockBack.restart() } }
   Timer { id: dockBack; interval: 60; onTriggered: root.dockUp = true }
   Variants { model: root.dockUp ? Quickshell.screens : []; Dock {} }
-  Variants { model: Quickshell.screens; Launchpad {} }
-  Variants { model: Quickshell.screens; Spotlight {} }
-  Variants { model: Quickshell.screens; ControlCenter {} }
-  Variants { model: Quickshell.screens; NotificationCenter {} }
-  Variants { model: Quickshell.screens; Banners {} }
-  Variants { model: Quickshell.screens; OsdView {} }
+  // Overlays deferred slightly so wallpaper, menu bar and dock render instantly on login.
+  // Activated immediately if any overlay or menu is opened before the timer triggers.
+  property bool overlaysReady: false
+  Timer {
+    id: deferOverlays
+    interval: 350
+    running: true
+    onTriggered: root.overlaysReady = true
+  }
+  Connections {
+    target: Shell
+    function onOpenChanged() { if (Shell.open !== "") root.overlaysReady = true }
+  }
+
+  Variants { model: root.overlaysReady ? Quickshell.screens : []; Launchpad {} }
+  Variants { model: root.overlaysReady ? Quickshell.screens : []; Spotlight {} }
+  Variants { model: root.overlaysReady ? Quickshell.screens : []; ControlCenter {} }
+  Variants { model: root.overlaysReady ? Quickshell.screens : []; NotificationCenter {} }
+  Variants { model: root.overlaysReady ? Quickshell.screens : []; Banners {} }
+  Variants { model: root.overlaysReady ? Quickshell.screens : []; OsdView {} }
   PolkitDialog {}
   Switcher {}
   ShortcutSheet {}

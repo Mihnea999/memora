@@ -48,6 +48,16 @@ cmd_save() {
     read -r w h < <(detect_res)
   fi
 
+  # Instant path: if current system frame already exists and matches resolution, refresh touch and done
+  if [[ -f "$FRAME" && -f "$SIZE" ]]; then
+    local cur_w cur_h
+    read -r cur_w cur_h < "$SIZE" 2>/dev/null || true
+    if [[ "$cur_w" == "$w" && "$cur_h" == "$h" ]]; then
+      touch "$FRAME" 2>/dev/null || true
+      exit 0
+    fi
+  fi
+
   local user_dir="$LOOK/$user"
   # Fast path: check if user's pre-cached login-frame exists and matches resolution
   if [[ -f "$user_dir/login-frame" && -f "$user_dir/login-frame.size" ]]; then
@@ -100,6 +110,15 @@ cmd_pre_cache() {
   local src
   src="$(resolve_wall "$user" "$wall")"
   [[ -n $src && -f $src ]] || exit 0
+
+  # Skip if already cached for this resolution and newer than source
+  if [[ -f "$user_dir/login-frame" && -f "$user_dir/login-frame.size" ]]; then
+    local cw ch
+    read -r cw ch < "$user_dir/login-frame.size" 2>/dev/null || true
+    if [[ "$cw" == "$w" && "$ch" == "$h" && "$user_dir/login-frame" -nt "$src" ]]; then
+      exit 0
+    fi
+  fi
 
   command -v magick >/dev/null || exit 0
   local ftmp="$user_dir/.frame.tmp" stmp="$user_dir/.size.tmp"

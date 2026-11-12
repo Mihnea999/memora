@@ -292,6 +292,11 @@ HOOK
 # fastfetch shows Memora, not the Arch logo.
 install -Dm644 $MEMORA_PATH/fastfetch/config.jsonc /etc/xdg/fastfetch/config.jsonc
 
+# Pre-cache default login frame for instant transition from first boot
+mkdir -p /var/lib/memora
+bash $MEMORA_PATH/bin/memora-login-frame save root $MEMORA_PATH/wallpapers/candy-dark.jpg 1920 1080 2>/dev/null || true
+chmod 644 /var/lib/memora/login-frame* 2>/dev/null || true
+
 # Browser: no first-run screens, passwords in the keyring, native Wayland.
 mkdir -p /etc/chromium/policies/managed
 cat > /etc/chromium/policies/managed/memora.json <<'JSON'

@@ -40,6 +40,13 @@ ShellRoot {
     }
   }
 
+  property bool launched: false
+  function doLaunch() {
+    if (launched) return
+    launched = true
+    Greetd.launch(g.session)
+  }
+
   function prepareFrame() {
     const s = Quickshell.screens[0]
     const w = s ? s.width : 1920
@@ -51,16 +58,13 @@ ShellRoot {
   }
   Process {
     id: frameProc
-    onExited: if (view.leaving && !launchTimer.running) Greetd.launch(g.session)
   }
 
   Timer {
     id: launchTimer
     interval: 160
     repeat: false
-    onTriggered: {
-      if (!frameProc.running) Greetd.launch(g.session)
-    }
+    onTriggered: g.doLaunch()
   }
 
   // People who can log in, and who logged in last.
