@@ -99,17 +99,99 @@ Item {
     }
     if (changed) save(l)
   }
-  property var ghost: null       // { c, r, span } while dragging
-  function dropCell(i, x, y) {
-    const span = spanOf(layout[i])
-    return nearest(Math.round((x - ox) / step), Math.round((y - oy) / step), span, i, rowSpanOf(layout[i]))
+  // ---- moving a widget -----------------------------------------------------------
+  // Dropped on a free spot it goes there; dropped on other widgets they trade places:
+  // two smalls under a medium move as one into the spot it leaves, a small dropped on
+  // a medium swaps with it, and so on. What the drop would do shows while dragging.
+  property var ghost: null       // { c, r, span, rspan } while dragging
+  property var preview: null     // the layout the drop would make, while dragging
+  function rectsOf(l) { return l.map(o => { const k = cellOf(o); return { c: k.c, r: k.r, w: spanOf(o), h: rowSpanOf(o) } }) }
+  function hits(a, b) { return a.r < b.r + b.h && a.r + a.h > b.r && a.c < b.c + b.w && a.c + a.w > b.c }
+  function inside(a) { return a.c >= 0 && a.r >= 0 && a.c + a.w <= cols && a.r + a.h <= rows }
+  function sound(rs) {
+    for (let a = 0; a < rs.length; a++) {
+      if (!inside(rs[a])) return false
+      for (let b = a + 1; b < rs.length; b++) if (hits(rs[a], rs[b])) return false
+    }
+    return true
+  }
+  // The nearest spot for a w×h widget to (c, r) that none of `rs` covers.
+  function nearestIn(rs, w, h, c, r) {
+    let best = null, bd = 1e9
+    for (let rr = 0; rr + h <= rows; rr++) for (let cc = 0; cc + w <= cols; cc++) {
+      const a = { c: cc, r: rr, w: w, h: h }
+      if (rs.some(o => o && hits(o, a))) continue
+      const d = (cc - c) * (cc - c) + (rr - r) * (rr - r)
+      if (d < bd) { bd = d; best = a }
+    }
+    return best
+  }
+  function plan(i, x, y) {
+    const rs = rectsOf(layout), me = rs[i]
+    if (!me) return null
+    const at = { c: Math.max(0, Math.min(cols - me.w, Math.round((x - ox) / step))),
+                 r: Math.max(0, Math.min(rows - me.h, Math.round((y - oy) / step))), w: me.w, h: me.h }
+    const hit = []
+    rs.forEach((o, j) => { if (j !== i && hits(o, at)) hit.push(j) })
+    const tries = []
+    const t0 = {}; t0[i] = at; tries.push(t0)
+    if (hit.length) {
+      // What it lands on moves, as one, into the spot it leaves.
+      const dc = me.c - at.c, dr = me.r - at.r, t1 = {}
+      t1[i] = at; hit.forEach(j => t1[j] = { c: rs[j].c + dc, r: rs[j].r + dr, w: rs[j].w, h: rs[j].h }); tries.push(t1)
+      if (hit.length === 1) {
+        const o = rs[hit[0]]
+        // Side by side ([small][medium]): each takes the other's end of the pair.
+        const u = { c: Math.min(me.c, o.c), r: Math.min(me.r, o.r) }
+        u.w = Math.max(me.c + me.w, o.c + o.w) - u.c; u.h = Math.max(me.r + me.h, o.r + o.h) - u.r
+        const t2 = {}
+        if (u.w * u.h === me.w * me.h + o.w * o.h) {
+          t2[i] = { c: 2 * u.c + u.w - me.c - me.w, r: 2 * u.r + u.h - me.r - me.h, w: me.w, h: me.h }
+          t2[hit[0]] = { c: 2 * u.c + u.w - o.c - o.w, r: 2 * u.r + u.h - o.r - o.h, w: o.w, h: o.h }
+          tries.push(t2)
+        }
+        // Apart: top-left corners swapped.
+        const t3 = {}; t3[i] = { c: o.c, r: o.r, w: me.w, h: me.h }; t3[hit[0]] = { c: me.c, r: me.r, w: o.w, h: o.h }; tries.push(t3)
+      }
+    }
+    let out = null
+    for (const t of tries) {
+      const nr = rs.map((o, j) => t[j] || o)
+      if (sound(nr)) { out = nr; break }
+    }
+    // Else the ones under it go to the free spots nearest the one it leaves, biggest first…
+    if (!out && hit.length) {
+      const nr = rs.slice(); nr[i] = at
+      hit.forEach(j => nr[j] = null)
+      const order = hit.slice().sort((a, b) => rs[b].w * rs[b].h - rs[a].w * rs[a].h)
+      let ok = true
+      for (const j of order) {
+        const k = nearestIn(nr, rs[j].w, rs[j].h, me.c, me.r)
+        if (!k) { ok = false; break }
+        nr[j] = k
+      }
+      if (ok && sound(nr)) out = nr
+    }
+    // …or, if there is no room for that, it goes to the free spot nearest the drop.
+    if (!out) {
+      const nr = rs.slice(); nr[i] = null
+      const k = nearestIn(nr, me.w, me.h, at.c, at.r)
+      if (!k) return null
+      nr[i] = k; out = nr
+    }
+    return layout.map((o, j) => out[j].c === rs[j].c && out[j].r === rs[j].r ? o
+      : Object.assign({}, o, { x: ox + out[j].c * step, y: oy + out[j].r * step }))
+  }
+  function dragTo(i, x, y) {
+    const p = plan(i, x, y)
+    preview = p
+    ghost = p ? { c: cellOf(p[i]).c, r: cellOf(p[i]).r, span: spanOf(p[i]), rspan: rowSpanOf(p[i]) } : null
   }
   function move(i, x, y) {
-    const k = dropCell(i, x, y)
-    const l = layout.slice()
-    if (k) l[i] = Object.assign({}, l[i], { x: ox + k.c * step, y: oy + k.r * step })
+    const p = plan(i, x, y)
     ghost = null
-    save(l)
+    preview = null
+    if (p) save(p)
   }
   function remove(i) { const l = layout.slice(); l.splice(i, 1); save(l) }
   // New entries (written by Memora AI) have no place yet: give each a free one.
@@ -370,7 +452,10 @@ Item {
       required property int index
       readonly property bool medium: modelData.size === "medium" || modelData.size === "large"
       readonly property bool tall: modelData.size === "large"
-      x: modelData.x; y: modelData.y
+      // Where it is: under the pointer while dragged, else where the drop being dragged
+      // would put it, else its place. Never set by hand, so it always follows the layout.
+      x: drag.active ? modelData.x + drag.activeTranslation.x : root.preview && root.preview[index] ? root.preview[index].x : modelData.x
+      y: drag.active ? modelData.y + drag.activeTranslation.y : root.preview && root.preview[index] ? root.preview[index].y : modelData.y
       width: medium ? 2 * root.unit + root.gap : root.unit
       height: tall ? 2 * root.unit + root.gap : root.unit
       // Appear softly, one after another.
@@ -427,8 +512,14 @@ Item {
       DragHandler {
         id: drag
         enabled: root.editing
-        onActiveChanged: if (!active) root.move(w.index, w.x, w.y)
-        onTranslationChanged: if (active) { const k = root.dropCell(w.index, w.x, w.y); root.ghost = k ? { c: k.c, r: k.r, span: root.spanOf(w.modelData), rspan: root.rowSpanOf(w.modelData) } : null }
+        target: null
+        property real lx: 0
+        property real ly: 0
+        onActiveChanged: if (!active) root.move(w.index, lx, ly)
+        onActiveTranslationChanged: if (active) {
+          lx = w.modelData.x + activeTranslation.x; ly = w.modelData.y + activeTranslation.y
+          root.dragTo(w.index, lx, ly)
+        }
       }
       z: drag.active ? 10 : 0
       TapHandler {
