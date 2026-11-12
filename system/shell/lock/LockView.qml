@@ -16,6 +16,7 @@ Item {
   property bool error: false
   property bool busy: false
   property bool showPower: false
+  property bool leaving: false
   property var users: []                  // login screen: [{ name, full }]
   // The desktop picture behind: yours (the login screen passes the one you chose).
   property string wallpaper: Theme.wallpaper
@@ -38,14 +39,20 @@ Item {
     sourceSize: Qt.size(1920, 1200)
     layer.enabled: true
     layer.effect: MultiEffect {
-      blurEnabled: true
-      blur: 0.55
+      blurEnabled: !v.leaving || blur > 0.01
+      blur: v.leaving ? 0 : 0.55
       blurMax: 40
       saturation: 0.1
       brightness: Theme.dark ? -0.08 : 0.04
+      Behavior on blur { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
     }
   }
-  Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, Theme.dark ? 0.18 : 0.06) }
+  Rectangle {
+    anchors.fill: parent
+    color: Qt.rgba(0, 0, 0, Theme.dark ? 0.18 : 0.06)
+    opacity: v.leaving ? 0 : 1
+    Behavior on opacity { NumberAnimation { duration: 180 } }
+  }
 
   SystemClock { id: clock; precision: SystemClock.Seconds }
 
@@ -81,15 +88,21 @@ Item {
   Behavior on ink2 { ColorAnimation { duration: Theme.normal } }
 
   // The veils: soft bands, strongest where the text is, gone at their edges.
-  Rectangle {
-    anchors { left: parent.left; right: parent.right; top: parent.top }
-    height: parent.height * 0.42
-    gradient: Gradient {
-      GradientStop { position: 0; color: v.veil(v.topBright, 0.10) }
-      GradientStop { position: 0.45; color: v.veil(v.topBright, 0.24) }
-      GradientStop { position: 1; color: v.veil(v.topBright, 0) }
+  Item {
+    id: controls
+    anchors.fill: parent
+    opacity: v.leaving ? 0 : 1
+    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+    Rectangle {
+      anchors { left: parent.left; right: parent.right; top: parent.top }
+      height: parent.height * 0.42
+      gradient: Gradient {
+        GradientStop { position: 0; color: v.veil(v.topBright, 0.10) }
+        GradientStop { position: 0.45; color: v.veil(v.topBright, 0.24) }
+        GradientStop { position: 1; color: v.veil(v.topBright, 0) }
+      }
     }
-  }
   Rectangle {
     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
     height: parent.height * 0.5
@@ -215,6 +228,7 @@ Item {
       }
     }
   }
+}
 
   component Avatar: Rectangle {
     property real size: 64

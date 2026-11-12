@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# memora-login-frame: save USER [WALLPAPER] [WIDTH] [HEIGHT]
+#                     pre-cache USER [WALLPAPER] [WIDTH] [HEIGHT]
+#                     touch
+# Prepares or updates /var/lib/memora/login-frame (raw XRGB8888 pixels)
+# and /var/lib/memora/login-frame.size for the Hyprland splash plugin.
+set -euo pipefail
+
+FRAME="/var/lib/memora/login-frame"
+SIZE="/var/lib/memora/login-frame.size"
+LOOK="/var/lib/memora/look"
+
+detect_res() {
+  local res
+  res="$(cat /sys/class/drm/*/modes 2>/dev/null | head -1 || true)"
+  local w="${res%x*}" h="${res#*x}"
+  if [[ -n $w && -n $h && $w =~ ^[0-9]+$ && $h =~ ^[0-9]+$ && $w -ge 64 && $h -ge 64 ]]; then
+    echo "$w $h"
+  else
+    echo "1920 1080"
+  fi
+}
+
+resolve_wall() {
+  local user="${1:-}" wall="${2:-}"
+  if [[ -n $wall && -f $wall && -r $wall ]]; then
+    echo "$wall"
+    return 0
+  fi
+  if [[ -n $user && -f "$LOOK/$user/wallpaper" && -r "$LOOK/$user/wallpaper" ]]; then
+    echo "$LOOK/$user/wallpaper"
+    return 0
+  fi
+  local def="${MEMORA_PATH:-/usr/share/memora}/wallpapers/candy-dark.jpg"
+  if [[ -f $def ]]; then
+    echo "$def"
+    return 0
+  fi
+  ls "${MEMORA_PATH:-/usr/share/memora}"/wallpapers/*.jpg 2>/dev/null | head -1 || true
+}
+
+cmd_save() {
+  local user="${1:-${USER:-$(id -un)}}"
+  local wall="${2:-}"
+  local w="${3:-}" h="${4:-}"
+
+  if [[ -z $w || -z $h ]]; then
+    read -r w h < <(detect_res)
+  fi
+
+  local user_dir="$LOOK/$user"
+  # Fast path: check if user's pre-cached login-frame exists and matches resolution
+  if [[ -f "$user_dir/login-frame" && -f "$user_dir/login-frame.size" ]]; then
+    local cw ch
+    read -r cw ch < "$user_dir/login-frame.size" 2>/dev/null || true
+    if [[ "$cw" == "$w" && "$ch" == "$h" ]]; then
+      mkdir -p /var/lib/memora
+      cp -f "$user_dir/login-frame" "$FRAME.tmp" 2>/dev/null || true
+      cp -f "$user_dir/login-frame.size" "$SIZE.tmp" 2>/dev/null || true
+      if [[ -f "$FRAME.tmp" && -f "$SIZE.tmp" ]]; then
+        chmod 644 "$FRAME.tmp" "$SIZE.tmp" 2>/dev/null || true
+        mv -f "$SIZE.tmp" "$SIZE"
+        mv -f "$FRAME.tmp" "$FRAME"
+        touch "$FRAME"
+        exit 0
+      fi
+    fi
+  fi
+
+  local src
+  src="$(resolve_wall "$user" "$wall")"
+  [[ -n $src && -f $src ]] || exit 0
+
+  command -v magick >/dev/null || exit 0
+  mkdir -p /var/lib/memora
+  local ftmp="$FRAME.tmp" stmp="$SIZE.tmp"
+  if magick "$src[0]" -auto-orient -resize "${w}x${h}^" -gravity center -extent "${w}x${h}" -depth 8 "bgra:$ftmp" 2>/dev/null; then
+    printf '%d %d\n' "$w" "$h" > "$stmp"
+    chmod 644 "$ftmp" "$stmp" 2>/dev/null || true
+    mv -f "$stmp" "$SIZE"
+    mv -f "$ftmp" "$FRAME"
+    touch "$FRAME"
+  else
+    rm -f "$ftmp" "$stmp"
+  fi
+}
+
+cmd_pre_cache() {
+  local user="${1:-${USER:-$(id -un)}}"
+  local wall="${2:-}"
+  local w="${3:-}" h="${4:-}"
+
+  if [[ -z $w || -z $h ]]; then
+    read -r w h < <(detect_res)
+  fi
+
+  local user_dir="$LOOK/$user"
+  [[ -d $user_dir && -w $user_dir ]] || exit 0
+
+  local src
+  src="$(resolve_wall "$user" "$wall")"
+  [[ -n $src && -f $src ]] || exit 0
+
+  command -v magick >/dev/null || exit 0
+  local ftmp="$user_dir/.frame.tmp" stmp="$user_dir/.size.tmp"
+  if magick "$src[0]" -auto-orient -resize "${w}x${h}^" -gravity center -extent "${w}x${h}" -depth 8 "bgra:$ftmp" 2>/dev/null; then
+    printf '%d %d\n' "$w" "$h" > "$stmp"
+    chmod 644 "$ftmp" "$stmp" 2>/dev/null || true
+    mv -f "$stmp" "$user_dir/login-frame.size"
+    mv -f "$ftmp" "$user_dir/login-frame"
+  else
+    rm -f "$ftmp" "$stmp"
+  fi
+}
+
+cmd_touch() {
+  if [[ -f "$FRAME" ]]; then
+    touch "$FRAME"
+  fi
+}
+
+case "${1:-save}" in
+  save) shift; cmd_save "$@" ;;
+  pre-cache) shift; cmd_pre_cache "$@" ;;
+  touch) cmd_touch ;;
+  *) echo "usage: memora-login-frame [save|pre-cache|touch]"; exit 1 ;;
+esac

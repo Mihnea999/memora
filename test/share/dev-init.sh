@@ -12,7 +12,7 @@ mkdir -p "$L"; rm -rf "$L/prev"; mkdir -p "$L/prev"; mv "$L"/*.log "$L/prev/" 2>
 (pw journalctl -b -n all -f -o short-precise --no-pager > "$L/journal.log" 2>&1 &)
 # The shell's own output (QML errors, console.log): restarted with it going to
 # logs/shell.log. To restart it later and keep logging: bash /mnt/share/shell-restart.sh
-bash /mnt/share/shell-restart.sh
+[ -e /mnt/share/no-restart ] || bash /mnt/share/shell-restart.sh
 # Hyprland's own log.
 (tail -n +1 -F "$XDG_RUNTIME_DIR"/hypr/*/hyprland.log > "$L/hyprland.log" 2>&1 &)
 # Windows opening/closing, focus, workspaces (Hyprland events).

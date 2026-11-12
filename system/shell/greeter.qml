@@ -35,7 +35,31 @@ ShellRoot {
         const [m, w] = text.split("\n")
         Theme.mode = m === "light" || m === "dark" ? m : g.defaultMode
         g.wallpaper = (w || "").trim()
+        g.prepareFrame()
       }
+    }
+  }
+
+  function prepareFrame() {
+    const s = Quickshell.screens[0]
+    const w = s ? s.width : 1920
+    const h = s ? s.height : 1080
+    const wall = g.wallpaper !== "" ? g.wallpaper : Theme.wallpaper
+    frameProc.running = false
+    frameProc.command = ["memora-login-frame", "save", g.user, wall, String(w), String(h)]
+    frameProc.running = true
+  }
+  Process {
+    id: frameProc
+    onExited: if (view.leaving && !launchTimer.running) Greetd.launch(g.session)
+  }
+
+  Timer {
+    id: launchTimer
+    interval: 160
+    repeat: false
+    onTriggered: {
+      if (!frameProc.running) Greetd.launch(g.session)
     }
   }
 
@@ -82,9 +106,10 @@ ShellRoot {
       view.shake()
     }
     function onReadyToLaunch() {
-      saveLast.command = ["bash", "-c", "printf %s \"$1\" > /var/lib/memora/last-user", "_", g.user]
+      view.leaving = true
+      saveLast.command = ["bash", "-c", "printf %s \"$1\" > /var/lib/memora/last-user; memora-login-frame touch", "_", g.user]
       saveLast.running = true
-      Greetd.launch(g.session)
+      launchTimer.restart()
     }
     function onError(err) { g.message = err }
   }

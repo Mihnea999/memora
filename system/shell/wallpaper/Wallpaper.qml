@@ -21,12 +21,36 @@ PanelWindow {
 
   property string file: Theme.wallpaper
   property bool flip: false
+  property bool splashNotified: false
+
+  function notifySplash() {
+    if (splashNotified) return
+    splashNotified = true
+    Quickshell.execDetached(["hyprctl", "memora-splash", "done", (w.screen && w.screen.name) ? w.screen.name : ""])
+  }
 
   Item {
     id: pics
     anchors.fill: parent
-    Image { id: a; anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(w.width, w.height); opacity: w.flip ? 0 : 1; Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } } }
-    Image { id: b; anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(w.width, w.height); opacity: w.flip ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } } }
+    Image {
+      id: a
+      anchors.fill: parent
+      fillMode: Image.PreserveAspectCrop
+      asynchronous: true
+      sourceSize: Qt.size(w.width, w.height)
+      opacity: w.flip ? 0 : 1
+      Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } }
+      onStatusChanged: if (status === Image.Ready || status === Image.Error) w.notifySplash()
+    }
+    Image {
+      id: b
+      anchors.fill: parent
+      fillMode: Image.PreserveAspectCrop
+      asynchronous: true
+      sourceSize: Qt.size(w.width, w.height)
+      opacity: w.flip ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: 600; easing.type: Easing.InOutQuad } }
+    }
   }
   // The same picture, frosted: the glass of the widgets shows its part of this
   // (nothing is behind the desktop for the compositor to blur).
@@ -76,7 +100,10 @@ PanelWindow {
     onPicked: item => { const run = item.action; w.closeMenu(); Qt.callLater(run) }
   }
 
-  Component.onCompleted: a.source = "file://" + file
+  Component.onCompleted: {
+    a.source = "file://" + file
+    if (a.status === Image.Ready || a.status === Image.Error) notifySplash()
+  }
   onFileChanged: {
     if (flip) a.source = "file://" + file; else b.source = "file://" + file
     flip = !flip

@@ -24,6 +24,9 @@ void memoraTouchExit();
 // glass.cpp: liquid glass (refraction) under the shell's panels.
 void memoraGlassInit(HANDLE handle);
 void memoraGlassExit();
+// splash.cpp: the desktop picture from the first frame after logging in.
+void memoraSplashInit(HANDLE handle);
+void memoraSplashExit();
 
 static HANDLE                                         PHANDLE = nullptr;
 static CHyprSignalListener                            g_open, g_close, g_key, g_button;
@@ -91,10 +94,12 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     memoraTitlebarInit(handle);
     memoraTouchInit(handle);
     memoraGlassInit(handle);
-    return {"memora-minimize", "Minimize buttons send windows to the Memora Dock; title bars for apps without their own; liquid glass", "Memora", "1.2"};
+    memoraSplashInit(handle);
+    return {"memora-minimize", "Minimize buttons send windows to the Memora Dock; title bars for apps without their own; liquid glass; the desktop picture from the first frame after login", "Memora", "1.3"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+    memoraSplashExit();
     memoraGlassExit();
     memoraTitlebarExit();
     memoraTouchExit();
