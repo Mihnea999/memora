@@ -469,8 +469,10 @@ Scope {
           z: 11
           // At the open size, not the island's: the island springs to it
           // (overshooting a few times), and the zones following it made the
-          // icons bob up and down fast until it settled.
-          anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10; topMargin: 8 }
+          // icons bob up and down fast until it settled. The same for the
+          // width: the dashed boxes wobbled sideways while it sprang open.
+          anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 8 }
+          width: Math.min(win.width - 40, 420) - 20
           height: 118 - 8 - 10
           spacing: 8
           opacity: win.dragWide && island.height > 80 ? 1 : 0
