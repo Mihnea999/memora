@@ -111,7 +111,10 @@ PanelWindow {
     // One menu at a time: the bar's and the Dock's close first.
     onTapped: ev => {
       if (Shell.open !== "") Shell.close(); else Shell.closing()
-      if (icons && icons.styling !== "") icons.styling = ""
+      if (icons && icons.styling !== "") {
+        if (icons.overStyler && icons.overStyler(ev.position.x, ev.position.y)) return
+        icons.styling = ""
+      }
       w.menuList = w.menuItems(ev.position.x, ev.position.y)
       w.menuAt = ev.position
     }
@@ -128,6 +131,7 @@ PanelWindow {
       }
       if (icons && icons.visible) {
         if (icons.styling !== "") {
+          if (icons.overStyler && icons.overStyler(ev.position.x, ev.position.y)) return
           icons.styling = ""
           return
         }
@@ -140,6 +144,11 @@ PanelWindow {
         return
       }
       if (icons && icons.visible) {
+        if (icons.styling !== "") {
+          if (icons.overStyler && icons.overStyler(ev.position.x, ev.position.y)) return
+          icons.styling = ""
+          return
+        }
         icons.tapped(ev.position.x, ev.position.y, deskTap.keyboardModifiers, 2)
       }
     }

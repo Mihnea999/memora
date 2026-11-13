@@ -371,6 +371,12 @@ Item {
     })
   }
 
+  // Whether a point is inside the FolderStyler popover
+  function overStyler(x, y) {
+    if (!styler.visible || styling === "") return false
+    return x >= styler.x && x <= styler.x + styler.width && y >= styler.y && y <= styler.y + styler.height
+  }
+
   // ---- pointer -------------------------------------------------------------------
   // Clicks (the wallpaper's handlers pass them on).
   property bool justBanded: false
@@ -378,7 +384,9 @@ Item {
 
   function tapped(x, y, mods, count) {
     if (justBanded) { justBanded = false; return }
+    if (overStyler(x, y)) return
     if (overWidget(x, y)) return
+    if (styling !== "") { styling = ""; return }
     if (renaming) { commitRename(); return }
     const it = itemAt(x, y)
     if (!it) { clear(); return }
@@ -706,6 +714,7 @@ Item {
   // Colour & Symbol, next to the folder.
   FolderStyler {
     id: styler
+    z: 40
     visible: d.styling !== ""
     path: d.styling ? d.dir + "/" + d.styling : ""
     solid: false

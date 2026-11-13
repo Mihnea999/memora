@@ -1272,16 +1272,23 @@ FloatingWindow {
 
   // Colour & Symbol for a folder, over the window.
   Rectangle {
+    id: stylerBackdrop
     anchors.fill: parent
     visible: win.styling !== ""
     color: Qt.rgba(0, 0, 0, Theme.dark ? 0.35 : 0.18)
     z: 50
-    TapHandler { onTapped: win.styling = "" }
+    TapHandler {
+      onTapped: ev => {
+        const sx = styler.x, sy = styler.y, sw = styler.width, sh = styler.height
+        if (ev.position.x >= sx && ev.position.x <= sx + sw && ev.position.y >= sy && ev.position.y <= sy + sh) return
+        win.styling = ""
+      }
+    }
     FolderStyler {
+      id: styler
       anchors.centerIn: parent
       path: win.styling
       onDone: win.styling = ""
-      TapHandler {}   // taps on the card stay on it
     }
     onVisibleChanged: if (visible) forceActiveFocus()
     Keys.onEscapePressed: win.styling = ""
