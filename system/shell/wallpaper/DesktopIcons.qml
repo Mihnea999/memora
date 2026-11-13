@@ -71,6 +71,12 @@ Item {
     }
   }
   Connections { target: desk; function onDataChanged() { settle.restart() } function onRowsInserted() { settle.restart() } function onRowsRemoved() { settle.restart() } function onModelReset() { settle.restart() } }
+  Connections {
+    target: d.widgets
+    function onLayoutChanged() { d.evacuateBlocked() }
+    function onPreviewChanged() { if (d.widgets && d.widgets.preview) d.evacuateBlocked() }
+  }
+  onWidgetsChanged: if (widgets) d.evacuateBlocked()
   onColsChanged: settle.restart()
   onRowsChanged: settle.restart()
 
@@ -84,11 +90,12 @@ Item {
   }
   function save(p) { places = p; store.setText(JSON.stringify({ places: p }, null, 1) + "\n") }
 
-  // Cells the widgets cover.
+  // Cells the widgets cover (or hover over while dragging in preview).
   function blocked(c, r) {
     if (!widgets || !widgets.layout) return false
-    const x = cellX(c) + 8, y = cellY(r) + 4, w = cellW - 16, h = cellH - 8
-    return widgets.layout.some(o => {
+    const x = cellX(c) + 4, y = cellY(r) + 4, w = cellW - 8, h = cellH - 8
+    const l = (widgets.editing && widgets.preview) ? widgets.preview : widgets.layout
+    return l.some(o => {
       const ww = widgets.spanOf(o) * widgets.unit + (widgets.spanOf(o) - 1) * widgets.gap
       const wh = widgets.rowSpanOf(o) * widgets.unit + (widgets.rowSpanOf(o) - 1) * widgets.gap
       return x < o.x + ww && x + w > o.x && y < o.y + wh && y + h > o.y
@@ -115,7 +122,7 @@ Item {
     for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) if (!used[key(c, r)] && !blocked(c, r)) return [c, r]
     return [0, 0]
   }
-  // Each entry gets a cell: its own if it has one on this screen, else the next free one.
+  // Each entry gets a cell: its own if it has one on this screen and is unblocked, else the next free one.
   function arrange() {
     const names = {}
     items.forEach(i => names[i.name] = true)
@@ -123,13 +130,47 @@ Item {
     let changed = false
     Object.keys(places).forEach(n => {
       const v = places[n]
-      if (names[n] && v[0] < cols && v[1] < rows) p[n] = v
+      if (names[n] && v[0] < cols && v[1] < rows && !blocked(v[0], v[1])) p[n] = v
       else if (names[n] || desk.status === FolderListModel.Ready) changed = true
     })
     const used = taken(p)
-    items.forEach(i => { if (!p[i.name]) { p[i.name] = firstFree(used); used[key(p[i.name][0], p[i.name][1])] = i.name; changed = true } })
+    items.forEach(i => {
+      if (!p[i.name]) {
+        const spot = nearestFree(0, 0, used) || firstFree(used)
+        p[i.name] = spot
+        used[key(spot[0], spot[1])] = i.name
+        changed = true
+      }
+    })
     if (changed) save(p)
     else places = p
+  }
+  // Ensure icons that are covered by widgets move out of the way to nearest free cells (macOS approach)
+  function evacuateBlocked() {
+    if (!widgets || !widgets.layout || !items.length) return
+    const p = Object.assign({}, places)
+    let changed = false
+    const used = {}
+    // First preserve all unblocked icon positions
+    items.forEach(i => {
+      const v = p[i.name]
+      if (v && v[0] < cols && v[1] < rows && !blocked(v[0], v[1])) used[key(v[0], v[1])] = i.name
+    })
+    // Push any blocked or out-of-bounds icon to the nearest free cell
+    items.forEach(i => {
+      const v = p[i.name]
+      if (!v || v[0] >= cols || v[1] >= rows || blocked(v[0], v[1])) {
+        const startC = v ? v[0] : 0
+        const startR = v ? v[1] : 0
+        const f = nearestFree(startC, startR, used) || firstFree(used)
+        if (f) {
+          p[i.name] = f
+          used[key(f[0], f[1])] = i.name
+          changed = true
+        }
+      }
+    })
+    if (changed) save(p)
   }
   // Clean Up: by name, down the columns from the right.
   function cleanUp() {
@@ -162,11 +203,17 @@ Item {
   } }
   property string lastClicked: ""
   function select(name, mods) {
-    const toggle = mods & (Qt.ControlModifier | Qt.MetaModifier), range = mods & Qt.ShiftModifier
+    const toggle = !!(mods & (Qt.ControlModifier | Qt.MetaModifier))
+    const range = !!(mods & Qt.ShiftModifier)
     if (range && lastClicked && places[lastClicked] && places[name]) {
       // Everything in the rectangle between the two, as on a Mac.
       const a = places[lastClicked], b = places[name], s = Object.assign({}, selected)
-      items.forEach(i => { const v = places[i.name]; if (v && v[0] >= Math.min(a[0], b[0]) && v[0] <= Math.max(a[0], b[0]) && v[1] >= Math.min(a[1], b[1]) && v[1] <= Math.max(a[1], b[1])) s[i.name] = true })
+      const cMin = Math.min(a[0], b[0]), cMax = Math.max(a[0], b[0])
+      const rMin = Math.min(a[1], b[1]), rMax = Math.max(a[1], b[1])
+      items.forEach(i => {
+        const v = places[i.name]
+        if (v && v[0] >= cMin && v[0] <= cMax && v[1] >= rMin && v[1] <= rMax) s[i.name] = true
+      })
       selected = s
       return
     }
@@ -182,11 +229,20 @@ Item {
     if (it.dir) Quickshell.execDetached(["memora-files", it.path])
     else Quickshell.execDetached(["gio", "open", it.path])
   }
-  function openSelection() { selection.forEach(n => open(byName(n))) }
-  function trash() {
-    const l = selection.map(n => dir + "/" + n)
+  function openSelection(targets) {
+    const list = (targets && targets.length) ? targets : selection
+    list.forEach(n => open(byName(n)))
+  }
+  function trash(targets) {
+    const list = (targets && targets.length) ? targets : selection
+    const l = list.map(n => dir + "/" + n)
     if (!l.length) return
-    sh("gio trash -- " + l.map(q).join(" ") + " && setsid -f memora-sound trash >/dev/null 2>&1")
+    const cmd = "mkdir -p \"$HOME/.local/share/Trash/files\" \"$HOME/.local/share/Trash/info\" 2>/dev/null; " +
+      "gio trash -- " + l.map(q).join(" ") + " 2>/dev/null || " +
+      "mv -f -- " + l.map(q).join(" ") + " \"$HOME/.local/share/Trash/files/\" 2>/dev/null || " +
+      "rm -rf -- " + l.map(q).join(" ") + "; " +
+      "setsid -f memora-sound trash >/dev/null 2>&1 || true"
+    sh(cmd)
     clear()
   }
   function newFolder(at) {
@@ -194,9 +250,16 @@ Item {
     let n = "untitled folder", i = 2
     while (names[n]) n = "untitled folder " + i++
     const p = Object.assign({}, places)
-    p[n] = at ? nearestFree(at[0], at[1], taken(places)) || firstFree(taken(places)) : firstFree(taken(places))
+    const spot = at ? nearestFree(at[0], at[1], taken(places)) || firstFree(taken(places)) : firstFree(taken(places))
+    p[n] = spot
     save(p)
-    sh("mkdir -p -- " + q(dir + "/" + n), () => { selected = ({ [n]: true }); renaming = n })
+    // Add immediately to items so delegate is instantiated right now without waiting for inotify settle
+    const newItem = { name: n, path: dir + "/" + n, dir: true }
+    items = items.concat([newItem])
+    selected = ({ [n]: true })
+    lastClicked = n
+    renaming = n
+    sh("mkdir -p -- " + q(dir + "/" + n))
   }
   function rename(from, to) {
     renaming = ""
@@ -239,16 +302,17 @@ Item {
     const it = itemAt(x, y)
     if (!it) { if (selection.length) clear(); return null }
     if (!selected[it.name]) { selected = ({ [it.name]: true }); lastClicked = it.name }
-    const one = selection.length === 1
+    const targets = selection.indexOf(it.name) >= 0 ? selection.slice() : [it.name]
+    const one = targets.length === 1
     return [
-      { text: "Open", action: () => openSelection() },
+      { text: "Open", action: () => openSelection(targets) },
       { separator: true },
       { text: "Rename", enabled: one, action: () => renaming = it.name },
       it.dir && one ? { text: "Colour & Symbol…", action: () => styling = it.name } : null,
       { text: "Show in Files", action: () => Quickshell.execDetached(["memora-files", dir]) },
-      { text: "Share…", enabled: !selection.some(n => (byName(n) || {}).dir), action: () => Quickshell.execDetached(["memora-shell", "share"].concat(selection.map(n => dir + "/" + n))) },
+      { text: "Share…", enabled: !targets.some(n => (byName(n) || {}).dir), action: () => Quickshell.execDetached(["memora-shell", "share"].concat(targets.map(n => dir + "/" + n))) },
       { separator: true },
-      { text: "Move to Trash", action: () => trash() }
+      { text: "Move to Trash", action: () => trash(targets) }
     ].filter(i => i)
   }
   function deskItems(x, y) {
@@ -260,14 +324,33 @@ Item {
     ]
   }
 
+  // Whether a point is inside any widget's bounds
+  function overWidget(x, y) {
+    if (!widgets || !widgets.layout) return false
+    return widgets.layout.some(o => {
+      const ww = widgets.spanOf(o) * widgets.unit + (widgets.spanOf(o) - 1) * widgets.gap
+      const wh = widgets.rowSpanOf(o) * widgets.unit + (widgets.rowSpanOf(o) - 1) * widgets.gap
+      return x >= o.x && x <= o.x + ww && y >= o.y && y <= o.y + wh
+    })
+  }
+
   // ---- pointer -------------------------------------------------------------------
   // Clicks (the wallpaper's handlers pass them on).
+  property bool justBanded: false
+  Timer { id: bandTimer; interval: 120; onTriggered: d.justBanded = false }
+
   function tapped(x, y, mods, count) {
+    if (justBanded) { justBanded = false; return }
+    if (overWidget(x, y)) return
     if (renaming) { commitRename(); return }
     const it = itemAt(x, y)
     if (!it) { clear(); return }
     if (count >= 2) { open(it); return }
-    if (!(mods & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier)) && selected[it.name] && selection.length > 1) { selected = ({ [it.name]: true }); lastClicked = it.name; return }
+    if (!(mods & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier)) && selected[it.name] && selection.length > 1) {
+      selected = ({ [it.name]: true })
+      lastClicked = it.name
+      return
+    }
     select(it.name, mods)
   }
   // Dragging: icons (mode "move") or a selection band (mode "band").
@@ -289,17 +372,31 @@ Item {
     onActiveChanged: {
       if (active) {
         const p = centroid.pressPosition
+        if (d.overWidget(p.x, p.y)) return
         d.from = p; d.at = p
         const it = d.itemAt(p.x, p.y)
         if (it) {
-          if (!d.selected[it.name]) { d.selected = ({ [it.name]: true }); d.lastClicked = it.name }
+          if (!d.selected[it.name]) {
+            if (!(dragger.keyboardModifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier))) {
+              d.selected = ({ [it.name]: true })
+            } else {
+              const s = Object.assign({}, d.selected)
+              s[it.name] = true
+              d.selected = s
+            }
+            d.lastClicked = it.name
+          }
           d.lead = it.name; d.moving = d.selection.slice(); d.mode = "move"
         } else {
-          d.bandBase = (centroid.modifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier)) ? Object.assign({}, d.selected) : {}
+          d.bandBase = (dragger.keyboardModifiers & (Qt.ControlModifier | Qt.MetaModifier | Qt.ShiftModifier)) ? Object.assign({}, d.selected) : {}
           d.mode = "band"
         }
       } else if (d.mode !== "") {
         if (d.mode === "move" && !outDrag.Drag.active) d.drop()
+        if (d.mode === "band") {
+          d.justBanded = true
+          bandTimer.restart()
+        }
         if (!outDrag.Drag.active) d.mode = ""
       }
     }
@@ -314,8 +411,8 @@ Item {
     const s = Object.assign({}, bandBase)
     items.forEach(i => {
       const v = places[i.name]; if (!v) return
-      const ix = cellX(v[0]) + (cellW - icon) / 2, iy = cellY(v[1]) + 2
-      if (ix < x2 && ix + icon > x1 && iy < y2 && iy + icon + 30 > y1) s[i.name] = true
+      const ix = cellX(v[0]), iy = cellY(v[1])
+      if (ix < x2 && ix + cellW > x1 && iy < y2 && iy + cellH > y1) s[i.name] = true
     })
     selected = s
   }
@@ -468,32 +565,60 @@ Item {
       }
       // Renaming, in place.
       Rectangle {
+        id: renameBox
         visible: d.renaming === ic.modelData.name
         x: 2; y: d.icon + 6
-        width: d.cellW - 4; height: edit.contentHeight + 6
-        radius: 5
-        color: Theme.dark ? "#2a2a2e" : "#ffffff"
-        border.color: Theme.accent; border.width: 2
+        width: d.cellW - 4
+        implicitHeight: Math.max(26, edit.contentHeight + 8)
+        height: implicitHeight
+        radius: 6
+        color: Theme.dark ? "#1c1d22" : "#ffffff"
+        border.color: Theme.accent
+        border.width: 2
+
+        function startRename() {
+          edit.text = ic.modelData.name
+          focusTimer.restart()
+        }
+
+        Timer {
+          id: focusTimer
+          interval: 25
+          repeat: false
+          onTriggered: {
+            edit.forceActiveFocus()
+            const dot = ic.modelData.dir ? -1 : edit.text.lastIndexOf(".")
+            edit.select(0, dot > 0 ? dot : edit.text.length)
+          }
+        }
+
+        Component.onCompleted: if (d.renaming === ic.modelData.name) startRename()
+        onVisibleChanged: if (visible) startRename()
+
+        Connections {
+          target: d
+          function onRenamingChanged() {
+            if (d.renaming === ic.modelData.name) renameBox.startRename()
+          }
+        }
+
         TextInput {
           id: edit
           anchors { fill: parent; margins: 3 }
           horizontalAlignment: TextInput.AlignHCenter
+          verticalAlignment: TextInput.AlignVCenter
           wrapMode: TextInput.Wrap
-          color: Theme.text
-          font.family: Theme.font; font.pixelSize: 12
+          color: Theme.dark ? "#ffffff" : "#111111"
+          font.family: Theme.font
+          font.pixelSize: 12
+          font.weight: Font.Medium
           selectByMouse: true
           selectionColor: Theme.accent
+          selectedTextColor: "#ffffff"
           Keys.onReturnPressed: d.rename(ic.modelData.name, text)
           Keys.onEnterPressed: d.rename(ic.modelData.name, text)
           Keys.onEscapePressed: d.renaming = ""
           onActiveFocusChanged: if (!activeFocus && d.renaming === ic.modelData.name) d.rename(ic.modelData.name, text)
-        }
-        onVisibleChanged: if (visible) {
-          edit.text = ic.modelData.name
-          edit.forceActiveFocus()
-          // The name without its extension, as on a Mac.
-          const dot = ic.modelData.dir ? -1 : ic.modelData.name.lastIndexOf(".")
-          edit.select(0, dot > 0 ? dot : ic.modelData.name.length)
         }
       }
     }
@@ -510,9 +635,10 @@ Item {
     visible: d.mode === "band"
     x: Math.min(d.from.x, d.at.x); y: Math.min(d.from.y, d.at.y)
     width: Math.abs(d.at.x - d.from.x); height: Math.abs(d.at.y - d.from.y)
-    color: Qt.rgba(1, 1, 1, 0.14)
-    border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.55)
-    radius: 2
+    color: Qt.rgba(0, 0.48, 1, 0.20)
+    border.width: 1.5; border.color: Qt.rgba(0, 0.48, 1, 0.75)
+    radius: 3
+    z: 10
   }
 
   // Colour & Symbol, next to the folder.

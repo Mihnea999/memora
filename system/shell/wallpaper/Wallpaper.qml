@@ -18,6 +18,7 @@ PanelWindow {
   // Keys while the desktop menu is open (Escape closes it) or an icon is selected / being styled.
   readonly property bool wantKeys: menuOpen || (icons && icons.visible && (icons.selection.length > 0 || icons.typing))
   WlrLayershell.keyboardFocus: wantKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+  onWantKeysChanged: if (wantKeys) Qt.callLater(() => w.requestActivate())
   color: "black"
 
   property string file: Theme.wallpaper
@@ -117,17 +118,29 @@ PanelWindow {
   }
   TapHandler {
     id: deskTap
+    gesturePolicy: TapHandler.DragThreshold
     onTapped: ev => {
-      w.closeMenu()
+      if (w.menuOpen) {
+        const mx = deskMenu.x, my = deskMenu.y, mw = deskMenu.width, mh = deskMenu.height
+        if (ev.position.x >= mx && ev.position.x <= mx + mw && ev.position.y >= my && ev.position.y <= my + mh) return
+        w.closeMenu()
+        return
+      }
       if (icons && icons.visible) {
-        if (icons.styling !== "") icons.styling = ""
-        icons.tapped(ev.position.x, ev.position.y, deskTap.point.modifiers, 1)
+        if (icons.styling !== "") {
+          icons.styling = ""
+          return
+        }
+        icons.tapped(ev.position.x, ev.position.y, deskTap.keyboardModifiers, 1)
       }
     }
     onDoubleTapped: ev => {
-      w.closeMenu()
+      if (w.menuOpen) {
+        w.closeMenu()
+        return
+      }
       if (icons && icons.visible) {
-        icons.tapped(ev.position.x, ev.position.y, deskTap.point.modifiers, 2)
+        icons.tapped(ev.position.x, ev.position.y, deskTap.keyboardModifiers, 2)
       }
     }
   }

@@ -72,6 +72,7 @@ Glass {
         HoverHandler { id: hover }
         TapHandler {
           enabled: !parent.sep && parent.on
+          gesturePolicy: TapHandler.WithinBounds
           onTapped: m.picked(modelData)
         }
       }
