@@ -247,6 +247,7 @@ Item {
   function open(it) {
     if (!it) return
     if (it.dir) Quickshell.execDetached(["memora-files", it.path])
+    else if (it.path.endsWith(".exe") || it.path.endsWith(".bat") || it.path.endsWith(".cmd")) Quickshell.execDetached(["memora-proton", "run", it.path])
     else Quickshell.execDetached(["memora-app-shortcut", "launch", it.path])
   }
   function openSelection(targets) {
@@ -254,7 +255,7 @@ Item {
     list.forEach(n => open(byName(n)))
   }
   function isExecutable(name) {
-    return name.endsWith(".AppImage") || name.endsWith(".sh") || name.endsWith(".bin") || name.endsWith(".x86_64") || name.endsWith(".desktop")
+    return name.endsWith(".AppImage") || name.endsWith(".sh") || name.endsWith(".bin") || name.endsWith(".x86_64") || name.endsWith(".desktop") || name.endsWith(".exe")
   }
   function makeAliases(targets) {
     const list = (targets && targets.length) ? targets : selection
@@ -343,8 +344,9 @@ Item {
       { separator: true },
       { text: "Rename", enabled: one, action: () => renaming = it.name },
       it.dir && one ? { text: "Colour & Symbol…", action: () => styling = it.name } : null,
+      one && it.name.endsWith(".exe") ? { text: "Play Game (Proton)", action: () => Quickshell.execDetached(["memora-proton", "run", dir + "/" + it.name]) } : null,
       { text: "Make Alias", action: () => makeAliases(targets) },
-      one && (it.dir || isExecutable(it.name)) ? { text: "Add to Applications…", action: () => addAppDialog.open(dir + "/" + it.name) } : null,
+      one && (it.dir || isExecutable(it.name)) ? { text: it.name.endsWith(".exe") ? "Configure Game…" : "Add to Applications…", action: () => Shell.addApp(dir + "/" + it.name) } : null,
       { text: "Show in Files", action: () => Quickshell.execDetached(["memora-files", dir]) },
       { text: "Share…", enabled: !targets.some(n => (byName(n) || {}).dir), action: () => Quickshell.execDetached(["memora-shell", "share"].concat(targets.map(n => dir + "/" + n))) },
       { separator: true },
@@ -355,7 +357,7 @@ Item {
     const c = Math.max(0, Math.min(cols - 1, Math.floor((width - padRight - x) / cellW))), r = Math.max(0, Math.min(rows - 1, Math.floor((y - padTop) / cellH)))
     return [
       { text: "New Folder", action: () => newFolder([c, r]) },
-      { text: "Add Application / Game…", action: () => addAppDialog.open("") },
+      { text: "Add Application / Game…", action: () => Shell.addApp("") },
       { text: "Clean Up", enabled: items.length > 0, action: () => cleanUp() },
       { separator: true }
     ]
@@ -728,10 +730,5 @@ Item {
     // Taps on the card stay on it.
     TapHandler {}
     DragHandler { target: null }
-  }
-
-  AddAppDialog {
-    id: addAppDialog
-    z: 50
   }
 }

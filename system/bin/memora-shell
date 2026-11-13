@@ -31,5 +31,6 @@ case "${1:-}" in
   show-desktop) exec qs -p "$dir" ipc call shell showDesktop ;;
   share) shift; files=""; for f in "$@"; do files+="$(realpath -m -- "${f#file://}")"$'\n'; done
     exec qs -p "$dir" ipc call shell share "$files" ;;
+  add-app) shift; exec qs -p "$dir" ipc call shell addApp "${1:-}" ;;
   *) exec qs -p "$dir" ipc call shell "$@" ;;
 esac

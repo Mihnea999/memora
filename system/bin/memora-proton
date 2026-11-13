@@ -1,0 +1,454 @@
+#!/usr/bin/env python3
+"""
+memora-proton: Automatic Windows game launcher and Proton / Wine runner manager for Memora OS.
+Provides seamless detection of Proton GE, Valve Proton, Wine-GE, and system Wine runners.
+Automatically configures isolated prefixes, environment variables, working directories, and icons.
+"""
+
+import sys
+import os
+import stat
+import argparse
+import json
+import re
+import subprocess
+import shutil
+import shlex
+from pathlib import Path
+
+HOME = os.path.expanduser("~")
+DESKTOP_DIR = os.environ.get("MEMORA_DESKTOP_DIR", os.path.join(HOME, "Desktop"))
+APPS_DIR = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "applications")
+MEMORA_PREFIXES_DIR = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "memora", "prefixes")
+MEMORA_ICONS_DIR = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "memora", "icons")
+
+
+def slugify(text):
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_-]+", "-", text)
+    text = re.sub(r"^-+|-+$", "", text)
+    return text or "game"
+
+
+def find_all_runners():
+    """
+    Scans system and user paths for all Proton and Wine compatibility runners.
+    Returns a sorted list where GE-Proton is prioritized, followed by Steam Protons,
+    custom Wine runners, and finally system Wine.
+    """
+    search_dirs = [
+        os.path.join(HOME, ".local/share/Steam/compatibilitytools.d"),
+        os.path.join(HOME, ".steam/root/compatibilitytools.d"),
+        os.path.join(HOME, ".steam/steam/compatibilitytools.d"),
+        os.path.join(HOME, ".local/share/Steam/steamapps/common"),
+        os.path.join(HOME, ".steam/steam/steamapps/common"),
+        os.path.join(HOME, ".config/heroic/tools/proton"),
+        os.path.join(HOME, ".config/heroic/tools/wine"),
+        os.path.join(HOME, ".local/share/lutris/runners/wine"),
+        os.path.join(HOME, ".local/share/lutris/runners/proton"),
+        os.path.join(HOME, ".local/share/bottles/runners"),
+        os.path.join(HOME, ".var/app/com.valvesoftware.Steam/data/Steam/compatibilitytools.d"),
+        os.path.join(HOME, ".var/app/com.valvesoftware.Steam/data/Steam/steamapps/common"),
+        "/usr/share/steam/compatibilitytools.d",
+    ]
+
+    seen_paths = set()
+    runners = []
+
+    for sdir in search_dirs:
+        if not os.path.isdir(sdir):
+            continue
+        try:
+            entries = sorted(os.listdir(sdir), reverse=True)
+        except OSError:
+            continue
+
+        for entry in entries:
+            full_path = os.path.join(sdir, entry)
+            if not os.path.isdir(full_path):
+                continue
+            real_p = os.path.realpath(full_path)
+            if real_p in seen_paths:
+                continue
+
+            proton_bin = os.path.join(full_path, "proton")
+            wine_bin = None
+            for sub in ["files/bin/wine", "dist/bin/wine", "bin/wine"]:
+                wb = os.path.join(full_path, sub)
+                if os.path.isfile(wb) and os.access(wb, os.X_OK):
+                    wine_bin = wb
+                    break
+
+            is_proton = os.path.isfile(proton_bin) and os.access(proton_bin, os.X_OK)
+            if not is_proton and not wine_bin:
+                continue
+
+            # Read friendly display name from compatibilitytool.vdf if present
+            display_name = entry
+            vdf_path = os.path.join(full_path, "compatibilitytool.vdf")
+            if os.path.isfile(vdf_path):
+                try:
+                    with open(vdf_path, "r", encoding="utf-8", errors="ignore") as f:
+                        for line in f:
+                            if "display_name" in line:
+                                parts = line.split('"')
+                                if len(parts) >= 4 and parts[3].strip():
+                                    display_name = parts[3].strip()
+                                    break
+                except Exception:
+                    pass
+
+            is_ge = bool(re.search(r"\bge\b|proton-ge|ge-proton", entry, re.IGNORECASE) or
+                         re.search(r"\bge\b|proton-ge|ge-proton", display_name, re.IGNORECASE))
+
+            seen_paths.add(real_p)
+            runners.append({
+                "id": entry,
+                "name": display_name,
+                "path": full_path,
+                "type": "proton" if is_proton else "wine",
+                "proton": proton_bin if is_proton else None,
+                "wine": wine_bin,
+                "is_ge": is_ge,
+                "recommended": False
+            })
+
+    # Sort runners: GE-Proton first, then other Protons (by name descending), then custom wine
+    runners.sort(key=lambda r: (not r["is_ge"], r["type"] != "proton", r["name"].lower()), reverse=False)
+
+    # If system wine exists, add as fallback
+    if os.path.isfile("/usr/bin/wine") and os.access("/usr/bin/wine", os.X_OK):
+        runners.append({
+            "id": "system-wine",
+            "name": "System Wine",
+            "path": "/usr/bin/wine",
+            "type": "wine",
+            "proton": None,
+            "wine": "/usr/bin/wine",
+            "is_ge": False,
+            "recommended": False
+        })
+
+    # Mark the first runner as recommended
+    if runners:
+        runners[0]["recommended"] = True
+
+    return runners
+
+
+def find_icon_for_game(directory, slug):
+    """Searches for game icons (png, svg, ico) or extracts from .ico using PIL or convert."""
+    if not os.path.isdir(directory):
+        return "gamepad"
+
+    # Search current and parent directory
+    candidates = ["icon.png", "logo.png", "game.png", "app.png", "cover.png", "banner.png"]
+    dirs_to_check = [directory, os.path.dirname(directory)]
+
+    for d in dirs_to_check:
+        if not os.path.isdir(d):
+            continue
+        for name in candidates:
+            p = os.path.join(d, name)
+            if os.path.isfile(p):
+                return p
+        for ext in ("*.png", "*.svg"):
+            for f in Path(d).glob(ext):
+                if not f.name.startswith("."):
+                    return str(f)
+
+    # Check for .ico file to convert
+    for d in dirs_to_check:
+        if not os.path.isdir(d):
+            continue
+        for ico in Path(d).glob("*.ico"):
+            out_dir = MEMORA_ICONS_DIR
+            os.makedirs(out_dir, exist_ok=True)
+            out_png = os.path.join(out_dir, f"{slug}.png")
+            try:
+                from PIL import Image
+                img = Image.open(str(ico))
+                img.save(out_png, "PNG")
+                return out_png
+            except Exception:
+                try:
+                    subprocess.run(["convert", str(ico), "-thumbnail", "256x256", out_png], capture_output=True)
+                    if os.path.isfile(out_png):
+                        return out_png
+                except Exception:
+                    pass
+
+    return "gamepad"
+
+
+def inspect_path(path):
+    """
+    Inspects a file or directory for Windows games and Proton runners.
+    Returns rich metadata for automatic zero-config launching.
+    """
+    p = os.path.abspath(os.path.expanduser(path))
+    runners = find_all_runners()
+    rec_runner = runners[0] if runners else None
+
+    if os.path.isdir(p):
+        game_dir = p
+        # Scan directory for main game executable
+        exe_candidates = []
+        for root, _, files in os.walk(p):
+            for f in files:
+                if f.lower().endswith(".exe"):
+                    low = f.lower()
+                    # Skip common helpers / installers / crash reporters
+                    if any(x in low for x in ["unins", "crash", "report", "vcredist", "dxsetup", "update", "patch"]):
+                        continue
+                    full_f = os.path.join(root, f)
+                    exe_candidates.append(full_f)
+
+        main_exe = ""
+        if exe_candidates:
+            # Prefer exe in root of directory, or matching folder name
+            folder_name = os.path.basename(p).lower()
+            matching = [c for c in exe_candidates if os.path.basename(c).lower().startswith(folder_name[:4])]
+            main_exe = matching[0] if matching else exe_candidates[0]
+            work_dir = os.path.dirname(main_exe)
+        else:
+            work_dir = p
+
+        clean_name = os.path.basename(p)
+        clean_name = re.sub(r"[-_.]+", " ", clean_name).strip().title()
+        slug = slugify(clean_name)
+        icon = find_icon_for_game(work_dir, slug)
+
+        return {
+            "path": p,
+            "isDir": True,
+            "isWindowsExe": True,
+            "name": clean_name,
+            "exec": main_exe,
+            "dir": work_dir,
+            "icon": icon,
+            "category": "Game",
+            "runners": runners,
+            "recommendedRunner": rec_runner["id"] if rec_runner else "",
+            "prefix": os.path.join(MEMORA_PREFIXES_DIR, slug)
+        }
+
+    # If it's a file (.exe)
+    if os.path.isfile(p):
+        work_dir = os.path.dirname(p)
+        base = os.path.basename(p)
+        clean_name = os.path.splitext(base)[0]
+        # If exe has generic name like game.exe or speed.exe, use folder name
+        parent_name = os.path.basename(work_dir)
+        if clean_name.lower() in ["game", "start", "launcher", "play", "bin", "main"] and parent_name:
+            clean_name = parent_name
+
+        clean_name = re.sub(r"[-_.]+", " ", clean_name).strip().title()
+        slug = slugify(clean_name)
+        icon = find_icon_for_game(work_dir, slug)
+
+        return {
+            "path": p,
+            "isDir": False,
+            "isWindowsExe": p.lower().endswith(".exe"),
+            "name": clean_name,
+            "exec": p,
+            "dir": work_dir,
+            "icon": icon,
+            "category": "Game",
+            "runners": runners,
+            "recommendedRunner": rec_runner["id"] if rec_runner else "",
+            "prefix": os.path.join(MEMORA_PREFIXES_DIR, slug)
+        }
+
+    return {"error": f"Path not found: {path}"}
+
+
+def launch_game(exe_path, runner_id=None, prefix_path=None, extra_args=None):
+    """
+    Launches a Windows game using Proton or Wine with isolated prefix and optimal environment.
+    """
+    exe_path = os.path.abspath(os.path.expanduser(exe_path))
+    if not os.path.isfile(exe_path):
+        print(json.dumps({"error": f"Executable not found: {exe_path}"}))
+        sys.exit(1)
+
+    work_dir = os.path.dirname(exe_path)
+    base = os.path.splitext(os.path.basename(exe_path))[0]
+    parent = os.path.basename(work_dir)
+    slug = slugify(parent if base.lower() in ["game", "launcher", "start", "play"] else base)
+
+    prefix_dir = prefix_path or os.path.join(MEMORA_PREFIXES_DIR, slug)
+    os.makedirs(prefix_dir, exist_ok=True)
+    os.makedirs(os.path.join(HOME, ".steam", "root"), exist_ok=True)
+
+    runners = find_all_runners()
+    chosen_runner = None
+    if runner_id and runner_id != "auto":
+        for r in runners:
+            if r["id"] == runner_id or r["name"] == runner_id:
+                chosen_runner = r
+                break
+
+    if not chosen_runner and runners:
+        chosen_runner = runners[0]
+
+    if not chosen_runner:
+        # Fallback directly to wine if nothing found
+        chosen_runner = {
+            "type": "wine",
+            "wine": "/usr/bin/wine"
+        }
+
+    env = os.environ.copy()
+    env["DXVK_LOG_LEVEL"] = "none"
+    env["PROTON_USE_SECCOMP"] = "1"
+    env["PROTON_NO_ESYNC"] = "0"
+    env["PROTON_NO_FSYNC"] = "0"
+
+    cmd = []
+    # If gamemoderun exists, wrap it
+    if shutil.which("gamemoderun"):
+        cmd.append("gamemoderun")
+
+    if chosen_runner["type"] == "proton" and chosen_runner.get("proton"):
+        env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = os.path.join(HOME, ".steam", "root")
+        env["STEAM_COMPAT_DATA_PATH"] = prefix_dir
+        env["WINEPREFIX"] = os.path.join(prefix_dir, "pfx")
+        cmd.extend([chosen_runner["proton"], "run", exe_path])
+    else:
+        env["WINEPREFIX"] = os.path.join(prefix_dir, "pfx")
+        wine_bin = chosen_runner.get("wine") or "/usr/bin/wine"
+        cmd.extend([wine_bin, exe_path])
+
+    if extra_args:
+        cmd.extend(extra_args)
+
+    subprocess.Popen(
+        cmd,
+        cwd=work_dir,
+        env=env,
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+    print(json.dumps({
+        "success": True,
+        "launched": exe_path,
+        "runner": chosen_runner.get("name", "Unknown"),
+        "prefix": prefix_dir,
+        "dir": work_dir
+    }))
+
+
+def create_game_shortcut(name, exe_path, runner_id=None, icon=None, work_dir=None, add_app=True, add_desktop=True):
+    """Creates desktop entries for the game using memora-proton launcher."""
+    exe_path = os.path.abspath(os.path.expanduser(exe_path))
+    work_dir = work_dir or os.path.dirname(exe_path)
+    slug = slugify(name)
+    icon = icon or find_icon_for_game(work_dir, slug)
+
+    runner_arg = f"--runner {shlex.quote(runner_id)}" if runner_id and runner_id != "auto" else ""
+    launch_exec = f"memora-proton run {runner_arg} {shlex.quote(exe_path)}"
+
+    lines = [
+        "[Desktop Entry]",
+        "Type=Application",
+        f"Name={name}",
+        f"Exec={launch_exec}",
+        f"Path={work_dir}",
+        f"Icon={icon}",
+        "Terminal=false",
+        "Categories=Game;",
+        "StartupNotify=true",
+        "X-Memora-Runner=proton"
+    ]
+    content = "\n".join(lines) + "\n"
+
+    created = []
+    if add_app:
+        os.makedirs(APPS_DIR, exist_ok=True)
+        app_file = os.path.join(APPS_DIR, f"{slug}.desktop")
+        with open(app_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.chmod(app_file, 0o755)
+        created.append(app_file)
+        subprocess.run(["update-desktop-database", APPS_DIR], capture_output=True)
+
+    if add_desktop:
+        os.makedirs(DESKTOP_DIR, exist_ok=True)
+        desk_file = os.path.join(DESKTOP_DIR, f"{name}.desktop")
+        with open(desk_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.chmod(desk_file, 0o755)
+        created.append(desk_file)
+
+    subprocess.run(["setsid", "-f", "memora-sound", "pop"], capture_output=True)
+
+    print(json.dumps({
+        "success": True,
+        "name": name,
+        "exec": exe_path,
+        "created": created
+    }))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Memora Proton Game Runner & Compatibility Manager")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # runners
+    subparsers.add_parser("runners", help="List all available Proton and Wine runners")
+
+    # inspect
+    p_insp = subparsers.add_parser("inspect", help="Inspect a Windows game or directory")
+    p_insp.add_argument("path", help="Path to game executable or folder")
+
+    # run
+    p_run = subparsers.add_parser("run", help="Run a Windows game with Proton")
+    p_run.add_argument("--runner", default="auto", help="Runner ID (e.g. GE-Proton9-23)")
+    p_run.add_argument("--prefix", default=None, help="Prefix directory")
+    p_run.add_argument("exec", help="Executable path")
+    p_run.add_argument("args", nargs="*", help="Extra arguments for game")
+
+    # create
+    p_create = subparsers.add_parser("create", help="Create shortcuts and app entry for game")
+    p_create.add_argument("--name", required=True, help="Game name")
+    p_create.add_argument("--exec", required=True, help="Path to .exe")
+    p_create.add_argument("--runner", default="auto", help="Proton runner ID")
+    p_create.add_argument("--icon", default=None, help="Icon path or name")
+    p_create.add_argument("--dir", default=None, help="Working directory")
+    p_create.add_argument("--app", action="store_true", help="Add to Applications list")
+    p_create.add_argument("--desktop", action="store_true", help="Add to Desktop")
+
+    # protonplus
+    subparsers.add_parser("get-protonplus", help="Open ProtonPlus to download Proton GE")
+
+    args = parser.parse_args()
+
+    if args.command == "runners":
+        print(json.dumps(find_all_runners(), indent=2))
+    elif args.command == "inspect":
+        print(json.dumps(inspect_path(args.path)))
+    elif args.command == "run":
+        launch_game(args.exec, runner_id=args.runner, prefix_path=args.prefix, extra_args=args.args)
+    elif args.command == "create":
+        create_game_shortcut(
+            args.name,
+            args.exec,
+            runner_id=args.runner,
+            icon=args.icon,
+            work_dir=args.dir,
+            add_app=args.app,
+            add_desktop=args.desktop
+        )
+    elif args.command == "get-protonplus":
+        subprocess.Popen(["protonplus"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

@@ -205,7 +205,7 @@ PanelWindow {
           Txt { text: "Add App…"; font.weight: Font.Medium; font.pixelSize: Theme.small + 0.5; anchors.verticalCenter: parent.verticalCenter }
         }
         HoverHandler { id: addH; cursorShape: Qt.PointingHandCursor }
-        TapHandler { onTapped: addAppDialog.open("") }
+        TapHandler { onTapped: Shell.addApp("") }
         Tip { text: "Add a game, executable or script to Applications" }
       }
     }
@@ -367,10 +367,5 @@ PanelWindow {
     width: implicitWidth; height: implicitHeight
     items: lp.menuApp === "" ? [] : lp.menuItems(lp.menuApp)
     onPicked: item => { const run = item.action; Qt.callLater(() => { run(); lp.menuApp = "" }) }
-  }
-
-  AddAppDialog {
-    id: addAppDialog
-    z: 60
   }
 }

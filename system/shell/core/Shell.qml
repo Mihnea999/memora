@@ -94,6 +94,11 @@ Singleton {
   property bool focusMode: false
   // Files being shared with a nearby device: the Share sheet is open (share/ShareSheet.qml).
   property var shareFiles: []
+  // Add Application / Game sheet: path of the executable or folder
+  property string addAppPath: ""
+  property bool addAppOpen: false
+  function addApp(path) { addAppPath = path || ""; addAppOpen = true }
+  function closeAddApp() { addAppOpen = false; addAppPath = "" }
   // Windows in "semi full screen": filling the screen under the menu bar, with
   // the Dock out of the way (address -> true). See Apps.semiFullscreen.
   property var semi: ({})

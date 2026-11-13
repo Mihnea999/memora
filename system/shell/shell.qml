@@ -133,6 +133,7 @@ ShellRoot {
   Genie {}
   Alert {}
   ShareSheet {}
+  AddAppDialog {}
   Notch {}
   Reminders {}
   Project {}
@@ -166,6 +167,8 @@ ShellRoot {
     function semiFullscreen(): void { Apps.semiFullscreen() }
     // Nearby Share for these files (one path per line).
     function share(paths: string): void { Shell.close(); Shell.shareFiles = paths.split("\n").filter(p => p !== "") }
+    // Add Game / Application modal sheet
+    function addApp(path: string): void { Shell.close(); Shell.addApp(path || "") }
     // Three fingers down: leave what is open, or show the app's windows.
     function swipeDown(): void { if (Shell.open !== "") Shell.close(); else Quickshell.execDetached(["memora-shell", "desktop", "expose", ""]) }
     function pin(): void { Apps.dispatch('hl.dsp.window.pin({ action = "toggle" })') }

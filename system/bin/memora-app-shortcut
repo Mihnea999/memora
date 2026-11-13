@@ -99,8 +99,19 @@ def inspect_path(path):
     clean_name = os.path.splitext(base_name)[0].replace("-", " ").replace("_", " ").title()
     result["name"] = clean_name
 
-    # Determine if it looks like a game
+    # Determine if it's a Windows executable or game directory
     lower_path = path.lower()
+    if lower_path.endswith((".exe", ".bat", ".cmd")):
+        try:
+            proton_bin = shutil.which("memora-proton") or os.path.join(os.path.dirname(__file__), "memora-proton")
+            if os.path.exists(proton_bin):
+                res = subprocess.run([proton_bin, "inspect", path], capture_output=True, text=True)
+                if res.returncode == 0:
+                    return json.loads(res.stdout)
+        except Exception:
+            pass
+
+    # Determine if it looks like a game
     if any(k in lower_path for k in ["game", "steam", "itch", "gog", "heroic", "lutris", "roms", "emul"]):
         result["category"] = "Game"
         result["isGame"] = True
@@ -120,6 +131,19 @@ def inspect_path(path):
                 found_exec = p
                 break
         if not found_exec:
+            # Check for Windows game in directory
+            try:
+                for f in sorted(os.listdir(path)):
+                    if f.lower().endswith(".exe") and not f.lower().startswith("unins"):
+                        proton_bin = shutil.which("memora-proton") or os.path.join(os.path.dirname(__file__), "memora-proton")
+                        if os.path.exists(proton_bin):
+                            res = subprocess.run([proton_bin, "inspect", path], capture_output=True, text=True)
+                            if res.returncode == 0:
+                                return json.loads(res.stdout)
+                        break
+            except Exception:
+                pass
+
             # Look for any executable file
             try:
                 for f in sorted(os.listdir(path)):
@@ -182,10 +206,14 @@ def create_shortcut(args):
 
     terminal_val = "true" if args.terminal else "false"
 
+    exec_cmd = exec_path
+    if exec_path.lower().endswith((".exe", ".bat", ".cmd")):
+        exec_cmd = f"memora-proton run {shlex.quote(exec_path)}"
+
     desktop_content = f"""[Desktop Entry]
 Type=Application
 Name={name}
-Exec={exec_path}
+Exec={exec_cmd}
 Path={work_dir}
 Icon={icon}
 Terminal={terminal_val}
@@ -304,6 +332,13 @@ def launch_path(args):
 
             print(json.dumps({"success": True, "launched": clean_cmd, "dir": work_dir}))
             return
+
+    # If it's a Windows executable (.exe, .bat, .cmd)
+    if real_path.lower().endswith((".exe", ".bat", ".cmd")):
+        proton_bin = shutil.which("memora-proton") or os.path.join(os.path.dirname(__file__), "memora-proton")
+        subprocess.Popen([proton_bin, "run", real_path], start_new_session=True)
+        print(json.dumps({"success": True, "launched": "memora-proton", "path": real_path}))
+        return
 
     # If it's an executable (ELF, script, AppImage)
     if os.access(real_path, os.X_OK) or real_path.endswith((".AppImage", ".sh", ".bin", ".x86_64")):

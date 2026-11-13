@@ -1,44 +1,56 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Wayland
+import Quickshell.Hyprland
 import Quickshell.Io
 import qs.core
+import qs.ui
 
-// A modal card to add any game, executable or downloaded script to the
-// applications list (Launchpad, Spotlight) and create a desktop shortcut.
-Item {
-  id: root
-  anchors.fill: parent
-  z: 1000
-  visible: shown || fade.running
-  property bool shown: false
+// Modal Liquid Glass sheet for adding games or applications, configuring Proton
+// versions (Proton GE, Proton Experimental, Wine), creating desktop shortcuts,
+// and 1-click launching for non-Linux users.
+PanelWindow {
+  id: win
+  screen: Quickshell.screens.find(s => Hyprland.focusedMonitor && s.name === Hyprland.focusedMonitor.name) || Quickshell.screens[0]
+  visible: Shell.addAppOpen || anim.running
+  anchors { top: true; bottom: true; left: true; right: true }
+  exclusionMode: ExclusionMode.Ignore
+  color: "transparent"
+  WlrLayershell.layer: WlrLayer.Overlay
+  WlrLayershell.namespace: "memora-dialog"
+  WlrLayershell.keyboardFocus: Shell.addAppOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-  property string targetPath: ""
+  property real shown: Shell.addAppOpen ? 1 : 0
+  Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
+
+  property string targetPath: Shell.addAppPath
   property string appName: ""
   property string appExec: ""
   property string appDir: ""
-  property string appIcon: ""
+  property string appIcon: "gamepad"
   property string appCategory: "Game"
+  property bool isWindowsExe: false
+  property var runners: []
+  property string selectedRunner: "auto"
   property bool inTerminal: false
   property bool addToApps: true
   property bool addToDesktop: true
 
-  signal done(string name, string execPath)
-  signal cancelled()
+  onTargetPathChanged: inspect(targetPath)
+  Connections {
+    target: Shell
+    function onAddAppOpenChanged() {
+      if (Shell.addAppOpen) {
+        inspect(Shell.addAppPath)
+      }
+    }
+  }
 
-  readonly property var categories: [
-    { id: "Game", name: "Game", sym: "gamepad" },
-    { id: "Utility", name: "Utility", sym: "gear" },
-    { id: "Productivity", name: "Productivity", sym: "check" },
-    { id: "Creativity", name: "Creativity", sym: "palette" },
-    { id: "Development", name: "Dev", sym: "keyboard" },
-    { id: "AudioVideo", name: "Media", sym: "play" }
-  ]
-
-  function open(path) {
+  function inspect(path) {
     targetPath = path || ""
     if (targetPath) {
-      inspectProc.command = ["memora-app-shortcut", "inspect", targetPath]
+      inspectProc.command = ["memora-proton", "inspect", targetPath]
       inspectProc.running = true
     } else {
       appName = ""
@@ -46,35 +58,76 @@ Item {
       appDir = ""
       appIcon = "gamepad"
       appCategory = "Game"
+      isWindowsExe = false
+      runners = []
+      selectedRunner = "auto"
       inTerminal = false
       addToApps = true
       addToDesktop = true
+      // Fetch runners in background anyway
+      runnersProc.running = true
     }
-    shown = true
-    Qt.callLater(() => nameInput.forceActiveFocus())
   }
 
-  function close() {
-    shown = false
-    cancelled()
-  }
-
-  function save() {
+  function save(andPlay) {
     if (!appName.trim() || !appExec.trim()) return
-    const args = [
-      "memora-app-shortcut", "create",
-      "--name", appName.trim(),
-      "--exec", appExec.trim(),
-      "--dir", appDir.trim() || "",
-      "--icon", appIcon || "",
-      "--category", appCategory
-    ]
-    if (inTerminal) args.push("--terminal")
-    if (addToApps) args.push("--app")
-    if (addToDesktop) args.push("--desktop")
+    if (isWindowsExe) {
+      const args = [
+        "memora-proton", "create",
+        "--name", appName.trim(),
+        "--exec", appExec.trim(),
+        "--runner", selectedRunner || "auto",
+        "--dir", appDir.trim() || "",
+        "--icon", appIcon || ""
+      ]
+      if (addToApps) args.push("--app")
+      if (addToDesktop) args.push("--desktop")
+      saveProc.command = args
+      saveProc.running = true
 
-    saveProc.command = args
-    saveProc.running = true
+      if (andPlay) {
+        Quickshell.execDetached(["memora-proton", "run", "--runner", selectedRunner || "auto", appExec.trim()])
+        Shell.closeAddApp()
+      }
+    } else {
+      const args = [
+        "memora-app-shortcut", "create",
+        "--name", appName.trim(),
+        "--exec", appExec.trim(),
+        "--dir", appDir.trim() || "",
+        "--icon", appIcon || "",
+        "--category", appCategory
+      ]
+      if (inTerminal) args.push("--terminal")
+      if (addToApps) args.push("--app")
+      if (addToDesktop) args.push("--desktop")
+      saveProc.command = args
+      saveProc.running = true
+
+      if (andPlay) {
+        Quickshell.execDetached(["memora-app-shortcut", "launch", appExec.trim()])
+        Shell.closeAddApp()
+      }
+    }
+  }
+
+  Process {
+    id: runnersProc
+    command: ["memora-proton", "runners"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          const list = JSON.parse(text)
+          if (Array.isArray(list)) {
+            win.runners = list
+            if (list.length && win.selectedRunner === "auto") {
+              const rec = list.find(r => r.recommended) || list[0]
+              win.selectedRunner = rec.id
+            }
+          }
+        } catch (e) {}
+      }
+    }
   }
 
   Process {
@@ -84,11 +137,18 @@ Item {
         try {
           const j = JSON.parse(text)
           if (!j.error) {
-            root.appName = j.name || ""
-            root.appExec = j.exec || ""
-            root.appDir = j.dir || ""
-            root.appIcon = j.icon || (j.isGame ? "gamepad" : "application-x-executable")
-            root.appCategory = j.category || (j.isGame ? "Game" : "Utility")
+            win.appName = j.name || ""
+            win.appExec = j.exec || ""
+            win.appDir = j.dir || ""
+            win.appIcon = j.icon || (j.isWindowsExe ? "gamepad" : "application-x-executable")
+            win.appCategory = j.category || (j.isWindowsExe ? "Game" : "Utility")
+            win.isWindowsExe = !!j.isWindowsExe
+            if (Array.isArray(j.runners) && j.runners.length) {
+              win.runners = j.runners
+              win.selectedRunner = j.recommendedRunner || (j.runners[0] ? j.runners[0].id : "auto")
+            } else {
+              runnersProc.running = true
+            }
           }
         } catch (e) {}
       }
@@ -99,388 +159,401 @@ Item {
     id: saveProc
     onExited: code => {
       if (code === 0) {
-        root.shown = false
-        root.done(root.appName, root.appExec)
+        Shell.closeAddApp()
       }
     }
   }
 
-  // Browse executable with file dialog
+  // Browse file with Zenity
   Process {
     id: browseExecProc
-    command: ["bash", "-c", "zenity --file-selection --title=\"Select Game or Executable\" 2>/dev/null || true"]
+    command: ["bash", "-c", "zenity --file-selection --title=\"Select Game Executable or Application\" 2>/dev/null || true"]
     stdout: StdioCollector {
       onStreamFinished: {
         const p = text.trim()
-        if (p) {
-          root.appExec = p
-          if (!root.appDir) root.appDir = p.substring(0, p.lastIndexOf("/"))
-          if (!root.appName) {
-            const base = p.split("/").pop().replace(/\.[^/.]+$/, "")
-            root.appName = base.charAt(0).toUpperCase() + base.slice(1)
-          }
-        }
+        if (p) inspect(p)
       }
     }
   }
 
-  // Browse working directory with folder dialog
-  Process {
-    id: browseDirProc
-    command: ["bash", "-c", "zenity --file-selection --directory --title=\"Select Working Directory\" 2>/dev/null || true"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const p = text.trim()
-        if (p) root.appDir = p
-      }
-    }
-  }
-
-  // Browse icon image
+  // Browse icon with Zenity
   Process {
     id: browseIconProc
-    command: ["bash", "-c", "zenity --file-selection --file-filter=\"Images (*.png *.svg *.ico)|*.png *.svg *.ico\" --title=\"Select Icon\" 2>/dev/null || true"]
+    command: ["bash", "-c", "zenity --file-selection --file-filter=\"Images (*.png *.svg *.ico)|*.png *.svg *.ico\" --title=\"Select Game Icon\" 2>/dev/null || true"]
     stdout: StdioCollector {
       onStreamFinished: {
         const p = text.trim()
-        if (p) root.appIcon = p
+        if (p) win.appIcon = p
       }
     }
   }
 
-  Keys.onEscapePressed: close()
-  Keys.onReturnPressed: if (appName.trim() && appExec.trim()) save()
-
-  // Soft veil background
+  // Soft frosted backdrop. Clicking outside closes the sheet.
   Rectangle {
     anchors.fill: parent
-    color: Qt.rgba(0, 0, 0, Theme.dark ? 0.45 : 0.25)
-    opacity: root.shown ? 1 : 0
-    Behavior on opacity { NumberAnimation { id: fade; duration: Theme.fast } }
-    TapHandler { onTapped: root.close() }
+    color: Qt.rgba(0, 0, 0, Theme.dark ? 0.35 : 0.22)
+    opacity: win.shown
+    TapHandler {
+      onTapped: ev => {
+        const p = card.mapFromItem(null, ev.scenePosition.x, ev.scenePosition.y)
+        if (!card.contains(p)) Shell.closeAddApp()
+      }
+    }
   }
 
-  // Dialog Card
+  // Liquid Glass Modal Card
   Glass {
     id: card
     anchors.centerIn: parent
-    width: 440
-    height: col.implicitHeight + 40
-    radius: 20
-    fill: Theme.dark ? Qt.rgba(0.14, 0.15, 0.18, 0.96) : Qt.rgba(0.99, 0.99, 1, 0.97)
-    opacity: root.shown ? 1 : 0
-    scale: 0.96 + 0.04 * (root.shown ? 1 : 0)
-    Behavior on opacity { NumberAnimation { duration: Theme.fast } }
-    Behavior on scale { NumberAnimation { duration: Theme.normal; easing.type: Theme.easingEmph } }
-    TapHandler {}
+    width: 480
+    height: col.implicitHeight + 44
+    radius: 22
+    fill: Theme.glassStrong
+    opacity: win.shown
+    scale: 0.94 + 0.06 * win.shown
+    focus: true
+    Keys.onEscapePressed: Shell.closeAddApp()
+    Keys.onReturnPressed: win.save(false)
 
     ColumnLayout {
       id: col
-      anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
-      spacing: 12
+      x: 24; y: 22; width: parent.width - 48
+      spacing: 14
 
-      // Header with preview icon
+      // Header row with Icon, Name, and Auto-Detect Badge
       RowLayout {
         Layout.fillWidth: true
         spacing: 14
 
+        // Icon preview squircle with edit badge
         Item {
-          width: 54; height: 54
+          width: 58; height: 58
           Rectangle {
             anchors.fill: parent
-            radius: 14
-            color: Theme.dark ? "#262832" : "#e8eaf0"
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.15)
+            radius: 15
+            color: Theme.field
+            border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.14)
           }
           Image {
-            id: iconPreview
+            id: iconImg
             anchors.centerIn: parent
-            width: 36; height: 36
+            width: 40; height: 40
             fillMode: Image.PreserveAspectFit
-            sourceSize: Qt.size(72, 72)
-            source: root.appIcon.startsWith("/")
-              ? "file://" + root.appIcon
-              : Quickshell.iconPath(root.appIcon || (root.appCategory === "Game" ? "gamepad" : "application-x-executable"))
+            source: {
+              if (!win.appIcon) return ""
+              if (win.appIcon.startsWith("/")) return "file://" + win.appIcon
+              return Quickshell.iconPath(win.appIcon, "gamepad")
+            }
+            visible: status === Image.Ready
           }
           Sym {
-            visible: !iconPreview.status || iconPreview.status === Image.Error || !root.appIcon.startsWith("/")
+            visible: !iconImg.visible
             anchors.centerIn: parent
-            name: root.appCategory === "Game" ? "gamepad" : "gear"
-            width: 24; height: 24
+            name: win.isWindowsExe ? "gamepad" : (win.appIcon === "gamepad" ? "gamepad" : "gear")
+            width: 26; height: 26
             color: Theme.accent
           }
+          // Small browse icon button
           Rectangle {
-            anchors { right: parent.right; bottom: parent.bottom; margins: -3 }
-            width: 18; height: 18; radius: 9
+            anchors { right: parent.right; bottom: parent.bottom; rightMargin: -3; bottomMargin: -3 }
+            width: 20; height: 20; radius: 10
             color: Theme.accent
+            border.width: 1.5; border.color: Theme.dark ? "#1c1c1e" : "#ffffff"
             Sym { anchors.centerIn: parent; name: "plus"; width: 10; height: 10; color: "#ffffff" }
-            HoverHandler { id: iconHover; cursorShape: Qt.PointingHandCursor }
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: browseIconProc.running = true }
+            Tip { text: "Change Icon Image…" }
           }
         }
 
+        // Title and Game badge
         ColumnLayout {
           Layout.fillWidth: true
-          spacing: 2
-          Txt {
-            text: root.appCategory === "Game" ? "Add Game" : "Add Application"
-            font.weight: Font.Bold
-            font.pixelSize: Theme.fontSize + 3
-          }
-          Txt {
-            text: "Create a shortcut for Launchpad and Desktop"
-            color: Theme.textDim
-            font.pixelSize: Theme.small
-          }
-        }
-      }
+          spacing: 3
 
-      Rectangle { Layout.fillWidth: true; height: 1; color: Theme.separator }
+          Rectangle {
+            Layout.fillWidth: true
+            height: 32; radius: 8
+            color: nameInput.activeFocus ? Theme.field : "transparent"
+            border.width: 1; border.color: nameInput.activeFocus ? Theme.accent : "transparent"
+            TextInput {
+              id: nameInput
+              anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
+              verticalAlignment: TextInput.AlignVCenter
+              color: Theme.text
+              font.family: Theme.font; font.pixelSize: Theme.large + 1; font.weight: Font.DemiBold
+              selectByMouse: true
+              text: win.appName
+              onTextChanged: win.appName = text
+              Txt {
+                visible: !nameInput.text
+                anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left
+                text: "Game or App Name"
+                color: Theme.textFaint
+                font.pixelSize: Theme.large + 1; font.weight: Font.DemiBold
+              }
+            }
+          }
 
-      // Name Input
-      ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 4
-        Txt { text: "Name"; font.weight: Font.Medium; font.pixelSize: Theme.small; color: Theme.textDim }
-        Rectangle {
-          Layout.fillWidth: true; height: 32; radius: 8
-          color: Theme.field
-          border.color: nameInput.activeFocus ? Theme.accent : Theme.separator
-          border.width: nameInput.activeFocus ? 2 : 1
-          TextInput {
-            id: nameInput
-            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-            verticalAlignment: TextInput.AlignVCenter
-            color: Theme.text
-            font.family: Theme.font; font.pixelSize: 13
-            text: root.appName
-            onTextChanged: root.appName = text
-            selectByMouse: true
-            selectionColor: Theme.accent
+          // Badge: Windows Game or Linux App
+          RowLayout {
+            spacing: 6
+            Sym {
+              name: win.isWindowsExe ? "gamepad" : "file"
+              width: 12; height: 12
+              color: win.isWindowsExe ? Theme.accent : Theme.textDim
+            }
             Txt {
-              visible: !nameInput.text
-              anchors { fill: parent; leftMargin: 0 }
-              verticalAlignment: Text.AlignVCenter
-              text: "e.g. Counter-Strike, Minecraft, Blender"
-              color: Theme.textFaint
-              font.pixelSize: 13
+              text: win.isWindowsExe ? "Windows Game (.exe)" : "Application / Executable"
+              color: win.isWindowsExe ? Theme.accent : Theme.textDim
+              font.pixelSize: Theme.small
+              font.weight: Font.Medium
+            }
+            Rectangle {
+              visible: win.isWindowsExe
+              radius: 5
+              color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+              implicitWidth: autoBadge.implicitWidth + 8; implicitHeight: 16
+              Txt {
+                id: autoBadge
+                anchors.centerIn: parent
+                text: "Proton Auto-Config"
+                color: Theme.accent
+                font.pixelSize: Theme.small - 1
+                font.weight: Font.Bold
+              }
             }
           }
         }
       }
 
-      // Executable Path Input
+      // Proton Compatibility Section (Automatic, zero configuration)
+      Rectangle {
+        Layout.fillWidth: true
+        visible: win.isWindowsExe || win.runners.length > 0
+        radius: 12
+        color: Theme.dark ? Qt.rgba(0.08, 0.08, 0.10, 0.5) : Qt.rgba(0.94, 0.94, 0.96, 0.6)
+        border.width: 1; border.color: Theme.separator
+        implicitHeight: protonCol.implicitHeight + 20
+
+        ColumnLayout {
+          id: protonCol
+          anchors { fill: parent; margins: 10 }
+          spacing: 8
+
+          RowLayout {
+            Layout.fillWidth: true
+            Sym { name: "gear"; width: 13; height: 13; color: Theme.accent }
+            Txt { text: "Proton Version"; font.weight: Font.DemiBold; font.pixelSize: Theme.small + 0.5 }
+            Item { Layout.fillWidth: true }
+            Txt {
+              text: "+ Get More Protons… (ProtonPlus)"
+              color: Theme.accent
+              font.pixelSize: Theme.small - 0.5
+              font.weight: Font.Medium
+              HoverHandler { id: ppHov; cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: Quickshell.execDetached(["protonplus"]) }
+              opacity: ppHov.hovered ? 0.8 : 1
+            }
+          }
+
+          // Runner selector pills
+          Flow {
+            Layout.fillWidth: true
+            spacing: 6
+            Repeater {
+              model: win.runners
+              delegate: Rectangle {
+                id: rPill
+                required property var modelData
+                readonly property bool chosen: win.selectedRunner === modelData.id
+                implicitWidth: rRow.implicitWidth + 14
+                implicitHeight: 26
+                radius: 13
+                color: chosen ? Theme.accent : (rpHov.hovered ? Theme.pressed : Theme.field)
+                border.width: 1; border.color: chosen ? Theme.accent : Theme.separator
+                Behavior on color { ColorAnimation { duration: Theme.fast } }
+
+                Row {
+                  id: rRow
+                  anchors.centerIn: parent
+                  spacing: 4
+                  Txt {
+                    text: rPill.modelData.name
+                    color: rPill.chosen ? "#ffffff" : Theme.text
+                    font.weight: rPill.chosen ? Font.Bold : Font.Normal
+                    font.pixelSize: Theme.small
+                  }
+                  Rectangle {
+                    visible: rPill.modelData.recommended || rPill.modelData.is_ge
+                    radius: 4
+                    color: rPill.chosen ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+                    implicitWidth: recText.implicitWidth + 6; implicitHeight: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    Txt {
+                      id: recText
+                      anchors.centerIn: parent
+                      text: rPill.modelData.is_ge ? "GE" : "Rec"
+                      color: rPill.chosen ? "#ffffff" : Theme.accent
+                      font.pixelSize: 9
+                      font.weight: Font.Bold
+                    }
+                  }
+                }
+                HoverHandler { id: rpHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: win.selectedRunner = rPill.modelData.id }
+              }
+            }
+          }
+
+          // Friendly automatic note
+          Txt {
+            Layout.fillWidth: true
+            text: "Each game runs isolated in its own prefix (~/.local/share/memora/prefixes/). No configuration required."
+            color: Theme.textDim
+            font.pixelSize: Theme.small - 1.5
+            wrapMode: Text.Wrap
+          }
+        }
+      }
+
+      // Executable Path Row (with Browse button)
       ColumnLayout {
         Layout.fillWidth: true
         spacing: 4
-        Txt { text: "Executable / Script / Game"; font.weight: Font.Medium; font.pixelSize: Theme.small; color: Theme.textDim }
+        Txt { text: "Executable File"; font.pixelSize: Theme.small; color: Theme.textDim; font.weight: Font.Medium }
         RowLayout {
           Layout.fillWidth: true
           spacing: 8
           Rectangle {
-            Layout.fillWidth: true; height: 32; radius: 8
+            Layout.fillWidth: true
+            height: 30; radius: 8
             color: Theme.field
-            border.color: execInput.activeFocus ? Theme.accent : Theme.separator
-            border.width: execInput.activeFocus ? 2 : 1
+            border.width: 1; border.color: execInput.activeFocus ? Theme.accent : Theme.separator
             TextInput {
               id: execInput
-              anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+              anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
               verticalAlignment: TextInput.AlignVCenter
               color: Theme.text
-              font.family: Theme.font; font.pixelSize: 12
-              text: root.appExec
-              onTextChanged: root.appExec = text
+              font.family: Theme.font; font.pixelSize: Theme.small
               selectByMouse: true
-              selectionColor: Theme.accent
+              text: win.appExec
+              onTextChanged: win.appExec = text
               clip: true
-              Txt {
-                visible: !execInput.text
-                anchors.fill: parent
-                verticalAlignment: Text.AlignVCenter
-                text: "Path to binary, AppImage, or .sh script"
-                color: Theme.textFaint
-                font.pixelSize: 12
-              }
             }
           }
           Rectangle {
-            width: 76; height: 32; radius: 8
-            color: browseHover.hovered ? Theme.pressed : Theme.hover
+            implicitWidth: 80; height: 30; radius: 8
+            color: bHov.hovered ? Theme.pressed : Theme.field
+            border.width: 1; border.color: Theme.separator
             Txt { anchors.centerIn: parent; text: "Browse…"; font.pixelSize: Theme.small; font.weight: Font.Medium }
-            HoverHandler { id: browseHover; cursorShape: Qt.PointingHandCursor }
+            HoverHandler { id: bHov; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: browseExecProc.running = true }
           }
         }
       }
 
-      // Working Directory
-      ColumnLayout {
+      // Options checkboxes
+      RowLayout {
         Layout.fillWidth: true
-        spacing: 4
-        Txt { text: "Working Directory (optional)"; font.weight: Font.Medium; font.pixelSize: Theme.small; color: Theme.textDim }
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: 8
-          Rectangle {
-            Layout.fillWidth: true; height: 30; radius: 8
-            color: Theme.field
-            border.color: dirInput.activeFocus ? Theme.accent : Theme.separator
-            border.width: dirInput.activeFocus ? 2 : 1
-            TextInput {
-              id: dirInput
-              anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-              verticalAlignment: TextInput.AlignVCenter
-              color: Theme.text
-              font.family: Theme.font; font.pixelSize: 12
-              text: root.appDir
-              onTextChanged: root.appDir = text
-              selectByMouse: true
-              clip: true
-              Txt {
-                visible: !dirInput.text
-                anchors.fill: parent
-                verticalAlignment: Text.AlignVCenter
-                text: "Game folder (defaults to executable location)"
-                color: Theme.textFaint
-                font.pixelSize: 12
-              }
-            }
-          }
-          Rectangle {
-            width: 76; height: 30; radius: 8
-            color: dirHover.hovered ? Theme.pressed : Theme.hover
-            Txt { anchors.centerIn: parent; text: "Browse…"; font.pixelSize: Theme.small }
-            HoverHandler { id: dirHover; cursorShape: Qt.PointingHandCursor }
-            TapHandler { onTapped: browseDirProc.running = true }
-          }
-        }
-      }
-
-      // Category Pills
-      ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 5
-        Txt { text: "Category"; font.weight: Font.Medium; font.pixelSize: Theme.small; color: Theme.textDim }
-        Flow {
-          Layout.fillWidth: true
-          spacing: 6
-          Repeater {
-            model: root.categories
-            delegate: Rectangle {
-              required property var modelData
-              readonly property bool active: root.appCategory === modelData.id
-              width: catRow.implicitWidth + 18; height: 26; radius: 13
-              color: active ? Theme.accent : (catH.hovered ? Theme.pressed : Theme.hover)
-              Row {
-                id: catRow
-                anchors.centerIn: parent
-                spacing: 5
-                Sym {
-                  name: modelData.sym; width: 12; height: 12
-                  color: parent.parent.active ? "#ffffff" : Theme.textDim
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-                Txt {
-                  text: modelData.name
-                  font.pixelSize: 11
-                  font.weight: parent.parent.active ? Font.Bold : Font.Normal
-                  color: parent.parent.active ? "#ffffff" : Theme.text
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-              }
-              HoverHandler { id: catH; cursorShape: Qt.PointingHandCursor }
-              TapHandler {
-                onTapped: {
-                  root.appCategory = modelData.id
-                  if (!root.appIcon || root.appIcon === "gamepad" || root.appIcon === "application-x-executable") {
-                    root.appIcon = modelData.id === "Game" ? "gamepad" : "application-x-executable"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // Options Checkboxes
-      ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 6
-        Layout.topMargin: 2
+        spacing: 16
 
         // Add to Applications
-        RowLayout {
-          spacing: 8
+        Row {
+          spacing: 7
           Rectangle {
-            width: 16; height: 16; radius: 4
-            color: root.addToApps ? Theme.accent : Theme.field
-            border.color: root.addToApps ? Theme.accent : Theme.separator
-            Sym { visible: root.addToApps; anchors.centerIn: parent; name: "check"; width: 10; height: 10; color: "#ffffff" }
-            TapHandler { onTapped: root.addToApps = !root.addToApps }
+            width: 18; height: 18; radius: 5
+            color: win.addToApps ? Theme.accent : Theme.field
+            border.width: 1; border.color: win.addToApps ? Theme.accent : Theme.separator
+            anchors.verticalCenter: parent.verticalCenter
+            Sym { visible: win.addToApps; anchors.centerIn: parent; name: "check"; width: 10; height: 10; color: "#ffffff" }
           }
-          Txt { text: "Add to Applications (Launchpad & Spotlight)"; font.pixelSize: Theme.small; Layout.fillWidth: true }
+          Txt { text: "Add to Applications"; font.pixelSize: Theme.small; anchors.verticalCenter: parent.verticalCenter }
+          HoverHandler { cursorShape: Qt.PointingHandCursor }
+          TapHandler { onTapped: win.addToApps = !win.addToApps }
         }
 
         // Add to Desktop
-        RowLayout {
-          spacing: 8
+        Row {
+          spacing: 7
           Rectangle {
-            width: 16; height: 16; radius: 4
-            color: root.addToDesktop ? Theme.accent : Theme.field
-            border.color: root.addToDesktop ? Theme.accent : Theme.separator
-            Sym { visible: root.addToDesktop; anchors.centerIn: parent; name: "check"; width: 10; height: 10; color: "#ffffff" }
-            TapHandler { onTapped: root.addToDesktop = !root.addToDesktop }
+            width: 18; height: 18; radius: 5
+            color: win.addToDesktop ? Theme.accent : Theme.field
+            border.width: 1; border.color: win.addToDesktop ? Theme.accent : Theme.separator
+            anchors.verticalCenter: parent.verticalCenter
+            Sym { visible: win.addToDesktop; anchors.centerIn: parent; name: "check"; width: 10; height: 10; color: "#ffffff" }
           }
-          Txt { text: "Create Shortcut on Desktop"; font.pixelSize: Theme.small; Layout.fillWidth: true }
-        }
-
-        // Run in terminal
-        RowLayout {
-          spacing: 8
-          Rectangle {
-            width: 16; height: 16; radius: 4
-            color: root.inTerminal ? Theme.accent : Theme.field
-            border.color: root.inTerminal ? Theme.accent : Theme.separator
-            Sym { visible: root.inTerminal; anchors.centerIn: parent; name: "check"; width: 10; height: 10; color: "#ffffff" }
-            TapHandler { onTapped: root.inTerminal = !root.inTerminal }
-          }
-          Txt { text: "Run in Terminal (for command-line tools or text games)"; font.pixelSize: Theme.small; Layout.fillWidth: true }
+          Txt { text: "Add to Desktop"; font.pixelSize: Theme.small; anchors.verticalCenter: parent.verticalCenter }
+          HoverHandler { cursorShape: Qt.PointingHandCursor }
+          TapHandler { onTapped: win.addToDesktop = !win.addToDesktop }
         }
       }
 
       // Action Buttons
       RowLayout {
         Layout.fillWidth: true
-        Layout.topMargin: 8
+        Layout.topMargin: 4
         spacing: 10
 
-        Rectangle {
-          Layout.fillWidth: true; height: 34; radius: 9
-          color: cancelH.hovered ? Theme.pressed : Theme.hover
-          Txt { anchors.centerIn: parent; text: "Cancel"; font.weight: Font.Medium }
-          HoverHandler { id: cancelH; cursorShape: Qt.PointingHandCursor }
-          TapHandler { onTapped: root.close() }
+        Btn {
+          text: "Cancel"
+          implicitWidth: 84
+          onClicked: Shell.closeAddApp()
         }
 
-        Rectangle {
-          Layout.fillWidth: true; height: 34; radius: 9
-          readonly property bool valid: root.appName.trim().length > 0 && root.appExec.trim().length > 0
-          color: valid ? Theme.accent : (Theme.dark ? "#333644" : "#d0d4e0")
-          opacity: valid ? 1 : 0.6
-          Txt {
-            anchors.centerIn: parent
-            text: root.appCategory === "Game" ? "Add Game" : "Add Application"
-            color: "#ffffff"
-            font.weight: Font.Bold
-          }
-          HoverHandler { id: addH; cursorShape: parent.valid ? Qt.PointingHandCursor : Qt.ArrowCursor }
-          TapHandler {
-            enabled: parent.valid
-            onTapped: root.save()
-          }
+        Item { Layout.fillWidth: true }
+
+        Btn {
+          visible: win.isWindowsExe
+          text: "Play Now"
+          sym: "play"
+          implicitWidth: 100
+          onClicked: win.save(true)
+        }
+
+        Btn {
+          text: win.isWindowsExe ? "Add Game" : "Add Application"
+          sym: "plus"
+          primary: true
+          implicitWidth: 120
+          onClicked: win.save(false)
         }
       }
     }
+  }
+
+  component Btn: Rectangle {
+    id: b
+    property string text
+    property string sym: ""
+    property bool primary: false
+    signal clicked()
+    implicitHeight: 32; radius: 9
+    color: primary ? Theme.accent : (bh.hovered ? Theme.pressed : Theme.field)
+    border.width: 1; border.color: primary ? Theme.accent : Theme.separator
+    opacity: primary && bh.hovered ? 0.9 : 1
+    scale: bp.pressed ? 0.96 : 1
+    Behavior on color { ColorAnimation { duration: Theme.fast } }
+    Behavior on scale { NumberAnimation { duration: Theme.fast } }
+
+    Row {
+      anchors.centerIn: parent
+      spacing: 6
+      Sym {
+        visible: b.sym !== ""
+        name: b.sym; width: 12; height: 12
+        color: b.primary ? "#ffffff" : Theme.text
+        anchors.verticalCenter: parent.verticalCenter
+      }
+      Txt {
+        text: b.text
+        color: b.primary ? "#ffffff" : Theme.text
+        font.weight: b.primary ? Font.Bold : Font.Medium
+        font.pixelSize: Theme.small + 0.5
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+    HoverHandler { id: bh; cursorShape: Qt.PointingHandCursor }
+    TapHandler { id: bp; onTapped: b.clicked() }
   }
 }
