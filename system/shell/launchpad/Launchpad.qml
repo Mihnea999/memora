@@ -109,7 +109,8 @@ PanelWindow {
       { separator: true },
       Apps.pinned.indexOf(id) >= 0
         ? { text: "Remove from Dock", action: () => Apps.unpin(id) }
-        : { text: "Keep in Dock", action: () => Apps.pin(id) }
+        : { text: "Keep in Dock", action: () => Apps.pin(id) },
+      { text: "Add Shortcut to Desktop", action: () => Apps.createDesktopShortcut(id) }
     ].concat(Apps.removable(id) ? [{ separator: true }, { text: "Uninstall…", action: () => Apps.uninstall(id) }] : [])
   }
   property point menuPos: Qt.point(0, 0)
@@ -157,37 +158,62 @@ PanelWindow {
     fill: Theme.tinted ? (Theme.dark ? Qt.rgba(0.10, 0.10, 0.12, Theme.see(0.74)) : Qt.rgba(0.98, 0.98, 0.99, Theme.see(0.78))) : Qt.rgba(0.5, 0.5, 0.52, 0.07)
     TapHandler { onTapped: lp.menuApp = "" }   // taps inside don't close
 
-    // Search
-    Rectangle {
-      id: searchBox
+    // Search and Add App Button
+    RowLayout {
+      id: topBar
       anchors { top: parent.top; left: parent.left; right: parent.right; margins: 18 }
-      height: 42; radius: 13
-      color: Theme.field
-      border.color: search.activeFocus ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6) : Theme.separator
-      Sym { name: "search"; width: 16; height: 16; color: Theme.textDim; anchors { left: parent.left; leftMargin: 15; verticalCenter: parent.verticalCenter } }
-      TextInput {
-        id: search
-        clip: true   // long text scrolls inside the field, never spills out
-        anchors { left: parent.left; right: parent.right; leftMargin: 42; rightMargin: 14; verticalCenter: parent.verticalCenter }
-        color: Theme.text
-        font.family: Theme.font; font.pixelSize: Theme.large
-        selectionColor: Theme.accent
-        onTextChanged: lp.query = text
-        Keys.onEscapePressed: text ? text = "" : Shell.close()
-        Keys.onReturnPressed: if (lp.shownApps.length) lp.open_(lp.shownApps[Math.min(lp.sel, lp.shownApps.length - 1)].id)
-        Keys.onRightPressed: lp.sel = Math.min(lp.shownApps.length - 1, lp.sel + 1)
-        Keys.onLeftPressed: lp.sel = Math.max(0, lp.sel - 1)
-        Keys.onDownPressed: lp.sel = Math.min(lp.shownApps.length - 1, lp.sel + lp.cols)
-        Keys.onUpPressed: lp.sel = Math.max(0, lp.sel - lp.cols)
-        Keys.onTabPressed: { const i = lp.groups.findIndex(g => g.id === lp.group); lp.group = lp.groups[(i + 1) % lp.groups.length].id }
-        Txt { visible: !search.text; text: "Search apps"; color: Theme.textFaint; font.pixelSize: Theme.large; anchors.verticalCenter: parent.verticalCenter }
+      height: 42
+      spacing: 10
+
+      Rectangle {
+        id: searchBox
+        Layout.fillWidth: true
+        height: 42; radius: 13
+        color: Theme.field
+        border.color: search.activeFocus ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6) : Theme.separator
+        Sym { name: "search"; width: 16; height: 16; color: Theme.textDim; anchors { left: parent.left; leftMargin: 15; verticalCenter: parent.verticalCenter } }
+        TextInput {
+          id: search
+          clip: true   // long text scrolls inside the field, never spills out
+          anchors { left: parent.left; right: parent.right; leftMargin: 42; rightMargin: 14; verticalCenter: parent.verticalCenter }
+          color: Theme.text
+          font.family: Theme.font; font.pixelSize: Theme.large
+          selectionColor: Theme.accent
+          onTextChanged: lp.query = text
+          Keys.onEscapePressed: text ? text = "" : Shell.close()
+          Keys.onReturnPressed: if (lp.shownApps.length) lp.open_(lp.shownApps[Math.min(lp.sel, lp.shownApps.length - 1)].id)
+          Keys.onRightPressed: lp.sel = Math.min(lp.shownApps.length - 1, lp.sel + 1)
+          Keys.onLeftPressed: lp.sel = Math.max(0, lp.sel - 1)
+          Keys.onDownPressed: lp.sel = Math.min(lp.shownApps.length - 1, lp.sel + lp.cols)
+          Keys.onUpPressed: lp.sel = Math.max(0, lp.sel - lp.cols)
+          Keys.onTabPressed: { const i = lp.groups.findIndex(g => g.id === lp.group); lp.group = lp.groups[(i + 1) % lp.groups.length].id }
+          Txt { visible: !search.text; text: "Search apps"; color: Theme.textFaint; font.pixelSize: Theme.large; anchors.verticalCenter: parent.verticalCenter }
+        }
+      }
+
+      Rectangle {
+        id: addAppBtn
+        width: addRow.implicitWidth + 24
+        height: 42; radius: 13
+        color: addH.hovered ? Theme.pressed : Theme.field
+        border.color: Theme.separator
+        Row {
+          id: addRow
+          anchors.centerIn: parent
+          spacing: 6
+          Sym { name: "plus"; width: 14; height: 14; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+          Txt { text: "Add App…"; font.weight: Font.Medium; font.pixelSize: Theme.small + 0.5; anchors.verticalCenter: parent.verticalCenter }
+        }
+        HoverHandler { id: addH; cursorShape: Qt.PointingHandCursor }
+        TapHandler { onTapped: addAppDialog.open("") }
+        Tip { text: "Add a game, executable or script to Applications" }
       }
     }
 
     // Groups
     Column {
       id: side
-      anchors { top: searchBox.bottom; topMargin: 16; left: parent.left; leftMargin: 12 }
+      anchors { top: topBar.bottom; topMargin: 16; left: parent.left; leftMargin: 12 }
       width: 190
       spacing: 2
       opacity: lp.query ? 0.35 : 1
@@ -211,12 +237,12 @@ PanelWindow {
         }
       }
     }
-    Rectangle { anchors { top: searchBox.bottom; topMargin: 16; bottom: parent.bottom; bottomMargin: 18; left: side.right; leftMargin: 10 } width: 1; color: Theme.separator }
+    Rectangle { anchors { top: topBar.bottom; topMargin: 16; bottom: parent.bottom; bottomMargin: 18; left: side.right; leftMargin: 10 } width: 1; color: Theme.separator }
 
     // Most used, then the grid.
     Flickable {
       id: flick
-      anchors { top: searchBox.bottom; topMargin: 12; bottom: parent.bottom; bottomMargin: 10; left: side.right; leftMargin: 22; right: parent.right; rightMargin: 14 }
+      anchors { top: topBar.bottom; topMargin: 12; bottom: parent.bottom; bottomMargin: 10; left: side.right; leftMargin: 22; right: parent.right; rightMargin: 14 }
       clip: true
       contentHeight: body.implicitHeight + 10
       boundsBehavior: Flickable.StopAtBounds
@@ -341,5 +367,10 @@ PanelWindow {
     width: implicitWidth; height: implicitHeight
     items: lp.menuApp === "" ? [] : lp.menuItems(lp.menuApp)
     onPicked: item => { const run = item.action; Qt.callLater(() => { run(); lp.menuApp = "" }) }
+  }
+
+  AddAppDialog {
+    id: addAppDialog
+    z: 60
   }
 }

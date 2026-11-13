@@ -58,6 +58,26 @@ Singleton {
 
   function run(cmd) { Quickshell.execDetached(["bash", "-c", cmd]) }
 
+  // Create a desktop shortcut (.desktop launcher) for an app
+  function createDesktopShortcut(appId) {
+    const e = entry(appId)
+    const name = e ? displayName(e) : appId
+    const desk = Quickshell.env("HOME") + "/Desktop"
+    const src = e && e.fileName ? e.fileName : (appId.endsWith(".desktop") ? appId : appId + ".desktop")
+    const cmd = "d=\"" + desk + "\"; mkdir -p \"$d\"; " +
+      "src=\"" + (e && e.fileName ? e.fileName : "/usr/share/applications/" + src) + "\"; " +
+      "[ -f \"$src\" ] || src=\"$HOME/.local/share/applications/" + src + "\"; " +
+      "target=\"$d/" + name.replace(/[\/\\]/g, "_") + ".desktop\"; " +
+      "cp -f \"$src\" \"$target\" 2>/dev/null && chmod +x \"$target\" && setsid -f memora-sound pop >/dev/null 2>&1 || true"
+    run(cmd)
+  }
+
+  // Create a macOS-style alias (symlink) to any file or folder
+  function makeAlias(targetPath, destDir) {
+    const d = destDir ? " \"" + destDir + "\"" : ""
+    run("memora-app-shortcut alias \"" + targetPath + "\"" + d)
+  }
+
   // ---- visible applications (Launchpad, Spotlight) --------------------------
   // Apps Memora has its own version of: kept installed (files open in them, the
   // file pickers use Nautilus) but not listed twice in Launchpad and Spotlight.

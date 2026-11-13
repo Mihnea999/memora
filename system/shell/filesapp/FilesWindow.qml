@@ -55,7 +55,20 @@ FloatingWindow {
   function sh(cmd, then) { const p = runner.createObject(win, { cmd: cmd }); if (then) p.done.connect(then) }
   function openItem(p, isDir) {
     if (isDir) return go(p)
+    if (p.endsWith(".desktop") || p.endsWith(".AppImage") || p.endsWith(".sh") || p.endsWith(".bin") || p.endsWith(".x86_64")) {
+      Quickshell.execDetached(["memora-app-shortcut", "launch", p])
+      return
+    }
     Quickshell.execDetached(["gio", "open", p])
+  }
+  function isExecutable(name) {
+    return name.endsWith(".AppImage") || name.endsWith(".sh") || name.endsWith(".bin") || name.endsWith(".x86_64") || name.endsWith(".desktop")
+  }
+  function makeAliases(paths) {
+    paths.forEach(p => sh("memora-app-shortcut alias " + q(p) + " " + q(path)))
+  }
+  function createDesktopShortcuts(paths) {
+    paths.forEach(p => sh("memora-app-shortcut alias " + q(p) + " " + q(app.home + "/Desktop")))
   }
   // The path of row i in what is shown (the folder, or search results).
   function pathAt(i) { return content.searching ? found[i] : folder.get(i, "filePath") }
@@ -1007,6 +1020,7 @@ FloatingWindow {
       return [
         { text: "New Folder", keys: "Ctrl Shift N", action: () => win.newFolder() },
         { text: "New Text File", action: () => win.sh(win.freeName + "t=$(free " + win.q(win.path) + " Untitled.txt); : >> \"$t\"") },
+        { text: "Add Application / Game…", action: () => addAppDialog.open(win.path) },
         { separator: true },
         { text: "Paste", keys: "Ctrl V", enabled: app.clip.length > 0, action: () => win.paste() },
         { text: "Select All", keys: "Ctrl A", action: () => win.selectAll() },
@@ -1035,6 +1049,9 @@ FloatingWindow {
         { text: "Copy", keys: "Ctrl C", action: () => win.copy(false) },
         { text: "Cut", keys: "Ctrl X", action: () => win.copy(true) },
         { text: "Duplicate", action: () => win.sh(win.freeName + "for f in " + win.selection.map(win.q).join(" ") + "; do cp -a -- \"$f\" \"$(free \"$(dirname -- \"$f\")\" \"$(basename -- \"$f\")\")\"; done") },
+        { text: "Make Alias", action: () => win.makeAliases(win.selection) },
+        { text: "Create Shortcut on Desktop", action: () => win.createDesktopShortcuts(win.selection) },
+        (!many && (f.dir || win.isExecutable(f.name))) ? { text: "Add to Applications…", action: () => addAppDialog.open(f.path) } : null,
         // Archives (memora-archive) does the work: a zip at once, or the choices (7z, RAR, a password, parts).
         { text: "Compress", action: () => Quickshell.execDetached([Theme.share + "/bin/memora-archive-tool", "create", win.path + "/" + (many ? "Archive" : f.name) + ".zip", "zip", "5"].concat(win.selection)) },
         { text: "Compress…", action: () => Quickshell.execDetached(["memora-archive", "--compress"].concat(win.selection)) },
@@ -1341,5 +1358,10 @@ FloatingWindow {
         }
       }
     }
+  }
+
+  AddAppDialog {
+    id: addAppDialog
+    z: 80
   }
 }

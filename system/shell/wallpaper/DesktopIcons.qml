@@ -56,18 +56,38 @@ Item {
   }
   // The entries, as { name, path, dir } (rows from another folder count as none).
   property var items: []
+  property var desktopMeta: ({})
+  Process {
+    id: metaScanner
+    command: ["bash", "-c", "for f in " + d.q(d.dir) + "/*.desktop; do [ -f \"$f\" ] || continue; n=$(grep -m1 '^Name=' \"$f\" | cut -d= -f2-); ic=$(grep -m1 '^Icon=' \"$f\" | cut -d= -f2-); printf '%s\\t%s\\t%s\\n' \"$f\" \"$n\" \"$ic\"; done"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        const m = Object.assign({}, d.desktopMeta)
+        text.trim().split("\n").forEach(line => {
+          const parts = line.split("\t")
+          if (parts[0]) m[parts[0]] = { path: parts[0], name: parts[1] || "", icon: parts[2] || "" }
+        })
+        d.desktopMeta = m
+      }
+    }
+  }
+
   Timer {
     id: settle
     interval: 60
     onTriggered: {
       const l = []
+      let hasDesk = false
       for (let i = 0; i < desk.count; i++) {
         const p = desk.get(i, "filePath") || ""
         if (p.substring(0, p.lastIndexOf("/")) !== d.dir) continue
-        l.push({ name: desk.get(i, "fileName"), path: p, dir: !!desk.get(i, "fileIsDir") })
+        const n = desk.get(i, "fileName") || ""
+        if (n.endsWith(".desktop")) hasDesk = true
+        l.push({ name: n, path: p, dir: !!desk.get(i, "fileIsDir") })
       }
       d.items = l
       d.arrange()
+      if (hasDesk) metaScanner.running = true
     }
   }
   Connections { target: desk; function onDataChanged() { settle.restart() } function onRowsInserted() { settle.restart() } function onRowsRemoved() { settle.restart() } function onModelReset() { settle.restart() } }
@@ -227,11 +247,23 @@ Item {
   function open(it) {
     if (!it) return
     if (it.dir) Quickshell.execDetached(["memora-files", it.path])
-    else Quickshell.execDetached(["gio", "open", it.path])
+    else Quickshell.execDetached(["memora-app-shortcut", "launch", it.path])
   }
   function openSelection(targets) {
     const list = (targets && targets.length) ? targets : selection
     list.forEach(n => open(byName(n)))
+  }
+  function isExecutable(name) {
+    return name.endsWith(".AppImage") || name.endsWith(".sh") || name.endsWith(".bin") || name.endsWith(".x86_64") || name.endsWith(".desktop")
+  }
+  function makeAliases(targets) {
+    const list = (targets && targets.length) ? targets : selection
+    list.forEach(n => sh("memora-app-shortcut alias " + q(dir + "/" + n) + " " + q(dir)))
+  }
+  function showOriginal(path) {
+    sh("p=$(readlink -f -- " + q(path) + " 2>/dev/null); " +
+       "[ -n \"$p\" ] && [ -e \"$p\" ] || p=$(grep -m1 '^Exec=' -- " + q(path) + " 2>/dev/null | cut -d= -f2- | awk '{print $1}'); " +
+       "[ -n \"$p\" ] && [ -e \"$p\" ] && setsid -f memora-files \"$(dirname -- \"$p\")\" >/dev/null 2>&1 || true")
   }
   function trash(targets) {
     const list = (targets && targets.length) ? targets : selection
@@ -304,11 +336,15 @@ Item {
     if (!selected[it.name]) { selected = ({ [it.name]: true }); lastClicked = it.name }
     const targets = selection.indexOf(it.name) >= 0 ? selection.slice() : [it.name]
     const one = targets.length === 1
+    const isShortcut = it.name.endsWith(".desktop") || it.name.indexOf("alias") >= 0
     return [
       { text: "Open", action: () => openSelection(targets) },
+      isShortcut ? { text: "Show Original", action: () => showOriginal(dir + "/" + it.name) } : null,
       { separator: true },
       { text: "Rename", enabled: one, action: () => renaming = it.name },
       it.dir && one ? { text: "Colour & Symbol…", action: () => styling = it.name } : null,
+      { text: "Make Alias", action: () => makeAliases(targets) },
+      one && (it.dir || isExecutable(it.name)) ? { text: "Add to Applications…", action: () => addAppDialog.open(dir + "/" + it.name) } : null,
       { text: "Show in Files", action: () => Quickshell.execDetached(["memora-files", dir]) },
       { text: "Share…", enabled: !targets.some(n => (byName(n) || {}).dir), action: () => Quickshell.execDetached(["memora-shell", "share"].concat(targets.map(n => dir + "/" + n))) },
       { separator: true },
@@ -319,6 +355,7 @@ Item {
     const c = Math.max(0, Math.min(cols - 1, Math.floor((width - padRight - x) / cellW))), r = Math.max(0, Math.min(rows - 1, Math.floor((y - padTop) / cellH)))
     return [
       { text: "New Folder", action: () => newFolder([c, r]) },
+      { text: "Add Application / Game…", action: () => addAppDialog.open("") },
       { text: "Clean Up", enabled: items.length > 0, action: () => cleanUp() },
       { separator: true }
     ]
@@ -507,6 +544,9 @@ Item {
       readonly property bool on: !!d.selected[modelData.name]
       readonly property bool carried: d.mode === "move" && d.moving.indexOf(modelData.name) >= 0 && !outDrag.Drag.active
       readonly property bool target: d.dropTarget !== null && d.dropTarget.name === modelData.name
+      readonly property var meta: d.desktopMeta[modelData.path] || null
+      readonly property bool isShortcut: modelData.name.endsWith(".desktop") || modelData.name.indexOf("alias") >= 0
+      readonly property string displayName: (meta && meta.name) ? meta.name : (modelData.name.endsWith(".desktop") ? modelData.name.slice(0, -8) : modelData.name)
       visible: cell !== null
       width: d.cellW; height: d.cellH
       x: (cell ? d.cellX(cell[0]) : 0) + (carried ? d.dx : 0)
@@ -532,9 +572,31 @@ Item {
         asynchronous: true
         sourceSize: Qt.size(d.icon * 2, d.icon * 2)
         readonly property bool photo: !ic.modelData.dir && Folders.kindOf(ic.modelData.name, false) === "image"
-        source: photo ? "file://" + ic.modelData.path : Folders.iconFor(ic.modelData.path, ic.modelData.name, ic.modelData.dir)
+        source: {
+          if (ic.meta && ic.meta.icon) {
+            return ic.meta.icon.startsWith("/") ? "file://" + ic.meta.icon : Quickshell.iconPath(ic.meta.icon, "application-x-executable")
+          }
+          if (photo) return "file://" + ic.modelData.path
+          return Folders.iconFor(ic.modelData.path, ic.modelData.name, ic.modelData.dir)
+        }
         scale: ic.target ? 1.08 : 1
         Behavior on scale { NumberAnimation { duration: Theme.fast } }
+      }
+      // Shortcut emblem (curved arrow badge) at bottom-left corner of icon
+      Rectangle {
+        visible: ic.isShortcut
+        x: (parent.width - d.icon) / 2 - 2
+        y: d.icon - 14
+        width: 18; height: 18; radius: 9
+        color: Theme.dark ? "#1c1d22" : "#ffffff"
+        border.width: 1.2; border.color: Qt.rgba(0, 0, 0, 0.25)
+        z: 4
+        Sym {
+          anchors.centerIn: parent
+          name: "shortcut"
+          width: 11; height: 11
+          color: Theme.dark ? "#ffffff" : "#111111"
+        }
       }
       Rectangle {
         id: plate
@@ -550,7 +612,7 @@ Item {
         visible: d.renaming !== ic.modelData.name
         x: 4; y: d.icon + 9
         width: d.cellW - 8
-        text: ic.modelData.name
+        text: ic.displayName
         textFormat: Text.PlainText
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
@@ -657,5 +719,10 @@ Item {
     // Taps on the card stay on it.
     TapHandler {}
     DragHandler { target: null }
+  }
+
+  AddAppDialog {
+    id: addAppDialog
+    z: 50
   }
 }

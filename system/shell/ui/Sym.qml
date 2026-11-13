@@ -189,6 +189,15 @@ Canvas {
       ctx.beginPath(); ctx.moveTo(2.5, 8); ctx.lineTo(13.5, 8); ctx.moveTo(9, 3.5); ctx.lineTo(13.5, 8); ctx.lineTo(9, 12.5); ctx.stroke()
       break
     }
+    case "shortcut": case "alias": {
+      ctx.lineWidth = 1.7
+      ctx.beginPath()
+      ctx.moveTo(3.5, 12.5)
+      ctx.bezierCurveTo(4.0, 7.5, 7.0, 4.5, 12.0, 4.5)
+      ctx.moveTo(8.5, 2.0); ctx.lineTo(12.5, 4.5); ctx.lineTo(8.5, 7.5)
+      ctx.stroke()
+      break
+    }
     case "check": {
       ctx.lineWidth = 1.9
       ctx.beginPath(); ctx.moveTo(3, 8.4); ctx.lineTo(6.6, 12); ctx.lineTo(13.2, 4.4); ctx.stroke()
