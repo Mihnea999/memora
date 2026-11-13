@@ -32,7 +32,7 @@ Kit.Page {
     }
     Kit.Row {
       label: "Hide the Dock"
-      detail: (Prefs.dockHiding || (Prefs.dockAutohide ? "always" : "auto")) === "auto" ? "Automatic: when a window needs the room on small screens · Super+Alt+D"
+      detail: (Prefs.dockHiding || (Prefs.dockAutohide ? "always" : "auto")) === "auto" ? "Automatic: hides when a window needs the space · Super+Alt+D"
         : "Point at the edge of the screen to show it · Super+Alt+D"
       Kit.Choice {
         value: Prefs.dockHiding || (Prefs.dockAutohide ? "always" : "auto")

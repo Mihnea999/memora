@@ -148,7 +148,7 @@ Singleton {
         // the menu bar keeps that app's name.
         if (apps.helperClasses.indexOf(c) < 0) apps.activeClass = c
       }
-      if (["openwindow", "closewindow", "movewindowv2", "windowtitlev2", "activewindowv2"].indexOf(ev.name) >= 0)
+      if (["openwindow", "closewindow", "movewindowv2", "resizewindowv2", "windowtitlev2", "activewindowv2", "fullscreen"].indexOf(ev.name) >= 0)
         Hyprland.refreshToplevels()
       // An app asked to be minimized (its yellow button): park it in the dock.
       if (ev.name === "minimized") {

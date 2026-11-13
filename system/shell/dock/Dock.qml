@@ -34,19 +34,24 @@ PanelWindow {
   readonly property var monitor: Hyprland.monitors.values.find(m => m.name === modelData.name) || null
   readonly property bool fullscreen: {
     const ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
-    return Apps.windows.some(w => w.lastIpcObject.fullscreen === 2 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws)
+    return Apps.windows.some(w => {
+      const o = w.lastIpcObject
+      if (!o || !o.workspace || o.workspace.id !== ws || Apps.isMinimized(w)) return false
+      return (o.fullscreen === 2 || o.fullscreen === 1) || !!Shell.semi[Apps.addrKey(w.address)]
+    })
   }
   // A window in semi full screen here (Shift+F11): the Dock steps aside too.
   readonly property bool semi: {
     const ws = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
     return Apps.windows.some(w => Shell.semi[Apps.addrKey(w.address)] && w.lastIpcObject.fullscreen === 1 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id === ws)
   }
-  // Hiding: never, always, or "when needed": it stays until a window would
-  // cover it. Automatic is "when needed" on small screens and "never" on big ones.
+  // Hiding: never, always, or "when needed" (smart): it stays until a window would
+  // cover it. Automatic is "when needed" (smart) on all screens, so windows can
+  // fill the screen and apps can sit under the Dock with it hiding automatically.
   readonly property string hideMode: {
     const h = Prefs.dockHiding || (Prefs.dockAutohide ? "always" : "auto")
-    if (h !== "auto") return h
-    return (vertical ? modelData.width < 1400 : modelData.height < 900) ? "smart" : "never"
+    if (h === "never" || h === "always" || h === "smart") return h
+    return "smart"
   }
   // A window on this screen's desktop over the Dock's place.
   readonly property bool overlapped: {
@@ -55,9 +60,10 @@ PanelWindow {
     const sx = modelData.x, sy = modelData.y
     const thick = base + 18 + gap + 4
     const len = (vertical ? row.height : row.width) + 22
-    const r = pos === "bottom" ? Qt.rect(sx + (modelData.width - len) / 2, sy + modelData.height - thick, len, thick)
-      : pos === "left" ? Qt.rect(sx, sy + (modelData.height - len) / 2, thick, len)
-      : Qt.rect(sx + modelData.width - thick, sy + (modelData.height - len) / 2, thick, len)
+    const pad = 12
+    const r = pos === "bottom" ? Qt.rect(sx + (modelData.width - len) / 2 - pad, sy + modelData.height - thick, len + pad * 2, thick)
+      : pos === "left" ? Qt.rect(sx, sy + (modelData.height - len) / 2 - pad, thick, len + pad * 2)
+      : Qt.rect(sx + modelData.width - thick, sy + (modelData.height - len) / 2 - pad, thick, len + pad * 2)
     return Apps.windows.some(w => {
       const o = w.lastIpcObject
       if (!o || !o.at || !o.workspace || o.workspace.id !== ws || Apps.isMinimized(w)) return false
@@ -65,7 +71,7 @@ PanelWindow {
     })
   }
   // Window sizes change without an event: look again now and then.
-  Timer { interval: 900; repeat: true; running: dock.hideMode === "smart"; onTriggered: Hyprland.refreshToplevels() }
+  Timer { interval: 350; repeat: true; running: dock.hideMode === "smart"; onTriggered: Hyprland.refreshToplevels() }
   readonly property bool concealable: hideMode === "always" || (hideMode === "smart" && overlapped) || fullscreen || semi
   property bool revealed: false
   // Kept out while in use: under the pointer, its menu open, an icon dragged, Launchpad open.
