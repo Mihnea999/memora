@@ -99,7 +99,7 @@ Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one des
 
 Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Calendar** (day, week, month and year,
 calendars in their own colours, your country's public holidays, events typed the way you'd say them,
-dragged to another day or time, search, reminders from the desktop), **Photos**, **Player** (films and music), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
+dragged to another day or time, search, reminders from the desktop), **Gallery** (photos and videos), **Music** (music and films), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
 **Archives** (`memora-archive`: opens zip, rar/rar5, 7z, tar.gz/xz/zst/bz2, iso, dmg, cab, msi, deb, rpm, wim and more, multi-part ones too; browse, search, open or drag out single files, extract all or some, check for damage; makes zip, 7z, RAR (with RARLAB's rar, fetched in one click) and tar.* with a password, hidden names and parts; adds to and deletes from zip, 7z, tar and RAR; built on 7-Zip, unrar and bsdtar), **Activity Monitor**, **Welcome**, all in the same style. Terminal is Ghostty with Memora's light and dark themes. Anything that
 can't be undone (shut down, restart, log out, emptying the Trash, deleting forever) asks first.
 

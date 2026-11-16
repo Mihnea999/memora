@@ -2,5 +2,19 @@
 # memora-greeter MODE — the login screen (run by greetd). Its compositor logs to
 # the console; keep the console blank, so nothing shows between login and desktop.
 printf '\033[2J\033[H\033[?25l'
-exec env WLR_NO_HARDWARE_CURSORS=1 cage -s -mlast -- env MEMORA_MODE="${1:-dark}" QS_ICON_THEME=Memora QT_WAYLAND_DISABLE_WINDOWDECORATION=1 \
+env WLR_NO_HARDWARE_CURSORS=1 cage -s -mlast -- env MEMORA_MODE="${1:-dark}" QS_ICON_THEME=Memora QT_WAYLAND_DISABLE_WINDOWDECORATION=1 \
   qs -p "${MEMORA_PATH:-/usr/share/memora}/shell/greeter.qml" >/dev/null 2>&1
+rc=$?
+# The login screen is gone and the desktop's compositor is not up yet: put the
+# picture the login ended on (memora-login-frame) on the console for that moment,
+# so the screen goes from picture to picture and not through black. Only where
+# the console has exactly that shape (32 bits a pixel, same size, no padding).
+f=/var/lib/memora/login-frame fb=/sys/class/graphics/fb0
+if [ -w /dev/fb0 ] && [ -r "$f" ] && [ -r "$f.size" ] && [ -n "$(find "$f" -mmin -1 2>/dev/null)" ]; then
+  read -r w h < "$f.size"
+  if [ "$(cat $fb/virtual_size 2>/dev/null)" = "$w,$h" ] && [ "$(cat $fb/bits_per_pixel 2>/dev/null)" = 32 ] \
+     && [ "$(cat $fb/stride 2>/dev/null)" = "$((w * 4))" ]; then
+    cat "$f" > /dev/fb0 2>/dev/null
+  fi
+fi
+exit $rc

@@ -129,8 +129,11 @@ namespace {
         float m_a = 1;
     };
 
+    // Drawn after the background (Hyprland's empty one, later the shell's picture):
+    // at the very beginning of the frame the background was painted over it, and
+    // the login went through black after all.
     void onStage(const Event::SRenderStageEvent& ev) {
-        if (!g_on || ev.stage != RENDER_BEGIN || !ev.context || !ev.monitor)
+        if (!g_on || ev.stage != RENDER_POST_WALLPAPER || !ev.context || !ev.monitor)
             return;
         auto mon = ev.monitor;
         if (!g_tex) {

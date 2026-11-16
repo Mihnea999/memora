@@ -48,14 +48,17 @@ cmd_save() {
     read -r w h < <(detect_res)
   fi
 
-  # Instant path: if current system frame already exists and matches resolution, refresh touch and done
-  if [[ -f "$FRAME" && -f "$SIZE" ]]; then
-    local cur_w cur_h
-    read -r cur_w cur_h < "$SIZE" 2>/dev/null || true
-    if [[ "$cur_w" == "$w" && "$cur_h" == "$h" ]]; then
-      touch "$FRAME" 2>/dev/null || true
-      exit 0
-    fi
+  # The picture this frame must show, and what the frame on disk was made from
+  # (path, time and size): the same one is only touched. A frame of another
+  # picture (the wallpaper was changed since) is made again, or the login would
+  # pass through the old picture.
+  local src key
+  src="$(resolve_wall "$user" "$wall")"
+  key=""
+  [[ -n $src && -f $src ]] && key="$src $(stat -c '%Y %s' "$src" 2>/dev/null) ${w}x${h}"
+  if [[ -n $key && -f "$FRAME" && -f "$SIZE" && -f "$FRAME.src" && "$(cat "$FRAME.src" 2>/dev/null)" == "$key" ]]; then
+    touch "$FRAME" 2>/dev/null || true
+    exit 0
   fi
 
   local user_dir="$LOOK/$user"
@@ -63,7 +66,7 @@ cmd_save() {
   if [[ -f "$user_dir/login-frame" && -f "$user_dir/login-frame.size" ]]; then
     local cw ch
     read -r cw ch < "$user_dir/login-frame.size" 2>/dev/null || true
-    if [[ "$cw" == "$w" && "$ch" == "$h" ]]; then
+    if [[ "$cw" == "$w" && "$ch" == "$h" && -n $src && "$user_dir/login-frame" -nt "$src" ]]; then
       mkdir -p /var/lib/memora
       cp -f "$user_dir/login-frame" "$FRAME.tmp" 2>/dev/null || true
       cp -f "$user_dir/login-frame.size" "$SIZE.tmp" 2>/dev/null || true
@@ -72,13 +75,12 @@ cmd_save() {
         mv -f "$SIZE.tmp" "$SIZE"
         mv -f "$FRAME.tmp" "$FRAME"
         touch "$FRAME"
+        printf '%s\n' "$key" > "$FRAME.src" 2>/dev/null || true
         exit 0
       fi
     fi
   fi
 
-  local src
-  src="$(resolve_wall "$user" "$wall")"
   [[ -n $src && -f $src ]] || exit 0
 
   command -v magick >/dev/null || exit 0
@@ -90,6 +92,7 @@ cmd_save() {
     mv -f "$stmp" "$SIZE"
     mv -f "$ftmp" "$FRAME"
     touch "$FRAME"
+    printf '%s\n' "$key" > "$FRAME.src" 2>/dev/null || true
   else
     rm -f "$ftmp" "$stmp"
   fi
