@@ -46,7 +46,8 @@ Item {
       width: parent.width * 0.56; height: width
       // Apps installed after the desktop started (App Store) aren't in the
       // icon theme's cache yet: look in their export folder directly.
-      readonly property string themed: a.name ? Quickshell.iconPath(a.name, true) : ""
+      // A launcher may name a picture file instead (a game's own icon).
+      readonly property string themed: a.name ? (a.name.charAt(0) === "/" ? "file://" + a.name : Quickshell.iconPath(a.name, true)) : ""
       Connections { target: a; function onNameChanged() { inner.tryN = 0 } }
       readonly property string exported: Quickshell.env("HOME") + "/.local/share/flatpak/exports/share/icons/hicolor/"
       property int tryN: 0

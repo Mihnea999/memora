@@ -31,6 +31,254 @@ def slugify(text):
     return text or "game"
 
 
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.join(HOME, ".local", "state")), "memora", "games")
+CACHE_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.join(HOME, ".cache")), "memora")
+GAMES_DIR = os.path.join(HOME, "Games")
+RUNNERS_DIR = os.path.join(HOME, ".local/share/Steam/compatibilitytools.d")
+ARCHIVE_EXT = (".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".tar.zst", ".tar.bz2")
+GE_API = "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest"
+
+
+def notify(title, body="", icon="applications-games", percent=None, urgent=False):
+    """A banner. Messages of one job replace each other (progress)."""
+    cmd = ["notify-send", "-a", "Games", "-i", icon or "applications-games",
+           "-h", "string:x-canonical-private-synchronous:memora-proton"]
+    if percent is not None:
+        cmd += ["-h", f"int:value:{int(percent)}", "-h", "boolean:suppress-sound:true"]
+    if urgent:
+        cmd += ["-u", "critical"]
+    try:
+        subprocess.run(cmd + [title, body], capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
+# ---- the icon inside a Windows program ---------------------------------------
+
+def _pe_resources(data):
+    """{type: {id: bytes}} for the icon resources of a PE file (RT_ICON 3, RT_GROUP_ICON 14)."""
+    import struct
+    if data[:2] != b"MZ":
+        return {}
+    pe = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[pe:pe + 4] != b"PE\0\0":
+        return {}
+    nsec, = struct.unpack_from("<H", data, pe + 6)
+    optsize, = struct.unpack_from("<H", data, pe + 20)
+    opt = pe + 24
+    magic, = struct.unpack_from("<H", data, opt)
+    ddir = opt + (112 if magic == 0x20B else 96)
+    rva, size = struct.unpack_from("<II", data, ddir + 8 * 2)
+    if not rva:
+        return {}
+    sections = []
+    so = opt + optsize
+    for i in range(nsec):
+        vsize, vaddr, rsize, raddr = struct.unpack_from("<IIII", data, so + 40 * i + 8)
+        sections.append((vaddr, max(vsize, rsize), raddr))
+
+    def off(r):
+        for vaddr, span, raddr in sections:
+            if vaddr <= r < vaddr + span:
+                return r - vaddr + raddr
+        return None
+
+    base = off(rva)
+    if base is None:
+        return {}
+
+    def entries(dir_off):
+        named, ids = struct.unpack_from("<HH", data, dir_off + 12)
+        for i in range(named + ids):
+            yield struct.unpack_from("<II", data, dir_off + 16 + 8 * i)
+
+    out = {}
+    for tid, toff in entries(base):
+        if tid not in (3, 14) or not toff & 0x80000000:
+            continue
+        for rid, roff in entries(base + (toff & 0x7FFFFFFF)):
+            if not roff & 0x80000000:
+                continue
+            for _lang, loff in entries(base + (roff & 0x7FFFFFFF)):
+                drva, dsize = struct.unpack_from("<II", data, base + loff)
+                o = off(drva)
+                if o is not None:
+                    out.setdefault(tid, {})[rid] = data[o:o + dsize]
+                break
+    return out
+
+
+def icon_from_exe(exe, slug):
+    """The program's own icon as a PNG in Memora's icon folder; None when it has none."""
+    import struct
+    out_png = os.path.join(MEMORA_ICONS_DIR, f"{slug}.png")
+    try:
+        if os.path.isfile(out_png) and os.path.getmtime(out_png) >= os.path.getmtime(exe):
+            return out_png
+        if os.path.getsize(exe) > 600 * 1024 * 1024:
+            return None
+        with open(exe, "rb") as f:
+            data = f.read()
+        res = _pe_resources(data)
+        groups, icons = res.get(14) or {}, res.get(3) or {}
+        if not groups or not icons:
+            return None
+        # The first group is the one Windows shows; take its biggest, deepest picture.
+        group = groups[sorted(groups, key=lambda k: (k & 0x80000000, k))[0]]
+        count, = struct.unpack_from("<H", group, 4)
+        best = None
+        for i in range(count):
+            w, h, _c, _r, _planes, bits, size, rid = struct.unpack_from("<BBBBHHIH", group, 6 + 14 * i)
+            w = w or 256
+            if rid in icons and (best is None or (w, bits) > best[0]):
+                best = ((w, bits), group[6 + 14 * i:6 + 14 * i + 12], icons[rid])
+        if not best:
+            return None
+        os.makedirs(MEMORA_ICONS_DIR, exist_ok=True)
+        _key, head, img = best
+        if img[:8] == b"\x89PNG\r\n\x1a\n":
+            with open(out_png, "wb") as f:
+                f.write(img)
+            return out_png
+        ico = out_png[:-4] + ".ico"
+        with open(ico, "wb") as f:
+            f.write(struct.pack("<HHH", 0, 1, 1) + head + struct.pack("<I", 22) + img)
+        for tool in (["magick", "ico:" + ico, "-background", "none", "png:" + out_png],
+                     ["convert", "ico:" + ico, "png:" + out_png]):
+            try:
+                subprocess.run(tool, capture_output=True, timeout=20)
+            except Exception:
+                continue
+            if os.path.isfile(out_png) and os.path.getsize(out_png) > 0:
+                os.remove(ico)
+                return out_png
+        return ico
+    except Exception:
+        return None
+
+
+# ---- a game that came as an archive ------------------------------------------
+
+def is_archive(p):
+    return os.path.isfile(p) and p.lower().endswith(ARCHIVE_EXT)
+
+
+def unpack_archive(path):
+    """Unpacks into ~/Games/<name> (once) and returns that folder."""
+    stem = os.path.basename(path)
+    for ext in sorted(ARCHIVE_EXT, key=len, reverse=True):
+        if stem.lower().endswith(ext):
+            stem = stem[:-len(ext)]
+            break
+    stem = re.sub(r"\s*\(\d+\)$", "", stem).strip() or "Game"
+    dest = os.path.join(GAMES_DIR, stem)
+    done = os.path.join(dest, ".memora-unpacked")
+    if os.path.isfile(done):
+        return dest
+    os.makedirs(dest, exist_ok=True)
+    notify("Unpacking " + stem, "Into Games. This can take a minute.", percent=0)
+    res = subprocess.run(["bsdtar", "-xf", path, "-C", dest], capture_output=True, text=True)
+    if res.returncode != 0:
+        res = subprocess.run(["7z", "x", "-y", "-o" + dest, path], capture_output=True, text=True)
+    if res.returncode != 0:
+        notify("Couldn't unpack " + stem, (res.stderr or "").strip().splitlines()[-1:] and (res.stderr or "").strip().splitlines()[-1] or "The archive may be damaged.", urgent=True)
+        raise RuntimeError("unpack failed")
+    with open(done, "w") as f:
+        f.write(path + "\n")
+    notify("Unpacked " + stem, dest.replace(HOME, "~"), percent=100)
+    return dest
+
+
+# ---- Proton, fetched when there is none ---------------------------------------
+
+def download_runner():
+    """Gets the newest GE-Proton into the user's own folder (no password), checked against its sha512."""
+    import urllib.request, hashlib, tarfile
+    notify("Getting ready for Windows games", "Downloading Proton (once, about 500 MB)…", percent=0)
+    try:
+        req = urllib.request.Request(GE_API, headers={"User-Agent": "memora", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            rel = json.load(r)
+        # The build for this kind of processor (releases also carry an ARM one).
+        import platform
+        arm = platform.machine().lower() in ("aarch64", "arm64")
+        mine = lambda n: (("aarch64" in n.lower() or "arm64" in n.lower()) == arm)
+        tar = next(a for a in rel["assets"] if a["name"].endswith(".tar.gz") and mine(a["name"]))
+        base = tar["name"][:-len(".tar.gz")]
+        summ = next((a for a in rel["assets"] if a["name"] == base + ".sha512sum"), None)
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        tmp = os.path.join(CACHE_DIR, tar["name"])
+        h = hashlib.sha512()
+        got, last = 0, -1
+        req = urllib.request.Request(tar["browser_download_url"], headers={"User-Agent": "memora"})
+        with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+            total = int(r.headers.get("Content-Length") or tar.get("size") or 0)
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                f.write(chunk)
+                h.update(chunk)
+                got += len(chunk)
+                pct = int(got * 90 / total) if total else 0
+                if pct >= last + 5:
+                    last = pct
+                    notify("Getting ready for Windows games", f"Downloading Proton… {got >> 20} of {total >> 20} MB", percent=pct)
+        if summ:
+            req = urllib.request.Request(summ["browser_download_url"], headers={"User-Agent": "memora"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                want = r.read().decode().split()[0].strip().lower()
+            if want != h.hexdigest():
+                os.remove(tmp)
+                raise RuntimeError("the download was damaged (checksum)")
+        notify("Getting ready for Windows games", "Unpacking Proton…", percent=92)
+        os.makedirs(RUNNERS_DIR, exist_ok=True)
+        with tarfile.open(tmp) as t:
+            try:
+                t.extractall(RUNNERS_DIR, filter="tar")
+            except TypeError:
+                t.extractall(RUNNERS_DIR)
+        os.remove(tmp)
+        notify("Ready for Windows games", rel.get("tag_name", "Proton") + " is installed.", percent=100)
+        return True
+    except Exception as e:
+        notify("Couldn't get Proton", f"{e}. Check the internet connection and open the game again.", urgent=True)
+        return False
+
+
+def game_id(exe_path):
+    """A number of its own for each game: its windows are then "steam_app_<number>",
+    which its launcher names (StartupWMClass), so the Dock and the menu bar show
+    the game's name and icon. Far above the numbers real Steam games have."""
+    import zlib
+    return 3_000_000_000 + zlib.crc32(os.path.realpath(exe_path).encode()) % 900_000_000
+
+
+def has_vulkan():
+    """Whether a graphics card here speaks Vulkan (DXVK needs it; without, Wine's own Direct3D is used)."""
+    try:
+        import ctypes
+        vk = ctypes.CDLL("libvulkan.so.1")
+
+        class CreateInfo(ctypes.Structure):
+            _fields_ = [("sType", ctypes.c_uint32), ("pNext", ctypes.c_void_p), ("flags", ctypes.c_uint32),
+                        ("pApplicationInfo", ctypes.c_void_p), ("enabledLayerCount", ctypes.c_uint32),
+                        ("ppEnabledLayerNames", ctypes.c_void_p), ("enabledExtensionCount", ctypes.c_uint32),
+                        ("ppEnabledExtensionNames", ctypes.c_void_p)]
+        info = CreateInfo(sType=1)
+        inst = ctypes.c_void_p()
+        if vk.vkCreateInstance(ctypes.byref(info), None, ctypes.byref(inst)) != 0:
+            return False
+        n = ctypes.c_uint32(0)
+        vk.vkEnumeratePhysicalDevices.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32), ctypes.c_void_p]
+        vk.vkEnumeratePhysicalDevices(inst, ctypes.byref(n), None)
+        vk.vkDestroyInstance.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        vk.vkDestroyInstance(inst, None)
+        return n.value > 0
+    except Exception:
+        return False
+
+
 def find_all_runners():
     """
     Scans system and user paths for all Proton and Wine compatibility runners.
@@ -137,14 +385,19 @@ def find_all_runners():
     return runners
 
 
-def find_icon_for_game(directory, slug):
-    """Searches for game icons (png, svg, ico) or extracts from .ico using PIL or convert."""
+def find_icon_for_game(directory, slug, exe=None):
+    """The program's own icon (inside the .exe) first, as Windows shows it; then pictures next to it."""
+    if exe and os.path.isfile(exe):
+        own = icon_from_exe(exe, slug)
+        if own:
+            return own
     if not os.path.isdir(directory):
         return "applications-games"
 
     # Search current and parent directory
     candidates = ["icon.png", "logo.png", "game.png", "app.png", "cover.png", "banner.png"]
-    dirs_to_check = [directory, os.path.dirname(directory)]
+    # Only the game's own folder: its parent (Downloads, Games) holds other things' pictures.
+    dirs_to_check = [directory]
 
     for d in dirs_to_check:
         if not os.path.isdir(d):
@@ -173,7 +426,7 @@ def find_icon_for_game(directory, slug):
                 return out_png
             except Exception:
                 try:
-                    subprocess.run(["convert", str(ico), "-thumbnail", "256x256", out_png], capture_output=True)
+                    subprocess.run(["magick", str(ico) + "[0]", "-thumbnail", "256x256", out_png], capture_output=True)
                     if os.path.isfile(out_png):
                         return out_png
                 except Exception:
@@ -205,6 +458,12 @@ def inspect_path(path):
     Returns rich metadata for automatic zero-config launching.
     """
     p = os.path.abspath(os.path.expanduser(path))
+    # A game that came as an archive: unpacked into Games, then looked at there.
+    if is_archive(p):
+        try:
+            p = unpack_archive(p)
+        except Exception:
+            return {"error": "Couldn't unpack the archive"}
     # Not a Windows program (a Linux app, a script, a folder without an .exe):
     # memora-app-shortcut knows those. Calling everything a game gave a plain
     # app the game icon and the Games category.
@@ -229,7 +488,7 @@ def inspect_path(path):
                 if f.lower().endswith(".exe"):
                     low = f.lower()
                     # Skip common helpers / installers / crash reporters
-                    if any(x in low for x in ["unins", "crash", "report", "vcredist", "dxsetup", "update", "patch"]):
+                    if any(x in low for x in ["unins", "crash", "report", "vcredist", "vc_redist", "dxsetup", "dotnet", "directx", "update", "patch", "setup", "install", "helper", "redist"]):
                         continue
                     full_f = os.path.join(root, f)
                     exe_candidates.append(full_f)
@@ -239,15 +498,22 @@ def inspect_path(path):
             # Prefer exe in root of directory, or matching folder name
             folder_name = os.path.basename(p).lower()
             matching = [c for c in exe_candidates if os.path.basename(c).lower().startswith(folder_name[:4])]
+            # Otherwise the one nearest the top, and of those the biggest (the game, not a tool).
+            exe_candidates.sort(key=lambda c: (c.count(os.sep), -os.path.getsize(c)))
             main_exe = matching[0] if matching else exe_candidates[0]
             work_dir = os.path.dirname(main_exe)
         else:
             work_dir = p
 
         clean_name = os.path.basename(p)
+        # Unpacked archives are named after the download ("Game-v1.2-Site"); the
+        # folder the game itself sits in carries its name.
+        inner = os.path.basename(work_dir)
+        if work_dir != p and inner.lower() not in ("bin", "bin32", "bin64", "x64", "x86", "win32", "win64", "binaries", "game", "app", "release"):
+            clean_name = inner
         clean_name = re.sub(r"[-_.]+", " ", clean_name).strip().title()
         slug = slugify(clean_name)
-        icon = find_icon_for_game(work_dir, slug)
+        icon = find_icon_for_game(work_dir, slug, main_exe)
 
         return {
             "path": p,
@@ -275,7 +541,7 @@ def inspect_path(path):
 
         clean_name = re.sub(r"[-_.]+", " ", clean_name).strip().title()
         slug = slugify(clean_name)
-        icon = find_icon_for_game(work_dir, slug)
+        icon = find_icon_for_game(work_dir, slug, p)
 
         return {
             "path": p,
@@ -294,7 +560,7 @@ def inspect_path(path):
     return {"error": f"Path not found: {path}"}
 
 
-def launch_game(exe_path, runner_id=None, prefix_path=None, extra_args=None):
+def launch_game(exe_path, runner_id=None, prefix_path=None, extra_args=None, name=None):
     """
     Launches a Windows game using Proton or Wine with isolated prefix and optimal environment.
     """
@@ -306,45 +572,50 @@ def launch_game(exe_path, runner_id=None, prefix_path=None, extra_args=None):
     work_dir = os.path.dirname(exe_path)
     base = os.path.splitext(os.path.basename(exe_path))[0]
     parent = os.path.basename(work_dir)
-    slug = slugify(parent if base.lower() in ["game", "launcher", "start", "play"] else base)
+    slug = slugify(name or (parent if base.lower() in ["game", "launcher", "start", "play"] else base))
 
     prefix_dir = prefix_path or os.path.join(MEMORA_PREFIXES_DIR, slug)
     os.makedirs(prefix_dir, exist_ok=True)
     os.makedirs(os.path.join(HOME, ".steam", "root"), exist_ok=True)
 
+    name = name or re.sub(r"[-_.]+", " ", parent if base.lower() in ["game", "launcher", "start", "play"] else base).strip()
+    icon = icon_from_exe(exe_path, slug) or "applications-games"
+
     runners = find_all_runners()
+    if not runners:
+        # Nothing to run Windows programs with yet: fetched once, by itself.
+        if download_runner():
+            runners = find_all_runners()
+    if not runners:
+        print(json.dumps({"error": "No Proton or Wine to run it with"}))
+        sys.exit(1)
+
     chosen_runner = None
     if runner_id and runner_id != "auto":
         for r in runners:
             if r["id"] == runner_id or r["name"] == runner_id:
                 chosen_runner = r
                 break
-
-    if not chosen_runner and runners:
-        chosen_runner = runners[0]
-
     if not chosen_runner:
-        # Fallback directly to wine if nothing found
-        chosen_runner = {
-            "type": "wine",
-            "wine": "/usr/bin/wine"
-        }
+        chosen_runner = runners[0]
 
     env = os.environ.copy()
     env["DXVK_LOG_LEVEL"] = "none"
-    env["PROTON_USE_SECCOMP"] = "1"
-    env["PROTON_NO_ESYNC"] = "0"
-    env["PROTON_NO_FSYNC"] = "0"
+    env.setdefault("WINEDEBUG", "-all")
+    if not has_vulkan():
+        env.setdefault("PROTON_USE_WINED3D", "1")
 
     cmd = []
     # If gamemoderun exists, wrap it
     if shutil.which("gamemoderun"):
         cmd.append("gamemoderun")
 
+    first_time = not os.path.isdir(os.path.join(prefix_dir, "pfx"))
     if chosen_runner["type"] == "proton" and chosen_runner.get("proton"):
         env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = os.path.join(HOME, ".steam", "root")
         env["STEAM_COMPAT_DATA_PATH"] = prefix_dir
         env["WINEPREFIX"] = os.path.join(prefix_dir, "pfx")
+        env["SteamAppId"] = env["SteamGameId"] = str(game_id(exe_path))
         cmd.extend([chosen_runner["proton"], "run", exe_path])
     else:
         env["WINEPREFIX"] = os.path.join(prefix_dir, "pfx")
@@ -354,22 +625,47 @@ def launch_game(exe_path, runner_id=None, prefix_path=None, extra_args=None):
     if extra_args:
         cmd.extend(extra_args)
 
-    subprocess.Popen(
-        cmd,
-        cwd=work_dir,
-        env=env,
-        start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    if first_time:
+        notify("Opening " + name, "Setting it up for the first time. This takes a moment.", icon=icon)
+
+    # What the game and Proton print, kept for when something goes wrong.
+    os.makedirs(STATE_DIR, exist_ok=True)
+    log_path = os.path.join(STATE_DIR, slug + ".log")
+    import time
+    started = time.time()
+    try:
+        with open(log_path, "w") as log:
+            log.write("$ " + " ".join(shlex.quote(c) for c in cmd) + "\n\n")
+            log.flush()
+            proc = subprocess.Popen(cmd, cwd=work_dir, env=env, start_new_session=True,
+                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+    except OSError as e:
+        notify(name + " couldn't open", str(e), icon=icon, urgent=True)
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
 
     print(json.dumps({
         "success": True,
         "launched": exe_path,
         "runner": chosen_runner.get("name", "Unknown"),
         "prefix": prefix_dir,
-        "dir": work_dir
-    }))
+        "dir": work_dir,
+        "log": log_path
+    }), flush=True)
+
+    # Stay with it: a game that dies at once says so, instead of nothing happening.
+    code = proc.wait()
+    if code != 0 and time.time() - started < 45:
+        why = ""
+        try:
+            with open(log_path, errors="replace") as f:
+                lines = [l.strip() for l in f.read().splitlines() if l.strip() and not l.startswith("$ ")]
+            lines = [l for l in lines if not re.match(r"ProtonFixes|fsync|esync|Proton:|wineserver", l)]
+            why = next((l for l in reversed(lines) if re.search(r"err|fail|cannot|not found|missing", l, re.I)), "")
+        except OSError:
+            pass
+        notify(name + " closed right after opening", (why[:180] if why else "It may be damaged, or need something this computer doesn't have.") + "\nWhat it said is kept in " + log_path.replace(HOME, "~"), icon=icon, urgent=True)
+        sys.exit(code if 0 < code < 256 else 1)
 
 
 def create_game_shortcut(name, exe_path, runner_id=None, icon=None, work_dir=None, add_app=True, add_desktop=True):
@@ -377,10 +673,10 @@ def create_game_shortcut(name, exe_path, runner_id=None, icon=None, work_dir=Non
     exe_path = os.path.abspath(os.path.expanduser(exe_path))
     work_dir = work_dir or os.path.dirname(exe_path)
     slug = slugify(name)
-    icon = icon or find_icon_for_game(work_dir, slug)
+    icon = icon or find_icon_for_game(work_dir, slug, exe_path)
 
     runner_arg = f"--runner {shlex.quote(runner_id)}" if runner_id and runner_id != "auto" else ""
-    launch_exec = f"memora-proton run {runner_arg} {shlex.quote(exe_path)}"
+    launch_exec = " ".join(x for x in ["memora-proton run", runner_arg, "--name", shlex.quote(name), shlex.quote(exe_path)] if x)
 
     lines = [
         "[Desktop Entry]",
@@ -392,6 +688,7 @@ def create_game_shortcut(name, exe_path, runner_id=None, icon=None, work_dir=Non
         "Terminal=false",
         "Categories=Game;",
         "StartupNotify=true",
+        f"StartupWMClass=steam_app_{game_id(exe_path)}",
         "X-Memora-Runner=proton"
     ]
     content = "\n".join(lines) + "\n"
@@ -439,6 +736,7 @@ def main():
     p_run = subparsers.add_parser("run", help="Run a Windows game with Proton")
     p_run.add_argument("--runner", default="auto", help="Runner ID (e.g. GE-Proton9-23)")
     p_run.add_argument("--prefix", default=None, help="Prefix directory")
+    p_run.add_argument("--name", default=None, help="The game's name (for messages and its own settings folder)")
     p_run.add_argument("exec", help="Executable path")
     p_run.add_argument("args", nargs="*", help="Extra arguments for game")
 
@@ -462,7 +760,7 @@ def main():
     elif args.command == "inspect":
         print(json.dumps(inspect_path(args.path)))
     elif args.command == "run":
-        launch_game(args.exec, runner_id=args.runner, prefix_path=args.prefix, extra_args=args.args)
+        launch_game(args.exec, runner_id=args.runner, prefix_path=args.prefix, extra_args=args.args, name=args.name)
     elif args.command == "create":
         create_game_shortcut(
             args.name,

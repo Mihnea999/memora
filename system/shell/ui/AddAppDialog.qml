@@ -91,7 +91,7 @@ PanelWindow {
       saveProc.running = true
 
       if (andPlay) {
-        Quickshell.execDetached(["memora-proton", "run", "--runner", selectedRunner || "auto", appExec.trim()])
+        Quickshell.execDetached(["memora-proton", "run", "--runner", selectedRunner || "auto", "--name", appName.trim(), appExec.trim()])
         Shell.closeAddApp()
       }
     } else {
@@ -116,6 +116,12 @@ PanelWindow {
     }
   }
 
+  property bool hasProtonPlus: false
+  Process {
+    running: true
+    command: ["sh", "-c", "command -v protonplus"]
+    onExited: code => win.hasProtonPlus = code === 0
+  }
   Process {
     id: runnersProc
     command: ["memora-proton", "runners"]
@@ -305,7 +311,7 @@ PanelWindow {
               color: win.isWindowsExe ? Theme.accent : Theme.textDim
             }
             Txt {
-              text: win.isWindowsExe ? "Windows Game (.exe)" : "Application / Executable"
+              text: inspectProc.running ? "Looking at it… an archive is unpacked into Games first" : (win.isWindowsExe ? "Windows Game (.exe)" : "Application / Executable")
               color: win.isWindowsExe ? Theme.accent : Theme.textDim
               font.pixelSize: Theme.small
               font.weight: Font.Medium
@@ -348,7 +354,8 @@ PanelWindow {
             Txt { text: "Proton Version"; font.weight: Font.DemiBold; font.pixelSize: Theme.small + 0.5 }
             Item { Layout.fillWidth: true }
             Txt {
-              text: "+ Get More Protons… (ProtonPlus)"
+              visible: win.hasProtonPlus   // only where ProtonPlus is installed (the Gaming choice)
+              text: "More Versions…"
               color: Theme.accent
               font.pixelSize: Theme.small - 0.5
               font.weight: Font.Medium
@@ -410,7 +417,8 @@ PanelWindow {
           // Friendly automatic note
           Txt {
             Layout.fillWidth: true
-            text: "Each game runs isolated in its own prefix (~/.local/share/memora/prefixes/). No configuration required."
+            text: win.runners.length ? "Each game keeps its own Windows settings. Nothing to set up."
+              : "Proton, which runs Windows games, is downloaded by itself the first time you open one (about 500 MB)."
             color: Theme.textDim
             font.pixelSize: Theme.small - 1.5
             wrapMode: Text.Wrap
