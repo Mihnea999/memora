@@ -188,7 +188,7 @@ ShellRoot {
     if (typeof editor === "undefined" || !editor) return
     const n = notes.find(x => x.id === current)
     loadingNote = true
-    editor.text = n ? n.html : ""
+    editor.text = n ? (n.html || "") : ""
     loadingNote = false
     noteIn.restart()
   }
@@ -383,7 +383,7 @@ ShellRoot {
               Txt { text: app.when(row.modelData); color: Theme.text; opacity: 0.8; font.pixelSize: Theme.small }
               Txt { width: parent.width - x; text: row.modelData.text.split("\n").slice(1).join(" ").trim() || "No additional text"; color: Theme.textDim; font.pixelSize: Theme.small }
             }
-            Txt { visible: app.folder === "*" || app.folder === "~"; text: row.modelData.folder; color: Theme.textFaint; font.pixelSize: Theme.small - 1 }
+            Txt { visible: app.folder === "*" || app.folder === "~"; text: row.modelData.folder || ""; color: Theme.textFaint; font.pixelSize: Theme.small - 1 }
           }
           HoverHandler { id: rh }
           TapHandler { onTapped: app.current = row.modelData.id }
@@ -423,7 +423,7 @@ ShellRoot {
         Row {
           anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
           spacing: 2
-          Tool { visible: !!app.note && app.note.deleted; label: "Recover"; tip: "Put back"; onClicked: app.restoreNote() }
+          Tool { visible: !!app.note && !!app.note.deleted; label: "Recover"; tip: "Put back"; onClicked: app.restoreNote() }
           Tool { visible: !!app.note && !app.note.deleted; label: app.note && app.note.pinned ? "Unpin" : "Pin"; tip: "Keep on top"; onClicked: app.togglePin() }
           Tool { visible: !!app.note; sym: "close"; tip: app.note && app.note.deleted ? "Delete forever" : "Delete"; onClicked: app.deleteNote() }
         }
@@ -511,7 +511,7 @@ ShellRoot {
           selectedTextColor: Theme.text
           selectByMouse: true
           persistentSelection: true
-          readOnly: !app.note || app.note.deleted
+          readOnly: !app.note || !!app.note.deleted
           visible: !!app.note
           onTextChanged: app.editorChanged()
           onCursorRectangleChanged: {
