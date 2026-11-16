@@ -6,6 +6,7 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Services.UPower
 import qs.core
+import qs.ui
 import qs.bar
 import qs.dock
 import qs.wallpaper

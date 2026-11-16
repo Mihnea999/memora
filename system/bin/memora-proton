@@ -140,7 +140,7 @@ def find_all_runners():
 def find_icon_for_game(directory, slug):
     """Searches for game icons (png, svg, ico) or extracts from .ico using PIL or convert."""
     if not os.path.isdir(directory):
-        return "gamepad"
+        return "applications-games"
 
     # Search current and parent directory
     candidates = ["icon.png", "logo.png", "game.png", "app.png", "cover.png", "banner.png"]
@@ -179,7 +179,24 @@ def find_icon_for_game(directory, slug):
                 except Exception:
                     pass
 
-    return "gamepad"
+    return "applications-games"
+
+
+WINDOWS_EXT = (".exe", ".bat", ".cmd", ".msi")
+
+
+def _is_windows(p):
+    """A Windows program, or a folder that holds one (looked for a few levels deep)."""
+    if os.path.isfile(p):
+        return p.lower().endswith(WINDOWS_EXT)
+    if os.path.isdir(p):
+        base = p.rstrip(os.sep).count(os.sep)
+        for root, dirs, files in os.walk(p):
+            if any(f.lower().endswith(".exe") for f in files):
+                return True
+            if root.count(os.sep) - base >= 3:
+                dirs[:] = []
+    return False
 
 
 def inspect_path(path):
@@ -188,6 +205,18 @@ def inspect_path(path):
     Returns rich metadata for automatic zero-config launching.
     """
     p = os.path.abspath(os.path.expanduser(path))
+    # Not a Windows program (a Linux app, a script, a folder without an .exe):
+    # memora-app-shortcut knows those. Calling everything a game gave a plain
+    # app the game icon and the Games category.
+    if not _is_windows(p):
+        tool = os.path.join(os.path.dirname(os.path.realpath(__file__)), "memora-app-shortcut")
+        try:
+            res = subprocess.run([sys.executable, tool, "inspect", p], capture_output=True, text=True, timeout=20)
+            j = json.loads(res.stdout)
+            j["isWindowsExe"] = False
+            return j
+        except Exception:
+            pass
     runners = find_all_runners()
     rec_runner = runners[0] if runners else None
 

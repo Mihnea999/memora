@@ -18,7 +18,6 @@ PanelWindow {
   // Keys while the desktop menu is open (Escape closes it) or an icon is selected / being styled.
   readonly property bool wantKeys: menuOpen || (icons && icons.visible && (icons.selection.length > 0 || icons.typing))
   WlrLayershell.keyboardFocus: wantKeys ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-  onWantKeysChanged: if (wantKeys) Qt.callLater(() => w.requestActivate())
   color: "black"
 
   property string file: Theme.wallpaper

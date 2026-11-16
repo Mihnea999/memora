@@ -89,6 +89,9 @@ PanelWindow {
   exclusiveZone: hideMode === "never" && !fullscreen && !semi ? base + 22 + gap : 0
   color: "transparent"
   WlrLayershell.namespace: "memora-dock"
+  // While its menu is open the Dock takes the keys, so Esc closes it.
+  WlrLayershell.keyboardFocus: menuFor !== null ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+  Item { focus: dock.menuFor !== null; Keys.onEscapePressed: dock.menuFor = null }
   // Over full-screen apps it must be above them to show at all.
   WlrLayershell.layer: fullscreen ? WlrLayer.Overlay : WlrLayer.Top
   mask: Region { item: dock.hidden ? edge : hit }
@@ -358,8 +361,6 @@ PanelWindow {
       id: ctxPanel
       solid: false
       width: implicitWidth; height: implicitHeight
-      focus: ctx.visible
-      Keys.onEscapePressed: dock.menuFor = null
       items: dock.menuFor ? dock.menuItems(dock.menuFor) : []
       onPicked: item => { const run = item.action; dock.menuFor = null; if (run) Qt.callLater(run) }
     }

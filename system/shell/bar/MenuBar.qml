@@ -25,6 +25,11 @@ PanelWindow {
   // Over a full-screen app it must be above it to show at all.
   WlrLayershell.layer: fullscreen ? WlrLayer.Overlay : WlrLayer.Top
   mask: Region { item: bar.tucked ? topEdge : whole }
+  // While one of its menus is open the bar takes the keys, so Esc closes it
+  // (a popup of a layer that takes no keys gets none either).
+  readonly property bool menuUp: (Shell.open === "menu" || Shell.open === "status") && Shell.menuScreen === modelData.name
+  WlrLayershell.keyboardFocus: menuUp ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+  Item { focus: bar.menuUp; Keys.onEscapePressed: Shell.close() }
 
   // Full screen (the green button, F11), as on a Mac: the bar steps aside and
   // slides down over the app when the pointer reaches the top edge; it goes

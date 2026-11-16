@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
@@ -13,13 +14,16 @@ import qs.ui
 PanelWindow {
   id: win
   screen: Quickshell.screens.find(s => Hyprland.focusedMonitor && s.name === Hyprland.focusedMonitor.name) || Quickshell.screens[0]
+  // While a file is being chosen the sheet goes under the windows, or it would
+  // cover the file chooser (it is above everything otherwise).
+  property bool picking: false
   visible: Shell.addAppOpen || anim.running
   anchors { top: true; bottom: true; left: true; right: true }
   exclusionMode: ExclusionMode.Ignore
   color: "transparent"
-  WlrLayershell.layer: WlrLayer.Overlay
+  WlrLayershell.layer: picking ? WlrLayer.Bottom : WlrLayer.Overlay
   WlrLayershell.namespace: "memora-dialog"
-  WlrLayershell.keyboardFocus: Shell.addAppOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+  WlrLayershell.keyboardFocus: Shell.addAppOpen && !picking ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
   property real shown: Shell.addAppOpen ? 1 : 0
   Behavior on shown { NumberAnimation { id: anim; duration: Theme.normal; easing.type: Theme.easing } }
@@ -28,7 +32,7 @@ PanelWindow {
   property string appName: ""
   property string appExec: ""
   property string appDir: ""
-  property string appIcon: "gamepad"
+  property string appIcon: "applications-games"
   property string appCategory: "Game"
   property bool isWindowsExe: false
   property var runners: []
@@ -41,6 +45,7 @@ PanelWindow {
   Connections {
     target: Shell
     function onAddAppOpenChanged() {
+      win.picking = false
       if (Shell.addAppOpen) {
         inspect(Shell.addAppPath)
       }
@@ -56,7 +61,7 @@ PanelWindow {
       appName = ""
       appExec = ""
       appDir = ""
-      appIcon = "gamepad"
+      appIcon = "applications-games"
       appCategory = "Game"
       isWindowsExe = false
       runners = []
@@ -140,7 +145,7 @@ PanelWindow {
             win.appName = j.name || ""
             win.appExec = j.exec || ""
             win.appDir = j.dir || ""
-            win.appIcon = j.icon || (j.isWindowsExe ? "gamepad" : "application-x-executable")
+            win.appIcon = j.icon || (j.isWindowsExe ? "applications-games" : "application-x-executable")
             win.appCategory = j.category || (j.isWindowsExe ? "Game" : "Utility")
             win.isWindowsExe = !!j.isWindowsExe
             if (Array.isArray(j.runners) && j.runners.length) {
@@ -164,28 +169,22 @@ PanelWindow {
     }
   }
 
-  // Browse file with Zenity
-  Process {
-    id: browseExecProc
-    command: ["bash", "-c", "zenity --file-selection --title=\"Select Game Executable or Application\" 2>/dev/null || true"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const p = text.trim()
-        if (p) inspect(p)
-      }
-    }
+  // The system's file chooser, as in the other apps.
+  function local(url) { return decodeURIComponent(String(url).replace(/^file:\/\//, "")) }
+  FileDialog {
+    id: browseExec
+    title: "Choose an Application or Game"
+    currentFolder: "file://" + (win.appDir || Quickshell.env("HOME"))
+    onAccepted: { win.picking = false; win.inspect(win.local(selectedFile)) }
+    onRejected: win.picking = false
   }
-
-  // Browse icon with Zenity
-  Process {
-    id: browseIconProc
-    command: ["bash", "-c", "zenity --file-selection --file-filter=\"Images (*.png *.svg *.ico)|*.png *.svg *.ico\" --title=\"Select Game Icon\" 2>/dev/null || true"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        const p = text.trim()
-        if (p) win.appIcon = p
-      }
-    }
+  FileDialog {
+    id: browseIcon
+    title: "Choose an Icon"
+    currentFolder: "file://" + (win.appDir || Quickshell.env("HOME"))
+    nameFilters: ["Pictures (*.png *.svg *.ico *.jpg *.jpeg *.webp)"]
+    onAccepted: { win.picking = false; win.appIcon = win.local(selectedFile) }
+    onRejected: win.picking = false
   }
 
   // Soft frosted backdrop. Clicking outside closes the sheet.
@@ -208,7 +207,9 @@ PanelWindow {
     width: 480
     height: col.implicitHeight + 44
     radius: 22
-    fill: Theme.glassStrong
+    // A form to read and fill in: frosted, like the menus.
+    fill: Theme.menuGlass
+    frost: Math.max(Prefs.blur, 0.6)
     opacity: win.shown
     scale: 0.94 + 0.06 * win.shown
     focus: true
@@ -242,14 +243,14 @@ PanelWindow {
             source: {
               if (!win.appIcon) return ""
               if (win.appIcon.startsWith("/")) return "file://" + win.appIcon
-              return Quickshell.iconPath(win.appIcon, "gamepad")
+              return Quickshell.iconPath(win.appIcon, true)   // "" when the theme has none: the glyph below shows
             }
             visible: status === Image.Ready
           }
           Sym {
             visible: !iconImg.visible
             anchors.centerIn: parent
-            name: win.isWindowsExe ? "gamepad" : (win.appIcon === "gamepad" ? "gamepad" : "gear")
+            name: win.isWindowsExe || win.appCategory === "Game" ? "gamepad" : "gear"
             width: 26; height: 26
             color: Theme.accent
           }
@@ -261,7 +262,7 @@ PanelWindow {
             border.width: 1.5; border.color: Theme.dark ? "#1c1c1e" : "#ffffff"
             Sym { anchors.centerIn: parent; name: "plus"; width: 10; height: 10; color: "#ffffff" }
             HoverHandler { cursorShape: Qt.PointingHandCursor }
-            TapHandler { onTapped: browseIconProc.running = true }
+            TapHandler { onTapped: { win.picking = true; browseIcon.open() } }
             Tip { text: "Change Icon Image…" }
           }
         }
@@ -448,7 +449,7 @@ PanelWindow {
             border.width: 1; border.color: Theme.separator
             Txt { anchors.centerIn: parent; text: "Browse…"; font.pixelSize: Theme.small; font.weight: Font.Medium }
             HoverHandler { id: bHov; cursorShape: Qt.PointingHandCursor }
-            TapHandler { onTapped: browseExecProc.running = true }
+            TapHandler { onTapped: { win.picking = true; browseExec.open() } }
           }
         }
       }

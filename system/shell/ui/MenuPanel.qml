@@ -12,7 +12,10 @@ Glass {
   // solid: for a menu inside a window (the default). A menu in a window of its
   // own, which the compositor frosts, sets it to false and is real glass.
   property bool solid: true
-  fill: solid ? Theme.popover : Theme.glassStrong
+  fill: solid ? Theme.popover : Theme.menuGlass
+  // A menu is read, not looked through: always frosted, as the apps' own menus
+  // (ui/MenuPopup.qml) and as on a Mac, however clear the rest of the glass is.
+  frost: solid ? Prefs.blur : Math.max(Prefs.blur, 0.6)
   implicitWidth: Math.max(220, col.implicitWidth + 12)
   implicitHeight: col.implicitHeight + 10
 
