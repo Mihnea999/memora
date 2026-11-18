@@ -96,6 +96,46 @@ the desktop in small, medium or large sizes and snap to a grid.
 The assistant opens from the notch in the menu bar or with Super+A. It suggests common tasks, accepts
 free-form requests and accepts files dragged onto it.
 
+### File conversion in the notch
+
+Any file dragged onto the notch opens a panel of actions tailored to its type. Conversions run
+locally, show their progress in place, and the result can be dragged straight out of the notch into
+any application or folder.
+
+<img src="docs/images/notch-overview.jpg" alt="Three pictures dropped on the notch" width="100%">
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/images/notch-video.jpg" alt="Video actions"></td>
+    <td width="33%"><img src="docs/images/notch-pdf.jpg" alt="PDF actions"></td>
+    <td width="33%"><img src="docs/images/notch-audio.jpg" alt="Audio actions"></td>
+  </tr>
+  <tr>
+    <td align="center">Video: MP4, WebM, GIF, compress, save a frame</td>
+    <td align="center">PDF: compress, pages to pictures, copy text</td>
+    <td align="center">Audio: MP3, M4A, OGG, FLAC</td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/notch-progress.jpg" alt="Conversion in progress"></td>
+    <td width="50%"><img src="docs/images/notch-result.jpg" alt="Conversion finished"></td>
+  </tr>
+  <tr>
+    <td align="center">Three pictures combined into one PDF, with live progress</td>
+    <td align="center">The result, ready to open, share, copy or drag out</td>
+  </tr>
+</table>
+
+| File type | Convert to | Quick actions |
+|---|---|---|
+| Pictures | PNG, WebP, AVIF, HEIC, one PDF | Compress, half size, fit to 1920 px, rotate, copy text, remove metadata, zip together |
+| Video | MP4, WebM, GIF | Compress, save a frame, zip |
+| Audio | MP3, M4A, OGG, FLAC | Zip |
+| PDF | | Compress, pages to pictures, copy text, zip |
+| Any file | | Nearby Share, copy, show in Files, ask the AI about it |
+
 ### Applications library and Mission Control
 
 <table>
@@ -140,6 +180,30 @@ free-form requests and accepts files dragged onto it.
   <tr>
     <td align="center">Files</td>
     <td align="center">Applications library, dark appearance</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/archives.jpg" alt="Archives"></td>
+    <td width="50%"><img src="docs/images/gallery.jpg" alt="Gallery"></td>
+  </tr>
+  <tr>
+    <td align="center">Archives, browsing a 7-Zip archive</td>
+    <td align="center">Gallery, photos and videos by date</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/music.jpg" alt="Music"></td>
+    <td width="50%"><img src="docs/images/activity-monitor.jpg" alt="Activity Monitor"></td>
+  </tr>
+  <tr>
+    <td align="center">Music with library, playlists and favourites</td>
+    <td align="center">Activity Monitor with live CPU and memory usage</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/spotlight.jpg" alt="Spotlight"></td>
+    <td width="50%"><img src="docs/images/welcome.jpg" alt="Welcome"></td>
+  </tr>
+  <tr>
+    <td align="center">Spotlight, calculating as you type</td>
+    <td align="center">Welcome, the first-run setup</td>
   </tr>
 </table>
 
