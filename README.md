@@ -1,188 +1,286 @@
-# Memora
+<p align="center">
+  <img src="docs/images/logo.png" alt="Memora" width="112">
+</p>
 
-A desktop operating system based on Arch Linux and Hyprland, with a liquid-glass look in light and dark,
-its own shell and apps, and an AI assistant that can work on the computer for you.
-Inter for the interface (your choice in System Settings), JetBrains Mono for code.
+<h1 align="center">Memora</h1>
 
-## Build the ISO
+<p align="center">
+  A complete desktop operating system built on Arch Linux and Hyprland,<br>
+  with a unified liquid-glass interface, a native application suite and an integrated AI assistant.
+</p>
 
-Requires Docker. The build runs `mkarchiso` in a privileged Arch container.
+<p align="center">
+  <a href="#overview">Overview</a> &nbsp;|&nbsp;
+  <a href="#highlights">Highlights</a> &nbsp;|&nbsp;
+  <a href="#screenshots">Screenshots</a> &nbsp;|&nbsp;
+  <a href="#architecture">Architecture</a> &nbsp;|&nbsp;
+  <a href="#getting-started">Getting started</a> &nbsp;|&nbsp;
+  <a href="docs/DEVELOPMENT.md">Development</a>
+</p>
 
-```bash
-./build.sh            # → out/memora-<version>-<date>-x86_64.iso
+<p align="center">
+  <img src="docs/images/desktop-dark.jpg" alt="Memora desktop, dark appearance" width="100%">
+</p>
+
+## Overview
+
+Memora is an operating system for people who want the polish and coherence of a commercial desktop
+on an open, rolling Linux foundation. Every visible surface, from the login screen to the menu bar,
+the Dock, the widgets and the bundled applications, is part of a single design system and is
+developed in this repository.
+
+The project ships as a bootable ISO with a graphical installer. A finished installation provides
+an encrypted btrfs system with automatic snapshots, hardware-appropriate graphics drivers, a hardened
+default configuration and a desktop that is usable with a mouse, the keyboard alone or touch.
+
+| | |
+|---|---|
+| **Base** | Arch Linux, rolling release |
+| **Compositor** | Hyprland with a custom liquid-glass rendering plugin |
+| **Shell** | Quickshell (Qt/QML), developed as part of Memora |
+| **Appearance** | Light and dark, Clear or Tinted glass, configurable accent colour |
+| **Assistant** | Memora AI, with support for Claude, DeepSeek, Ollama and OpenAI-compatible servers |
+| **License** | MIT |
+
+## Highlights
+
+**One consistent interface.** The menu bar, Dock, application library, Control Center, Notification
+Center, Spotlight, Mission Control, lock screen and login screen share the same components, spacing,
+typography and materials. Light and dark appearances are designed independently rather than inverted.
+
+**Liquid glass, configurable.** Translucent surfaces are rendered by a compositor plugin. Users can
+choose Clear or Tinted glass and adjust transparency, frost, colour through glass and edge light, or
+turn on Reduce Transparency for maximum legibility.
+
+**Memora AI.** An assistant that lives in a notch at the top of the screen. It can answer questions,
+operate the computer on the user's behalf (run commands, manage files and windows, change settings,
+read the screen) and process files dropped onto it: format conversion, compression, resizing, PDF
+assembly, text extraction and archiving. Every consequential action waits for explicit approval.
+
+**Native applications.** System Settings, Files, Notes, Calendar, Gallery, Music, App Store,
+Archives and Activity Monitor are built on the same toolkit as the shell and behave consistently.
+
+**Professional window management.** Edge and corner docking, a layouts bar adapted to the screen
+shape (standard, wide, ultrawide, portrait), Snap Assist, shared resize handles, Mission Control with
+named desktops, App Expose, Hot Corners and Picture in Picture.
+
+**Multi-display and touch ready.** Extend, mirror or single-screen modes, per-display scaling derived
+from pixel density, windows that return to a reconnected display, edge swipes, multi-finger gestures
+and an on-screen keyboard for 2-in-1 devices.
+
+**Secure by default.** Firewall enabled from first boot, kernel and network hardening, optional LUKS2
+full-disk encryption, snapshots before every system update and signed Memora updates.
+
+## Screenshots
+
+### Desktop
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/desktop-light.jpg" alt="Desktop, light appearance"></td>
+    <td width="50%"><img src="docs/images/desktop-dark.jpg" alt="Desktop, dark appearance"></td>
+  </tr>
+  <tr>
+    <td align="center">Light appearance</td>
+    <td align="center">Dark appearance</td>
+  </tr>
+</table>
+
+Widgets for weather, clocks, calendar, reminders, media, notes, batteries and system status sit on
+the desktop in small, medium or large sizes and snap to a grid.
+
+### Memora AI
+
+<img src="docs/images/assistant.jpg" alt="Memora AI assistant" width="100%">
+
+The assistant opens from the notch in the menu bar or with Super+A. It suggests common tasks, accepts
+free-form requests and accepts files dragged onto it.
+
+### Applications library and Mission Control
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/apps-light.jpg" alt="Applications library"></td>
+    <td width="50%"><img src="docs/images/mission-control.jpg" alt="Mission Control"></td>
+  </tr>
+  <tr>
+    <td align="center">Applications library with search and categories</td>
+    <td align="center">Mission Control with desktops and live windows</td>
+  </tr>
+</table>
+
+### System Settings and Control Center
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/settings.jpg" alt="System Settings, Appearance"></td>
+    <td width="50%"><img src="docs/images/control-center.jpg" alt="Control Center"></td>
+  </tr>
+  <tr>
+    <td align="center">System Settings, Appearance pane</td>
+    <td align="center">Control Center</td>
+  </tr>
+</table>
+
+### Applications
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/calendar.jpg" alt="Calendar"></td>
+    <td width="50%"><img src="docs/images/app-store.jpg" alt="App Store"></td>
+  </tr>
+  <tr>
+    <td align="center">Calendar with day, week, month and year views</td>
+    <td align="center">App Store with curated Flathub software and developer tools</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/files.jpg" alt="Files"></td>
+    <td width="50%"><img src="docs/images/apps.jpg" alt="Applications library, dark appearance"></td>
+  </tr>
+  <tr>
+    <td align="center">Files</td>
+    <td align="center">Applications library, dark appearance</td>
+  </tr>
+</table>
+
+## Features
+
+### Desktop shell
+
+| Component | Description |
+|---|---|
+| Menu bar | System menu, active application name, standard File, Edit, View, Go, Window and Help menus that work in any application, status icons and clock |
+| Dock | Pinned and running applications with magnification, launch feedback, minimized windows, Downloads and Trash; bottom, left or right placement with automatic hiding when space is needed |
+| Applications library | Searchable library grouped by category, with most-used applications first |
+| Spotlight | Applications, files, settings, calculations, clipboard history, keyboard shortcuts and AI queries (Super+Space) |
+| Control Center | Wi-Fi, Bluetooth, Focus, appearance, display, sound, media and power |
+| Notification Center | Banners and a history view with an integrated calendar |
+| Mission Control | All desktops and windows (Super+S or three-finger swipe), window search, named desktops, App Expose |
+| App switcher | Application switching with Alt+Tab or Super+Tab, per-application window switching, quit and hide from the switcher |
+| Lock and login | A shared design for the lock screen and the login screen, with a seamless transition into the session |
+| System dialogs | Administrator authentication (polkit), volume and brightness indicators |
+
+### Applications
+
+| Application | Description |
+|---|---|
+| System Settings | Network, Bluetooth, Nearby Share, notifications, sound, appearance, wallpaper, Dock and menu bar, windows and desktops, displays, input devices, energy, privacy, updates and reset |
+| Files | File manager with sidebar favourites, grid and list views, search and desktop integration |
+| Notes | Notes with folders, pinning, formatting and recently deleted items |
+| Calendar | Multiple calendars, public holidays by country, natural-language event entry, drag and drop scheduling, reminders |
+| Gallery and Music | Photo, video, music and film libraries |
+| App Store | Curated Flathub applications, AI coding agents and developer toolchains, installed per user |
+| Archives | Opens zip, rar, 7z, tar variants, iso, dmg, cab, msi, deb, rpm, wim and multi-part archives; creates password-protected zip, 7z, RAR and tar archives |
+| Activity Monitor | Running processes and system resource usage |
+| Terminal | Ghostty with Memora light and dark themes |
+
+### Memora AI
+
+| Provider | Capabilities |
+|---|---|
+| Claude (Anthropic API) | Full tool use: commands, files, applications, settings, windows, screen reading and input, web search, memory |
+| Claude Code | Uses the user's Claude account and its own toolset |
+| DeepSeek | Full tool use without web search, through its Anthropic-compatible API |
+| Ollama and OpenAI-compatible servers | Conversation only |
+
+Actions with lasting effect, such as administrator commands, deleting or replacing files, installing
+software, changing startup items or sending data to another computer, require the user to select
+**Allow**. The most destructive operations display a prominent warning first. Administrator commands
+are elevated individually through the Memora password dialog.
+
+### Security and updates
+
+- Firewall (ufw) enabled from first boot with no inbound connections allowed.
+- Kernel and network hardening, private home directories, remote login disabled by default and
+  temporary lock-out after repeated failed passwords.
+- Optional LUKS2 full-disk encryption configured by the installer.
+- Btrfs snapshots before every package transaction, through snapper and snap-pac.
+- Software Update installs system packages, App Store applications and Memora updates with a single
+  authentication. Memora updates are installed only when signed by a trusted key.
+- Administrator actions from Settings and the App Store are mediated by `memora-admin`, which accepts
+  only a fixed vocabulary of operations and presents each one to the user in plain language.
+
+## Architecture
+
+```
+build.sh, builder/   ISO build (Docker and archiso)
+iso/                 Live ISO overlay: graphical installer, boot configuration
+system/              Installed to /usr/share/memora
+  shell/             Desktop shell, login, lock screen and applications (QML)
+  plugin/            Hyprland plugin for liquid glass and the login transition
+  ai/                Memora AI agent
+  bin/               Command-line entry points (memora-shell, memora-settings, memora-ai, ...)
+  default/hypr/      Hyprland defaults (Lua)
+  icons/             Memora icon theme
+  themes/            Light and dark themes
+  wallpapers/        Wallpaper collection, 8K, light and dark variants
+  install/           Post-install configuration run by the installer
+test/                QEMU test harness
+tools/               Asset generators for icons, logos and wallpapers
 ```
 
-Write it to a USB stick (`dd` or Ventoy) and boot it in **UEFI** mode. The graphical installer
-starts on its own (`system/shell/installer.qml` in cage): keyboard and language, Wi-Fi, disk and
-encryption, account, time zone (guessed from the network), appearance, developer tools, a review
-page (with the drivers it will download for this computer), then progress. It works with a mouse,
-the keyboard alone (Tab, Space, Return, Esc) or a finger (its own on-screen keyboard). If the screen can't show it, the text installer runs instead.
+### Installed system
 
-## Test in a VM
-
-```bash
-test/vm.sh install    # unattended install into test/disk.qcow2 (user memora / memora)
-test/vm.sh run        # boot it in a GPU-accelerated window
-test/vm.sh live       # boot the ISO in a window and use the real installer
-RES=1366x768 test/vm.sh run   # another screen size (2560x1080, 1080x1920…)
-VM=dev test/vm.sh install && VM=dev test/vm.sh dev   # second disk that runs system/ live from this checkout
-```
-
-### Logs in the dev VM
-
-The dev VM writes what happens inside it to `test/share/logs/` on the host, from the moment you log
-in, with nothing to start by hand:
-
-| File | What is in it |
+| Area | Configuration |
 |---|---|
-| `journal.log` | the whole boot's journal, system and session, to the millisecond |
-| `shell.log` | the shell's own output: QML errors, warnings, `console.log` |
-| `hyprland.log` | Hyprland's log |
-| `events.log` | Hyprland events (windows opening and closing, focus, workspaces), timestamped |
-| `dev.log` | when the dev helpers came up |
-| `prev/` | the same files from the previous boot |
-
-The same login also starts a command loop (a file written to `test/share/cmd` runs in the session,
-its output goes to `test/share/cmd.out`) and a `ydotoold` on `/tmp/.ydotool_socket` for pointer
-tests. Restart the shell with `bash /mnt/share/shell-restart.sh` so it keeps logging.
-
-This lives in `test/share/dev-init.sh` (edit it on the host; it runs at the next login). A new dev
-disk needs it hooked up once, in the VM's terminal:
-
-```bash
-echo memora | sudo -S mount -t 9p -o trans=virtio,version=9p2000.L share /mnt/share; bash /mnt/share/dev-setup.sh
-```
-
-It only touches the dev disk (`~/.config/hypr/user.lua`, `~/.local/bin/memora-dev-boot`), never the ISO.
-
-## Working on Memora (also for AI agents)
-
-A change is finished only when it has been tried on the real desktop and handed over as a new image:
-
-1. **Test it in the VM before anything else.** Log in, check the shell stays up (no Quickshell crash
-   dialog), and use the change for real: the keys, the pointer, the app. Linting QML or loading an app
-   off screen is not enough. Without a rebuild: boot `test/disk.qcow2` headless with the live `system/`
-   and `test/share` mounts and VNC, run commands through `/mnt/share/cmd`, and bind-mount a changed
-   `shell/` over `/usr/share/memora/shell`; plugin changes are built inside the VM with
-   `system/plugin/build.sh`.
-2. **Build the new image** from the branch: `./build.sh` (the ISO lands in `out/`).
-3. **Install it and hand over the normal VM**, not the dev one: stop any running VM, then
-   `test/vm.sh install` and `test/vm.sh run` (a window on the desktop, user `memora` / `memora`).
-   Check once more there that the shell starts and the change works.
-4. **If everything passes, merge into `main` without asking** (a fast-forward; never force).
-   From a worktree: `git push . HEAD:main`. The repository is set up for it once with
-   `git config receive.denyCurrentBranch updateInstead`, so the checkout that has `main` gets the new
-   files too (git refuses if it has uncommitted changes).
-   If a test fails, fix it and start again from 1: never hand over or merge something broken.
-
-## The desktop
-
-Everything you see is the Memora shell (`system/shell`, Quickshell/QML), one design system:
-
-| Part | What it does |
-|---|---|
-| Menu bar | System menu, the focused app's name, File / Edit / View / Go / Window / Help (they send the standard shortcuts, so they work in any app), status icons, clock |
-| Dock | Pinned and running apps with magnification, running dots, bounce on launch, minimized windows, Downloads, Trash, right-click menus; bottom, left or right; always fits the screen; hides when a window needs the room (automatic on small screens) |
-| Apps | A glass library rising from the Dock: search, most used, apps grouped by kind (tap Super, or the grid in the Dock) |
-| Memora AI | A notch in the middle of the menu bar that unfolds into a conversation (Super+A); drag files onto it to convert them (pictures, videos, sound, PDF), compress, resize, combine into a PDF, copy the text in them, zip, extract or share, then drag the result out |
-| Widgets | Clock, World Clock, Weather, Calendar, Up Next, Reminders, Batteries, Photos, Stocks, Now Playing, Notes and System on the desktop, small, medium or large; right-click the desktop > Edit Widgets |
-| Screens | Extend, mirror, one screen only (Super+P, or by itself when a screen is plugged in); each screen starts at its own scale (from pixel density), Text size from Larger Text to More Space; windows go back to a screen plugged in again |
-| Windows | Docking by dragging (edges, corners, a layouts bar shaped for the screen: small, wide, ultrawide, portrait), Snap Assist, a shared line to resize docked windows, Arrange All (Super+Alt+A), Keep on Top, move to another screen (Super+Shift+arrows), the window menu (right-click a title bar, Alt+Space); apps reopen where you left them, new windows cascade, dialogs open over their window, Picture in Picture sits in a corner |
-| Mission Control | Every desktop and its windows (Super+S, F3, three fingers up): type to find a window, × to close, drop on + for a new desktop, name desktops; App Exposé for one app (Ctrl+Super+↓); Show Desktop slides windows aside (Super+D); Hot Corners |
-| Touch | Edge swipes and three/four-finger gestures, bigger targets under a finger, dragging windows by their title bars, an on-screen keyboard for tapped text fields, rotation on 2-in-1s |
-| Spotlight | Apps, files, settings, maths, ask the AI (Super+Space); also clipboard history and keyboard shortcuts |
-| Control Center | Wi-Fi, Bluetooth, Focus, appearance, display, sound, media, power |
-| Notifications | Banners, and Notification Center with a calendar (click the clock) |
-| Lock and login | Same face: time, person, password field; login runs in greetd + cage |
-| Dialogs | Administrator password (polkit), volume and brightness |
-| Switching | Alt+Tab or Super+Tab: apps, as Command+Tab on a Mac (Q quits, H hides, ` or ↓ shows its windows with live pictures); Alt+` or Super+`: the app's windows; hold Super to see the shortcuts |
-
-Apps: **System Settings** (`memora-settings [pane]`), **Files**, **Notes**, **Calendar** (day, week, month and year,
-calendars in their own colours, your country's public holidays, events typed the way you'd say them,
-dragged to another day or time, search, reminders from the desktop), **Gallery** (photos and videos), **Music** (music and films), **App Store** (curated Flathub apps plus AI coding agents and developer toolchains, per user),
-**Archives** (`memora-archive`: opens zip, rar/rar5, 7z, tar.gz/xz/zst/bz2, iso, dmg, cab, msi, deb, rpm, wim and more, multi-part ones too; browse, search, open or drag out single files, extract all or some, check for damage; makes zip, 7z, RAR (with RARLAB's rar, fetched in one click) and tar.* with a password, hidden names and parts; adds to and deletes from zip, 7z, tar and RAR; built on 7-Zip, unrar and bsdtar), **Activity Monitor**, **Welcome**, all in the same style. Terminal is Ghostty with Memora's light and dark themes. Anything that
-can't be undone (shut down, restart, log out, emptying the Trash, deleting forever) asks first.
-
-Liquid glass is configurable in System Settings > Appearance: Clear or Tinted, transparency, frost
-(Hyprland blur), colour through glass, edge light, Reduce Transparency, and the accent colour.
-System Settings > Reset puts the settings back to how they came, or erases the computer (home folder,
-added apps, saved networks) and restarts into a new home; the account stays.
-Wallpapers: **Ember** (default, warm) and **Tide** are lit per pixel by `tools/flow.py`; Horizon,
-Dunes and Silk are drawn as SVG. The playful sets, **Sorbet** (warm), **Lagoon** (cool), **Petal**
-and **Bubbles**, are soft 3D shapes lit per pixel by `tools/play.py`. All are 8K, in light and dark.
-GTK apps get round window buttons, and windows float with deep shadows; Super+T tiles one.
-Icons are Memora's own (`tools/icons.py`); apps without one are placed on the same squircle tile.
-
-## Memora AI
-
-`memora-ai` (Super+A, the sparkle in the menu bar, or `?? question` in the terminal).
-Set it up in System Settings > Memora AI:
-
-- **DeepSeek** (its Anthropic-compatible API, default `deepseek-chat`): the same tools, without web search
-- **Claude** through the Anthropic API (default `claude-opus-5-5`): uses tools — runs commands, reads and
-  writes files, opens apps, changes settings, manages windows, looks at the screen and clicks or types,
-  searches and reads the web, remembers things you tell it
-- **Claude Code** with your Claude account (its own tools)
-- **Ollama** or any **OpenAI-compatible** server (chat only)
-
-Risky actions (administrator commands, deleting or replacing files, installing software, stopping
-services, reading passwords and keys, changing what runs at login, sending data to another computer,
-a desktop widget that runs commands) wait for **Allow**. The gravest (erasing disks, deleting the
-system or your home folder, removing core packages) show a red warning first. An administrator
-command goes through Memora's password dialog, and only that command runs as administrator
-(`ai/shims/sudo`), not the rest of the line.
-
-## Updates and security
-
-- **Software Update** (System Settings, or the Memora menu) lists what's new and installs it with one
-  password prompt: system packages (pacman), App Store apps (Flathub) and, when an update address is
-  configured, Memora itself. A snapshot is taken before every system update.
-- A background check (`memora-update-check.timer`, user) posts a notification when updates are waiting.
-- Memora's own updates come from `URL=` in `/etc/memora/update.conf` and are installed only when signed
-  by a key in `system/keys/*.asc` (build one with `tools/release.sh`). Without both, it is off.
-- Firewall (ufw) on from the first boot: nothing may connect in. Kernel and network hardening
-  (`/etc/sysctl.d/90-memora.conf`), remote login off (and keys-only if turned on), private home folders,
-  a short lock-out after 5 wrong passwords.
-- System Settings > Privacy & Security: firewall, disk encryption status, lock and sleep timing,
-  whether Memora AI may see and use the screen, clearing clipboard history.
-- Administrator actions from Settings and the App Store go through `memora-admin` with their own polkit
-  actions, so the password dialog says in plain words what will happen. It takes words from a fixed
-  list only (`firewall on`, `software install docker`), never a command or an address.
-- The installer writes only the hash of your password to the new disk.
-- Nearby Share takes exactly the files you accepted (name and size), one question at a time; a
-  LocalSend device you trusted is checked against its certificate before it may send without asking.
-
-## What gets installed
-
-| Part | Choice |
-|---|---|
-| Disk | GPT, 2 GiB EFI, btrfs (`@`, `@home`, `@log`, `@pkg`, `@snapshots`), optional LUKS2 |
-| Boot | systemd-boot, Plymouth splash, zram swap |
-| Snapshots | snapper + snap-pac (one before every pacman transaction) |
-| Login | greetd with the Memora login screen; straight to the desktop after the disk password when encrypted |
-| Session | Hyprland (Lua config) via uwsm, Memora shell |
-| Drivers | Picked from `lspci`: NVIDIA open driver (DKMS) for Turing and later, open-source driver for older NVIDIA cards; AMD, Intel, VM; 32-bit drivers for games. Laptops with two chips keep the desktop on the built-in one and run games on NVIDIA (`memora-gpu`) |
+| Disk | GPT, 2 GiB EFI partition, btrfs subvolumes (`@`, `@home`, `@log`, `@pkg`, `@snapshots`), optional LUKS2 |
+| Boot | systemd-boot, Plymouth, zram swap |
+| Login | greetd with the Memora login screen |
+| Session | Hyprland through uwsm, Memora shell |
+| Graphics | Detected automatically: NVIDIA open driver for Turing and newer, open-source drivers for older NVIDIA, AMD and Intel; hybrid laptops render the desktop on the integrated GPU |
 | Gaming (optional) | Steam with Proton, GameMode, MangoHud, ProtonPlus |
 
-## Layout
+## Getting started
 
-```
-build.sh, builder/   ISO build (Docker + archiso releng overlay)
-iso/                 live ISO overlay: installer, boot, motd
-system/              installed to /usr/share/memora
-  shell/             the shell, login, Settings, AI and Welcome windows (QML)
-  ai/agent.py        Memora AI agent (Anthropic SDK)
-  bin/               memora, memora-shell, memora-ai, memora-settings, memora-theme, ...
-  default/hypr/      Hyprland defaults (Lua), updated with the system
-  icons/             Memora icon theme (generated)
-  themes/            light, dark (colours, wallpaper, logo)
-  install/           chroot and user setup run by the installer
-test/vm.sh           QEMU harness
-tools/               gen-art.sh (logos, wallpapers, icons), silk.py, play.py, icons.py
+### Requirements
+
+- A 64-bit x86 computer with UEFI firmware
+- Docker, to build the ISO
+- QEMU with KVM, to test in a virtual machine
+
+### Build the ISO
+
+```bash
+./build.sh
 ```
 
-Personal Hyprland changes go in `~/.config/hypr/user.lua`; it loads last.
+The image is written to `out/memora-<version>-<date>-x86_64.iso`.
+
+### Install
+
+1. Write the ISO to a USB drive with `dd`, Ventoy or a similar tool.
+2. Boot the computer from the drive in UEFI mode.
+3. Follow the graphical installer: language and keyboard, network, disk and encryption, user account,
+   time zone, appearance, optional developer tools and a final review that lists the drivers selected
+   for the hardware.
+
+The installer works with a mouse, the keyboard alone or touch, and falls back to a text installer if
+the display cannot be initialised.
+
+### Try it in a virtual machine
+
+```bash
+test/vm.sh install
+```
+
+```bash
+test/vm.sh run
+```
+
+The default test account is `memora` with the password `memora`. See
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full development and testing workflow.
+
+### Personal configuration
+
+Personal Hyprland settings belong in `~/.config/hypr/user.lua`, which is loaded last and is never
+overwritten by system updates.
+
+## Contributing
+
+Contributions are welcome. Please read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) before opening a
+pull request. Every change is expected to be verified on a running Memora desktop, not only through
+static checks.
 
 ## License
 
-MIT
+Memora is released under the [MIT License](LICENSE).
